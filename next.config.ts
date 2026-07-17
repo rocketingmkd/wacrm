@@ -64,6 +64,12 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // Self-hosted on Docker (VPS Swarm), not Hostinger Managed Node.js —
+  // standalone output bundles only the production deps a `node
+  // server.js` needs, so the runtime image doesn't carry the full
+  // node_modules tree.
+  output: "standalone",
+
   /**
    * Cross-origin dev access (Next.js 16).
    *
