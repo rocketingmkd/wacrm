@@ -504,7 +504,8 @@
     "card": {
       "noContact": "No contact",
       "won": "Won",
-      "lost": "Lost"
+      "lost": "Lost",
+      "goToConversation": "Go to conversation"
     },
     "form": {
       "editDeal": "Edit Deal",

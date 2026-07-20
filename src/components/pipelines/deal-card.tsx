@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import type { Deal, PipelineStage } from "@/types";
-import { Check, X } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
+import { Check, MessageSquare, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 interface DealCardProps {
@@ -22,14 +24,25 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
 
   return (
-    <button
-      type="button"
+    // A plain <button> can't contain the "go to conversation" <Link>
+    // below (nested interactive elements are invalid HTML), so the
+    // card itself is a div with a button role instead.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={(e) => {
         // `onClick` still fires after a non-drag tap because the PointerSensor
         // requires 5px movement before it counts as a drag.
         if (isOverlay) return;
         e.stopPropagation();
         onEdit(deal);
+      }}
+      onKeyDown={(e) => {
+        if (isOverlay) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onEdit(deal);
+        }
       }}
       className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all ${
         isOverlay
@@ -68,8 +81,30 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
       </div>
 
       {/* Lead source lands here once the field exists — a future
-          phase, per product decision; card is intentionally bare
-          (just contact identity + status) until then. */}
-    </button>
+          phase, per product decision. */}
+
+      {(deal.value > 0 || deal.conversation_id) && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {deal.value > 0 ? (
+            <span className="text-sm font-bold text-primary">
+              {formatCurrency(deal.value, deal.currency)}
+            </span>
+          ) : (
+            <span />
+          )}
+          {deal.conversation_id && (
+            <Link
+              href={`/inbox?c=${deal.conversation_id}`}
+              onClick={(e) => e.stopPropagation()}
+              title={t("goToConversation")}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/20"
+            >
+              <MessageSquare className="h-3 w-3" />
+              {t("goToConversation")}
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

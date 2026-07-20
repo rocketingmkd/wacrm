@@ -504,7 +504,8 @@
     "card": {
       "noContact": "Sem contato",
       "won": "Ganho",
-      "lost": "Perdido"
+      "lost": "Perdido",
+      "goToConversation": "Ir para conversa"
     },
     "form": {
       "editDeal": "Editar negócio",
