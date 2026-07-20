@@ -766,6 +766,8 @@
         "sending": "Sending...",
         "preparing": "Preparing...",
         "progressDesc": "Processing {current} of {total} recipients...",
+        "metaCostLabel": "Estimated Meta cost ({category})",
+        "metaCostRange": "{min} – {max} for {count} recipients — charged on the account's own WhatsApp Business bill, not this CRM's invoice.",
         "toastFailedPreview": "Failed to load preview data"
       }
     }

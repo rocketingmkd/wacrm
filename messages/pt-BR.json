@@ -766,6 +766,8 @@
         "sending": "Enviando...",
         "preparing": "Preparando...",
         "progressDesc": "Processando {current} de {total} destinatários...",
+        "metaCostLabel": "Custo estimado da Meta ({category})",
+        "metaCostRange": "{min} a {max} para {count} destinatários, cobrado na conta do WhatsApp Business do cliente, fora da mensalidade do CRM.",
         "toastFailedPreview": "Falha ao carregar dados de pré-visualização"
       }
     }

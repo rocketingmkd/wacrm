@@ -14,8 +14,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Users, Save, Coins } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { estimateMetaCost, formatBRL } from '@/lib/whatsapp/meta-pricing';
 
 interface AudienceConfig {
   type: string;
@@ -83,6 +84,8 @@ export function Step4ScheduleSend({
     calculateReach();
   }, [audience]);
 
+  const metaCost = estimateMetaCost(template.category, estimatedReach);
+
   const audienceLabel =
     audience.type === 'all'
       ? t('scheduleSend.audienceAll')
@@ -143,6 +146,26 @@ export function Step4ScheduleSend({
           </div>
         </div>
       </div>
+
+      {/* Meta per-message cost estimate — informational only, charged on
+          the account's own WhatsApp Business bill, not this CRM's invoice. */}
+      {!loadingReach && estimatedReach > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
+          <Coins className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="text-sm">
+            <p className="font-medium text-foreground">
+              {t('scheduleSend.metaCostLabel', { category: template.category })}
+            </p>
+            <p className="mt-0.5 text-muted-foreground">
+              {t('scheduleSend.metaCostRange', {
+                min: formatBRL(metaCost.min),
+                max: formatBRL(metaCost.max),
+                count: estimatedReach,
+              })}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Processing overlay */}
       {isProcessing && (

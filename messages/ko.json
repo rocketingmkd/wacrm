@@ -765,6 +765,8 @@
         "sending": "전송 중...",
         "preparing": "준비 중...",
         "progressDesc": "수신자 {total}명 중 {current}명 처리 중...",
+        "metaCostLabel": "Meta 예상 비용 ({category})",
+        "metaCostRange": "수신자 {count}명 기준 {min} ~ {max}, CRM 요금과 별도로 왓츠앱 비즈니스 계정에 청구됩니다.",
         "toastFailedPreview": "미리보기 데이터를 불러오지 못했습니다"
       }
     }
