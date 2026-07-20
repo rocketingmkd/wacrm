@@ -162,6 +162,15 @@ function LoginPageInner() {
               {t('createAccount')}
             </Link>
           </p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            <Link href="/terms" className="text-primary hover:text-primary/80">
+              Termos de Uso
+            </Link>{" "}
+            ·{" "}
+            <Link href="/privacy" className="text-primary hover:text-primary/80">
+              Política de Privacidade
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>
