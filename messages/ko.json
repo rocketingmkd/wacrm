@@ -605,7 +605,35 @@
         "date": "날짜"
       },
       "errorLoad": "브로드캐스트를 불러오지 못했습니다",
-      "retry": "다시 시도"
+      "retry": "다시 시도",
+      "metaPricing": {
+        "buttonLabel": "Meta 비용",
+        "dialogTitle": "왓츠앱 비즈니스 플랫폼 — 메시지당 비용",
+        "dialogSubtitle": "브라질 시장 기준 Meta의 메시지당 공식 요금입니다. CRM 요금과 별도로 계정의 왓츠앱 비즈니스 청구서에 부과됩니다.",
+        "colCategory": "카테고리",
+        "colPrice": "메시지당 비용",
+        "colWhen": "적용 시점",
+        "free": "무료",
+        "categories": {
+          "service": {
+            "label": "서비스",
+            "desc": "고객이 먼저 보낸 메시지에 24시간 이내 답장하는 경우."
+          },
+          "utility": {
+            "label": "유틸리티",
+            "desc": "주문 확인, 배송 업데이트, 예약 알림."
+          },
+          "authentication": {
+            "label": "인증",
+            "desc": "일회용 인증 코드(OTP) 및 로그인 메시지."
+          },
+          "marketing": {
+            "label": "마케팅",
+            "desc": "프로모션, 런칭, 장바구니 회수, 재참여 캠페인."
+          }
+        },
+        "note": "참고용 수치이며 Meta가 예고 없이 변경할 수 있습니다. 대량 발송 전에 현재 요율을 확인하세요."
+      }
     },
     "status": {
       "draft": "초안",

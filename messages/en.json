@@ -606,7 +606,35 @@
         "date": "Date"
       },
       "errorLoad": "Failed to load broadcasts",
-      "retry": "Retry"
+      "retry": "Retry",
+      "metaPricing": {
+        "buttonLabel": "Meta costs",
+        "dialogTitle": "WhatsApp Business Platform — cost per message",
+        "dialogSubtitle": "Meta's official per-message pricing, Brazilian market. These charges hit the account's own WhatsApp Business bill, not this CRM's invoice.",
+        "colCategory": "Category",
+        "colPrice": "Cost per message",
+        "colWhen": "When it applies",
+        "free": "Free",
+        "categories": {
+          "service": {
+            "label": "Service",
+            "desc": "Reply to a customer-initiated message, within the 24-hour window."
+          },
+          "utility": {
+            "label": "Utility",
+            "desc": "Order confirmation, delivery update, appointment reminder."
+          },
+          "authentication": {
+            "label": "Authentication",
+            "desc": "One-time verification codes and login messages."
+          },
+          "marketing": {
+            "label": "Marketing",
+            "desc": "Promotions, launches, cart recovery, re-engagement campaigns."
+          }
+        },
+        "note": "Reference values, subject to change by Meta without notice. Confirm the current rate before a mass send."
+      }
     },
     "status": {
       "draft": "Draft",

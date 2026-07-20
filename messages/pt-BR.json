@@ -606,7 +606,35 @@
         "date": "Data"
       },
       "errorLoad": "Falha ao carregar disparos",
-      "retry": "Tentar novamente"
+      "retry": "Tentar novamente",
+      "metaPricing": {
+        "buttonLabel": "Custos da Meta",
+        "dialogTitle": "WhatsApp Business Platform — custo por mensagem",
+        "dialogSubtitle": "Cobrança oficial da Meta por mensagem entregue, mercado brasileiro. Esses valores são cobrados na conta do WhatsApp Business do cliente, fora da mensalidade do CRM.",
+        "colCategory": "Categoria",
+        "colPrice": "Custo por mensagem",
+        "colWhen": "Quando se aplica",
+        "free": "Grátis",
+        "categories": {
+          "service": {
+            "label": "Serviço",
+            "desc": "Resposta a mensagens que o cliente iniciou, dentro da janela de 24 horas."
+          },
+          "utility": {
+            "label": "Utilidade",
+            "desc": "Confirmação de pedido, atualização de entrega, lembrete de agendamento."
+          },
+          "authentication": {
+            "label": "Autenticação",
+            "desc": "Código de verificação (OTP) e mensagens de login."
+          },
+          "marketing": {
+            "label": "Marketing",
+            "desc": "Promoções, lançamentos, recuperação de carrinho, campanhas de reativação."
+          }
+        },
+        "note": "Valores de referência, sujeitos a alteração pela Meta sem aviso prévio. Confirme o valor vigente antes de um disparo em massa."
+      }
     },
     "status": {
       "draft": "Rascunho",
