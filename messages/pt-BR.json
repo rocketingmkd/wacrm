@@ -1247,7 +1247,12 @@
       "removeDialogDesc": "Remover <bold>{name}</bold> da conta? A pessoa será desconectada dessa conta e receberá uma conta pessoal nova no próximo login. O login dela não é excluído.",
       "cancel": "Cancelar",
       "removing": "Removendo...",
-      "removeBtn": "Remover membro"
+      "removeBtn": "Remover membro",
+      "roundRobinTitle": "Rodízio automático de atendentes",
+      "roundRobinDesc": "Quando ativado, toda conversa nova é atribuída automaticamente ao próximo membro com papel \"Agente\" da fila, em rodízio.",
+      "roundRobinNoAgents": "Nenhum membro com papel \"Agente\" ainda, adicione pelo menos um pra o rodízio conseguir atribuir alguém.",
+      "roundRobinEnabledToast": "Rodízio ativado",
+      "roundRobinDisabledToast": "Rodízio desativado"
     },
     "invite": {
       "inviteCreated": "Convite criado",

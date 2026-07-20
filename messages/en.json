@@ -1247,7 +1247,12 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "roundRobinTitle": "Automatic agent round-robin",
+      "roundRobinDesc": "When on, every brand-new conversation is assigned to the next 'Agent'-role teammate in line, cycling through the roster.",
+      "roundRobinNoAgents": "No 'Agent'-role members yet — add at least one for the round-robin to assign anyone.",
+      "roundRobinEnabledToast": "Round-robin turned on",
+      "roundRobinDisabledToast": "Round-robin turned off"
     },
     "invite": {
       "inviteCreated": "Invite created",

@@ -9,6 +9,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { maybeAssignRoundRobin } from '@/lib/conversations/round-robin'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -619,6 +620,11 @@ async function processMessage(
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
     })
+    // Auto-assign to the next agent in line, if the account has
+    // round-robin turned on. Only ever runs on a brand-new
+    // conversation — an existing one keeps whoever (if anyone) it's
+    // already assigned to.
+    await maybeAssignRoundRobin(supabaseAdmin(), accountId, conversation.id)
   }
 
   // Reactions short-circuit here — they aren't messages. We never insert

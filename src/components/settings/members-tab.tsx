@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -140,14 +141,26 @@ export function MembersTab() {
     null,
   );
 
+  // Round-robin auto-assignment toggle. Fetched alongside the roster
+  // but kept in its own state slice since it's an account-level
+  // setting, not a member row.
+  const [roundRobinEnabled, setRoundRobinEnabled] = useState(false);
+  const [roundRobinSaving, setRoundRobinSaving] = useState(false);
+
   const loadEverything = useCallback(async () => {
     try {
-      const [mres, ires] = await Promise.all([
+      const [mres, ires, rres] = await Promise.all([
         fetch('/api/account/members', { cache: 'no-store' }),
         canManageMembers
           ? fetch('/api/account/invitations', { cache: 'no-store' })
           : Promise.resolve(null),
+        fetch('/api/account/round-robin', { cache: 'no-store' }),
       ]);
+
+      if (rres.ok) {
+        const rdata = (await rres.json()) as { enabled: boolean };
+        setRoundRobinEnabled(rdata.enabled);
+      }
 
       if (!mres.ok) {
         const payload = await mres.json().catch(() => ({}));
@@ -254,6 +267,32 @@ export function MembersTab() {
     }
   }
 
+  async function handleRoundRobinToggle(next: boolean) {
+    const previous = roundRobinEnabled;
+    setRoundRobinEnabled(next);
+    setRoundRobinSaving(true);
+    try {
+      const res = await fetch('/api/account/round-robin', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) {
+        setRoundRobinEnabled(previous);
+        const payload = await res.json().catch(() => ({}));
+        toast.error(payload.error || 'Failed to update round-robin setting');
+        return;
+      }
+      toast.success(next ? t('roundRobinEnabledToast') : t('roundRobinDisabledToast'));
+    } catch (err) {
+      setRoundRobinEnabled(previous);
+      console.error('[MembersTab] round-robin toggle error:', err);
+      toast.error('Could not reach the server');
+    } finally {
+      setRoundRobinSaving(false);
+    }
+  }
+
   async function handleRevoke(invite: Invitation) {
     try {
       const res = await fetch(`/api/account/invitations/${invite.id}`, {
@@ -320,6 +359,35 @@ export function MembersTab() {
             </div>
           );
         })()}
+
+      {/* Round-robin auto-assignment toggle. Admin+ only — agents/
+          viewers don't need to manage this, they just benefit from
+          it. */}
+      <RequireRole min="admin">
+        <Card>
+          <CardContent className="flex items-center justify-between gap-4 p-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {t('roundRobinTitle')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t('roundRobinDesc')}
+              </p>
+              {members.filter((m) => m.role === 'agent').length === 0 && (
+                <p className="mt-1 text-xs text-amber-500">
+                  {t('roundRobinNoAgents')}
+                </p>
+              )}
+            </div>
+            <Switch
+              checked={roundRobinEnabled}
+              onCheckedChange={(v) => handleRoundRobinToggle(!!v)}
+              disabled={roundRobinSaving}
+              aria-label={t('roundRobinTitle')}
+            />
+          </CardContent>
+        </Card>
+      </RequireRole>
 
       {/* Roster */}
       <Card>
