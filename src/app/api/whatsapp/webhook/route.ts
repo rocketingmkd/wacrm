@@ -101,6 +101,24 @@ export async function GET(request: Request) {
       )
     }
 
+    // App-level verify token, set once by the operator (env var) and
+    // used for the one-time Meta App Dashboard webhook handshake. This
+    // is the correct model for how Meta's webhook config actually
+    // works — one Callback URL + one Verify Token per app, unrelated to
+    // any individual account. Checked first (no DB round-trip) so the
+    // handshake succeeds even before any account has connected
+    // WhatsApp yet — the per-account fallback below exists only for
+    // the manual "each account pastes its own token" flow.
+    if (
+      process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN &&
+      verifyToken === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+    ) {
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
     // Fetch all whatsapp configs to check verify tokens
     const { data: configs, error: configError } = await supabaseAdmin()
       .from('whatsapp_config')
