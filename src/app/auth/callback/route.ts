@@ -21,7 +21,13 @@ function isEmailOtpType(value: string | null): value is EmailOtpType {
 // older verify-otp shape sends `?token_hash=&type=`. Both are handled
 // so the callback works regardless of which the email template used.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams, origin: requestOrigin } = new URL(request.url);
+  // `request.url`'s origin reflects whatever Host the Node process sees,
+  // which behind this Traefik + Next.js-standalone setup resolves to the
+  // container's own bind address (0.0.0.0:3000) rather than the public
+  // domain. NEXT_PUBLIC_SITE_URL is the trusted value for building
+  // redirect URLs; only fall back to the request origin if it's unset.
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? requestOrigin;
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
