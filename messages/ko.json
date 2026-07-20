@@ -259,6 +259,7 @@
       "tags": "태그",
       "notes": "메모",
       "deals": "딜",
+      "addDeal": "추가",
       "noTags": "태그 없음",
       "noDeals": "딜 없음",
       "addNotePlaceholder": "메모 추가..."

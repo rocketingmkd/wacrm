@@ -259,6 +259,7 @@
       "tags": "Tags",
       "notes": "Notes",
       "deals": "Deals",
+      "addDeal": "Add",
       "noTags": "No tags",
       "noDeals": "No deals",
       "addNotePlaceholder": "Add a note..."

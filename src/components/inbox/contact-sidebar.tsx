@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ContactNote, Tag, PipelineStage } from "@/types";
+import { DealForm } from "@/components/pipelines/deal-form";
 import {
   Phone,
   Mail,
@@ -30,12 +32,21 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const tThread = useTranslations("Inbox.messageThread");
 
   const { accountId } = useAuth();
+  const canCreateDeals = useCan("send-messages");
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+
+  // "Add to pipeline" shortcut. Only the account's first pipeline is
+  // offered here — same simplifying assumption as elsewhere in the
+  // app (most accounts run a single sales pipeline); a multi-pipeline
+  // picker can follow if that stops holding.
+  const [dealFormOpen, setDealFormOpen] = useState(false);
+  const [pipelineId, setPipelineId] = useState("");
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -79,6 +90,34 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
+
+  // Account-wide, not contact-scoped — only needs to (re)load when the
+  // account changes, not on every contact switch.
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    const supabase = createClient();
+    (async () => {
+      const { data: pipelines } = await supabase
+        .from("pipelines")
+        .select("id")
+        .order("created_at", { ascending: true })
+        .limit(1);
+      const firstPipelineId = pipelines?.[0]?.id;
+      if (cancelled || !firstPipelineId) return;
+      setPipelineId(firstPipelineId);
+
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("*")
+        .eq("pipeline_id", firstPipelineId)
+        .order("position", { ascending: true });
+      if (!cancelled) setPipelineStages((stages as PipelineStage[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -212,9 +251,22 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Active Deals */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <DollarSign className="h-3 w-3" />
-              {tSidebar("deals")}
+            <div className="flex items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <DollarSign className="h-3 w-3" />
+                {tSidebar("deals")}
+              </div>
+              {canCreateDeals && pipelineId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => setDealFormOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {tSidebar("addDeal")}
+                </Button>
+              )}
             </div>
             <div className="mt-2 space-y-2">
               {deals.length === 0 ? (
@@ -298,6 +350,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           </div>
         </div>
       </ScrollArea>
+
+      {pipelineId && (
+        <DealForm
+          open={dealFormOpen}
+          onOpenChange={setDealFormOpen}
+          pipelineId={pipelineId}
+          stages={pipelineStages}
+          defaultContactId={contact.id}
+          onSaved={fetchContactData}
+        />
+      )}
     </div>
   );
 }

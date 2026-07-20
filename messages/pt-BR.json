@@ -259,6 +259,7 @@
       "tags": "Etiquetas",
       "notes": "Notas",
       "deals": "Negócios",
+      "addDeal": "Adicionar",
       "noTags": "Nenhuma etiqueta",
       "noDeals": "Nenhum negócio",
       "addNotePlaceholder": "Adicionar uma nota..."
