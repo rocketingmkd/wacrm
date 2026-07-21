@@ -58,6 +58,13 @@ interface WhatsAppMessage {
     button_reply?: { id: string; title: string }
     list_reply?: { id: string; title: string; description?: string }
   }
+  /**
+   * Set when the customer taps a quick-reply button on a template
+   * message (e.g. a broadcast/automation dispatch). Distinct from
+   * `interactive.button_reply`, which only covers interactive messages
+   * sent directly via the Cloud API.
+   */
+  button?: { text: string; payload: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
 }
@@ -986,6 +993,19 @@ async function parseMessageContent(
       }
       return { ...empty, contentText: '[Interactive reply]' }
     }
+
+    case 'button':
+      // Quick-reply button tap on a template message (broadcast/automation
+      // dispatch). Use payload as the stable id — same role interactive's
+      // reply.id plays — so the Flows engine can route on it.
+      if (message.button) {
+        return {
+          ...empty,
+          contentText: message.button.text || message.button.payload || null,
+          interactiveReplyId: message.button.payload || null,
+        }
+      }
+      return empty
 
     default:
       return {
