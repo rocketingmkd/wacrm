@@ -88,6 +88,16 @@ interface WhatsAppWebhookEntry {
         status: string
         timestamp: string
         recipient_id: string
+        /** Only present when status === 'failed' — the actual Meta
+         *  rejection reason (e.g. undeliverable, re-engagement window
+         *  expired, recipient opted out). Never persisted, only
+         *  logged — see handleStatusUpdate. */
+        errors?: Array<{
+          code: number
+          title: string
+          message?: string
+          error_data?: { details?: string }
+        }>
       }>
     }
     field: string
@@ -380,7 +390,24 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: Array<{
+    code: number
+    title: string
+    message?: string
+    error_data?: { details?: string }
+  }>
 }) {
+  // Log Meta's actual rejection reason for failed deliveries — the
+  // `messages.status` column only has room for the enum value, so
+  // without this a "failed" status is a dead end (had to SSH + psql +
+  // guess). Log-only, not persisted.
+  if (status.status === 'failed' && status.errors?.length) {
+    console.error(
+      `[webhook] delivery failed for ${status.id} (${status.recipient_id}):`,
+      JSON.stringify(status.errors),
+    )
+  }
+
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status. No
   //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
