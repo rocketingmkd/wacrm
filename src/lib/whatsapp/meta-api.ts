@@ -66,6 +66,45 @@ export async function verifyPhoneNumber(
 }
 
 // ============================================================
+// Embedded Signup (Facebook Login for Business)
+// ============================================================
+
+export interface ExchangeCodeForTokenArgs {
+  /** The `code` the FB JS SDK's `FB.login` callback delivers via
+   *  `authResponse.code` (response_type: 'code'). Short-lived,
+   *  single-use. */
+  code: string
+}
+
+/**
+ * Exchange the Embedded Signup authorization `code` for a business
+ * integration system-user access token. Unlike a classic OAuth
+ * redirect flow, the JS SDK's `response_type: 'code'` mode doesn't
+ * require (or accept) a `redirect_uri` here — the code was already
+ * scoped to the app via the popup.
+ */
+export async function exchangeCodeForToken(
+  args: ExchangeCodeForTokenArgs
+): Promise<{ accessToken: string }> {
+  const { code } = args
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+  if (!appId || !appSecret) {
+    throw new Error('META_APP_ID and META_APP_SECRET must be set to exchange an Embedded Signup code')
+  }
+  const url = `${META_API_BASE}/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
+  const response = await fetch(url)
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as { access_token?: string }
+  if (!data.access_token) {
+    throw new Error('Meta did not return an access_token for this code')
+  }
+  return { accessToken: data.access_token }
+}
+
+// ============================================================
 // Cloud API registration (subscription for inbound webhooks)
 // ============================================================
 //
