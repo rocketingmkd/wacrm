@@ -301,6 +301,28 @@ export async function POST() {
       }
     }
 
+    // Orphan detection — local rows that were submitted to Meta at
+    // some point (meta_template_id set) but weren't in THIS WABA's
+    // list above. Happens whenever the account reconnects to a
+    // different WABA (own test, or a client swapping numbers/BM):
+    // the row still looks APPROVED locally, but the Meta object it
+    // points at belongs to the old WABA and any call against it
+    // (edit/delete/send) fails with a confusing Graph API error.
+    // Not deleted here — same "let the user notice and decide"
+    // rationale as new (unmatched) Meta templates above — but
+    // flagged so the UI can offer "Recreate on this account" instead
+    // of the row silently looking usable.
+    const seen = new Set(metaTemplates.map((t) => `${t.name}::${t.language}`))
+    const { data: localRows } = await supabase
+      .from('message_templates')
+      .select('id, name, language')
+      .eq('account_id', accountId)
+      .not('meta_template_id', 'is', null)
+
+    const orphaned = (localRows ?? []).filter(
+      (row) => !seen.has(`${row.name}::${row.language}`),
+    )
+
     return NextResponse.json({
       success: errors.length === 0,
       total: metaTemplates.length,
@@ -308,6 +330,7 @@ export async function POST() {
       updated,
       errors,
       truncated: pageCount >= PAGE_CAP && nextUrl !== null,
+      orphaned,
     })
   } catch (error) {
     console.error('Error syncing WhatsApp templates:', error)

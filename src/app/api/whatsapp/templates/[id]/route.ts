@@ -231,11 +231,17 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params
+    // Set by the UI when the last "Sync from Meta" flagged this row
+    // as orphaned (meta_template_id from a WABA this account is no
+    // longer connected to). That id is unreachable from here — Meta
+    // rejects the call with "Invalid parameter" rather than a clean
+    // 404 — so skip straight to the local delete.
+    const skipMeta = new URL(request.url).searchParams.get('skip_meta') === 'true'
     if (!UUID_RE.test(id)) {
       return NextResponse.json(
         { error: 'Invalid template id.' },
@@ -277,7 +283,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Template not found.' }, { status: 404 })
     }
 
-    if (existing.meta_template_id && !isDryRun()) {
+    if (existing.meta_template_id && !isDryRun() && !skipMeta) {
       const { data: config, error: configError } = await supabase
         .from('whatsapp_config')
         .select('*')

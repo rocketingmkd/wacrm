@@ -145,6 +145,12 @@ export function TemplateManager() {
   // doesn't take the template off Meta as well as locally.
   const [templateToDelete, setTemplateToDelete] =
     useState<MessageTemplate | null>(null);
+  // Ids "Sincronizar da Meta" flagged as pointing at a Meta object
+  // from a WABA this account is no longer connected to (reconnected
+  // to a different number/BM). Edit/Resubmit against these fails
+  // with a confusing Graph API error — offer "Recriar nesta conta"
+  // instead. Session-only: repopulated by the next sync, not persisted.
+  const [orphanedIds, setOrphanedIds] = useState<Set<string>>(new Set());
   // Header-image upload (issue #230). Uploads to the account-scoped
   // chat-media bucket and stores the public URL in header_media_url; the
   // submit route turns that into a Meta Resumable-Upload handle.
@@ -251,6 +257,28 @@ export function TemplateManager() {
     setDialogOpen(true);
   }
 
+  // Pre-fills the form from an orphaned row's already-stored content
+  // (same fields as openEdit) but leaves editingId null, so Save goes
+  // through POST /submit — a fresh Meta object on the WABA currently
+  // connected, upserted onto this same local row by (name, language).
+  function openRecreate(template: MessageTemplate) {
+    setEditingId(null);
+    setForm({
+      name: template.name,
+      category: template.category,
+      language: template.language || 'en_US',
+      header_format: (template.header_type ?? 'none') as HeaderFormat,
+      header_content: template.header_content ?? '',
+      header_media_url: template.header_media_url ?? '',
+      header_sample: template.sample_values?.header?.[0] ?? '',
+      body_text: template.body_text,
+      body_samples: template.sample_values?.body ?? [],
+      footer_text: template.footer_text ?? '',
+      buttons: template.buttons ?? [],
+    });
+    setDialogOpen(true);
+  }
+
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm);
@@ -334,6 +362,18 @@ export function TemplateManager() {
           { duration: 10000 },
         );
       }
+      setOrphanedIds(new Set((data.orphaned ?? []).map((o: { id: string }) => o.id)));
+      if (Array.isArray(data.orphaned) && data.orphaned.length > 0) {
+        toast.error(
+          t('toastSyncOrphaned', {
+            preview: data.orphaned
+              .slice(0, 3)
+              .map((o: { name: string }) => o.name)
+              .join(', '),
+          }),
+          { duration: 10000 },
+        );
+      }
       await fetchTemplates(user.id);
     } catch (err) {
       console.error('Template sync error:', err);
@@ -350,10 +390,16 @@ export function TemplateManager() {
     try {
       // Route handler scopes the Meta delete via hsm_id (so sibling
       // language variants survive) and falls through to remove the
-      // local row. Local-only rows skip the Meta call.
-      const res = await fetch(`/api/whatsapp/templates/${target.id}`, {
-        method: 'DELETE',
-      });
+      // local row. Local-only rows skip the Meta call. Orphaned rows
+      // (flagged by the last sync — meta_template_id belongs to a
+      // WABA this account isn't connected to anymore) also skip it:
+      // that id is unreachable from here and Meta rejects the call
+      // with "Invalid parameter" instead of a clean 404.
+      const skipMeta = orphanedIds.has(target.id);
+      const res = await fetch(
+        `/api/whatsapp/templates/${target.id}${skipMeta ? '?skip_meta=true' : ''}`,
+        { method: 'DELETE' },
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error || `Delete failed (HTTP ${res.status})`);
@@ -519,6 +565,7 @@ export function TemplateManager() {
           {templates.map((template) => {
             const statusKey = template.status || 'DRAFT';
             const status = templateStatusConfig[statusKey];
+            const isOrphaned = orphanedIds.has(template.id);
             return (
               <Card key={template.id}>
                 <CardContent className="flex items-start justify-between pt-4">
@@ -569,9 +616,28 @@ export function TemplateManager() {
                         </span>
                       </div>
                     )}
+                    {isOrphaned && (
+                      <div className="flex items-start gap-1.5 text-xs text-amber-400 bg-amber-950/20 border border-amber-900/40 rounded px-2 py-1.5">
+                        <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+                        <span>{t('orphanedHint')}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
+                    {isOrphaned && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openRecreate(template)}
+                        title={t('recreateTitle')}
+                        aria-label={t('recreateLabel')}
+                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                      >
+                        <RotateCcw className="size-3.5" />
+                        {t('recreate')}
+                      </Button>
+                    )}
+                    {!isOrphaned && statusKey === 'APPROVED' && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -584,7 +650,7 @@ export function TemplateManager() {
                         {t('edit')}
                       </Button>
                     )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
+                    {!isOrphaned && (statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
                       <Button
                         variant="ghost"
                         size="sm"
