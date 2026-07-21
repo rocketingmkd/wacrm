@@ -37,10 +37,14 @@ export interface SaveVerifiedWhatsAppConfigArgs {
   accessToken: string
   verifyToken?: string | null
   /**
-   * 6-digit 2FA PIN for /register. Optional — omitted entirely by the
-   * Embedded Signup callback (Coexistence numbers are pre-registered
-   * by the signup flow itself; PIN only applies to the manual-entry
-   * path for numbers being registered for the first time here).
+   * 6-digit 2FA PIN for /register. Meta requires this server-to-server
+   * call after every Embedded Signup completion, regardless of
+   * Coexistence vs a brand-new number — the popup only handles OAuth
+   * authorization, not enabling two-step verification on the number.
+   * Omitted by the Embedded Signup callback itself (the popup never
+   * returns a PIN); the user supplies it afterwards via the "Registrar
+   * com PIN" control in Settings, which calls
+   * POST /api/whatsapp/config/register.
    */
   pin?: string | null
 }

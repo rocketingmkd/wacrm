@@ -18,6 +18,7 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 import { SettingsPanelHead } from './settings-panel-head';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
 
@@ -88,6 +89,9 @@ export function WhatsAppConfig() {
   // multi-number bug that prompted this work.
   const isRegistered = Boolean(config?.registered_at);
   const lastRegistrationError = config?.last_registration_error ?? null;
+
+  const [pinInput, setPinInput] = useState('');
+  const [registeringPin, setRegisteringPin] = useState(false);
 
   const [verifyingRegistration, setVerifyingRegistration] = useState(false);
   type RegistrationProbe = {
@@ -355,6 +359,34 @@ export function WhatsAppConfig() {
     }
   }
 
+  async function handleRegisterWithPin() {
+    if (!/^\d{6}$/.test(pinInput)) {
+      toast.error(t('pinInvalid'));
+      return;
+    }
+    setRegisteringPin(true);
+    try {
+      const res = await fetch('/api/whatsapp/config/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || t('pinRegisterError'));
+        return;
+      }
+      toast.success(t('pinRegisterSuccess'));
+      setPinInput('');
+      if (accountId) await fetchConfig(accountId);
+    } catch (err) {
+      console.error('Register with PIN error:', err);
+      toast.error(t('pinRegisterError'));
+    } finally {
+      setRegisteringPin(false);
+    }
+  }
+
   async function handleReset() {
     if (!confirm('This will delete the current WhatsApp config so you can re-enter it. Continue?')) {
       return;
@@ -544,6 +576,33 @@ export function WhatsAppConfig() {
                 <>{t('noRegistrationHint')}</>
               )}
             </AlertDescription>
+
+            {!isRegistered && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Input
+                  value={pinInput}
+                  onChange={(e) =>
+                    setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  placeholder={t('pinPlaceholder')}
+                  inputMode="numeric"
+                  maxLength={6}
+                  className="w-32 bg-background"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegisterWithPin}
+                  disabled={registeringPin || pinInput.length !== 6}
+                  className="border-border bg-transparent text-foreground hover:bg-muted h-9"
+                >
+                  {registeringPin ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : null}
+                  {t('pinRegisterButton')}
+                </Button>
+              </div>
+            )}
 
             {registrationProbe && (
               <div className="mt-3 rounded border border-border bg-card/60 px-3 py-2 space-y-1.5 text-[11px]">

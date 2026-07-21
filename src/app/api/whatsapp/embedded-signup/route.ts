@@ -18,10 +18,12 @@ import { saveVerifiedWhatsAppConfig, SaveConfigError } from '@/lib/whatsapp/pers
  * This exchanges `code` for a business-integration access token via
  * Meta's /oauth/access_token, then reuses the same verify/encrypt/
  * register/subscribe/persist path as the manual form
- * (`saveVerifiedWhatsAppConfig`). No PIN is supplied — in Coexistence,
- * the number is already registered by the signup flow itself, so
- * /register is best-effort/skippable here exactly like a Meta test
- * number in the manual flow.
+ * (`saveVerifiedWhatsAppConfig`). No PIN is supplied here — the popup
+ * never returns one, and Meta always requires the /register PIN as a
+ * separate server-to-server call regardless of Coexistence vs a new
+ * number. /register is left skipped/best-effort on this first save;
+ * the user completes it afterwards via the "Registrar com PIN"
+ * control in Settings (POST /api/whatsapp/config/register).
  */
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
