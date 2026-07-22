@@ -9,7 +9,7 @@
  * instead of a runtime rejection from Meta.
  */
 
-const META_API_VERSION = 'v21.0'
+const META_API_VERSION = 'v25.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
 export interface MetaSendResult {
@@ -215,6 +215,98 @@ export async function subscribeWabaToApp(
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
+}
+
+// ============================================================
+// Coexistence (WhatsApp Business App + Cloud API)
+// ============================================================
+//
+// Onboarding a number via Coexistence's `FINISH_WHATSAPP_BUSINESS_APP_
+// ONBOARDING` event skips /register (the number is already registered
+// to the customer's WhatsApp Business app). Two things are needed
+// instead, within 24h of onboarding or Meta requires an offboarding +
+// redo of the whole flow:
+//
+//   POST /{phone_number_id}/smb_app_data  (sync_type: smb_app_state_sync)
+//     Triggers the customer's current contacts to arrive via a
+//     `smb_app_state_sync` webhook.
+//
+//   POST /{phone_number_id}/smb_app_data  (sync_type: history)
+//     Triggers up to 180 days of past messages to arrive via a
+//     `history` webhook (chunked, 3 phases). No-ops with an
+//     error-shaped `history` webhook (code 2593109) if the customer
+//     declined to share history in the popup.
+//
+// Both are one-time — Meta does not support re-running them without
+// the customer offboarding and repeating Embedded Signup.
+
+export type SmbAppDataSyncType = 'smb_app_state_sync' | 'history'
+
+export interface SyncSmbAppDataArgs {
+  phoneNumberId: string
+  accessToken: string
+  syncType: SmbAppDataSyncType
+}
+
+export interface SyncSmbAppDataResult {
+  requestId?: string
+}
+
+/**
+ * Kick off a Coexistence contacts or history sync. Fire-and-forget from
+ * the caller's POV — the actual data arrives asynchronously via the
+ * `smb_app_state_sync` / `history` webhooks, this call just starts it.
+ */
+export async function syncSmbAppData(
+  args: SyncSmbAppDataArgs
+): Promise<SyncSmbAppDataResult> {
+  const { phoneNumberId, accessToken, syncType } = args
+  const url = `${META_API_BASE}/${phoneNumberId}/smb_app_data`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ messaging_product: 'whatsapp', sync_type: syncType }),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json().catch(() => ({}))
+  return { requestId: typeof data?.request_id === 'string' ? data.request_id : undefined }
+}
+
+export interface GetWabaPhoneNumbersArgs {
+  wabaId: string
+  accessToken: string
+}
+
+export interface WabaPhoneNumber {
+  id: string
+  display_phone_number?: string
+  verified_name?: string
+}
+
+/**
+ * List the phone numbers under a WABA. Needed because Coexistence's
+ * `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` event can deliver only a
+ * `waba_id` (no `phone_number_id`) — the number the customer connected
+ * has to be resolved server-side from the WABA instead.
+ */
+export async function getWabaPhoneNumbers(
+  args: GetWabaPhoneNumbersArgs
+): Promise<WabaPhoneNumber[]> {
+  const { wabaId, accessToken } = args
+  const url = `${META_API_BASE}/${wabaId}/phone_numbers`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as { data?: WabaPhoneNumber[] }
+  return data.data ?? []
 }
 
 export interface GetSubscribedAppsArgs {

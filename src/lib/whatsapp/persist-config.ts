@@ -37,16 +37,22 @@ export interface SaveVerifiedWhatsAppConfigArgs {
   accessToken: string
   verifyToken?: string | null
   /**
-   * 6-digit 2FA PIN for /register. Meta requires this server-to-server
-   * call after every Embedded Signup completion, regardless of
-   * Coexistence vs a brand-new number — the popup only handles OAuth
-   * authorization, not enabling two-step verification on the number.
-   * Omitted by the Embedded Signup callback itself (the popup never
-   * returns a PIN); the user supplies it afterwards via the "Registrar
-   * com PIN" control in Settings, which calls
-   * POST /api/whatsapp/config/register.
+   * 6-digit 2FA PIN for /register. Omitted by the Embedded Signup
+   * callback itself (the popup never returns a PIN); the user
+   * supplies it afterwards via the "Registrar com PIN" control in
+   * Settings, which calls POST /api/whatsapp/config/register. Not
+   * applicable at all when `isCoexistence` is true — see below.
    */
   pin?: string | null
+  /**
+   * True when this save comes from the Coexistence path
+   * (`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`) rather than a
+   * brand-new/standard WABA connection. The number is already
+   * registered to the customer's WhatsApp Business app, so /register
+   * must be SKIPPED here — calling it again would conflict with that
+   * existing registration instead of being a harmless no-op.
+   */
+  isCoexistence?: boolean
 }
 
 export interface SaveVerifiedWhatsAppConfigResult {
@@ -84,6 +90,7 @@ export async function saveVerifiedWhatsAppConfig(
     accessToken,
     verifyToken,
     pin,
+    isCoexistence,
   } = args
 
   // Reject if another account has already claimed this phone_number_id.
@@ -143,7 +150,7 @@ export async function saveVerifiedWhatsAppConfig(
   // /register when the caller didn't supply a PIN this time around.
   const { data: existing } = await supabase
     .from('whatsapp_config')
-    .select('id, registered_at, phone_number_id')
+    .select('id, registered_at, phone_number_id, onboarded_at')
     .eq('account_id', accountId)
     .maybeSingle()
 
@@ -158,29 +165,38 @@ export async function saveVerifiedWhatsAppConfig(
   let registeredAt: string | null = existing?.registered_at ?? null
   let registrationError: string | null = null
   // True when registration was deliberately skipped because no PIN
-  // was supplied (Meta test numbers, or an Embedded Signup save where
-  // the number is already registered via the signup flow itself) —
-  // distinct from registrationError, this is not a failure.
+  // was supplied (Meta test numbers) — distinct from registrationError,
+  // this is not a failure.
   let registrationSkipped = false
 
-  const needsRegistration = !sameNumber || (typeof pin === 'string' && pin.length > 0)
-  if (needsRegistration) {
-    if (!pin) {
-      registrationSkipped = true
-    } else {
-      try {
-        await registerPhoneNumber({
-          phoneNumberId,
-          accessToken,
-          pin,
-        })
-        registeredAt = new Date().toISOString()
-      } catch (err) {
-        registrationError =
-          err instanceof Error ? err.message : 'Unknown Meta API error'
-        console.error('Phone number /register failed:', registrationError)
-        // Deliberately fall through and still save the row so the
-        // caller can retry without re-entering everything.
+  if (isCoexistence) {
+    // Coexistence numbers are already registered to the customer's
+    // WhatsApp Business app — calling /register here would conflict
+    // with that registration instead of being a no-op. Events instead
+    // reach us via the app-level webhook subscription (App Dashboard),
+    // so treat the number as "registered" from this app's POV without
+    // ever calling Meta's /register endpoint.
+    registeredAt = registeredAt ?? new Date().toISOString()
+  } else {
+    const needsRegistration = !sameNumber || (typeof pin === 'string' && pin.length > 0)
+    if (needsRegistration) {
+      if (!pin) {
+        registrationSkipped = true
+      } else {
+        try {
+          await registerPhoneNumber({
+            phoneNumberId,
+            accessToken,
+            pin,
+          })
+          registeredAt = new Date().toISOString()
+        } catch (err) {
+          registrationError =
+            err instanceof Error ? err.message : 'Unknown Meta API error'
+          console.error('Phone number /register failed:', registrationError)
+          // Deliberately fall through and still save the row so the
+          // caller can retry without re-entering everything.
+        }
       }
     }
   }
@@ -216,6 +232,9 @@ export async function saveVerifiedWhatsAppConfig(
     subscribed_apps_at: subscribedAppsAt ?? null,
     last_registration_error: registrationError,
     updated_at: new Date().toISOString(),
+    ...(isCoexistence
+      ? { is_coexistence: true, onboarded_at: existing?.onboarded_at ?? new Date().toISOString() }
+      : {}),
   }
 
   if (existing) {

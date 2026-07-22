@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -102,6 +102,78 @@ interface WhatsAppWebhookEntry {
     }
     field: string
   }>
+}
+
+// ============================================================
+// Coexistence-specific webhook payload shapes
+//
+// These arrive on `change.field` values other than the standard
+// 'messages'/'statuses' one, each with its OWN `value` shape (not the
+// `messaging_product`/`metadata`/`messages`/`statuses` shape above) —
+// same reason template-webhook.ts types its own payload separately
+// instead of forcing it into WhatsAppWebhookEntry.
+// ============================================================
+
+interface SmbMessageEcho {
+  from: string
+  to: string
+  id: string
+  timestamp: string
+  type: string
+  text?: { body: string }
+  image?: { id: string; mime_type: string; caption?: string }
+  video?: { id: string; mime_type: string; caption?: string }
+  document?: { id: string; mime_type: string; filename?: string; caption?: string }
+  audio?: { id: string; mime_type: string }
+  /** type === 'revoke': a previously-echoed message was deleted in the app. */
+  revoke?: { original_message_id: string }
+  /** type === 'edit': a previously-echoed message was edited in the app. */
+  edit?: { original_message_id: string; message: Record<string, unknown> & { type: string } }
+}
+
+interface SmbMessageEchoesValue {
+  metadata?: { display_phone_number: string; phone_number_id: string }
+  message_echoes?: SmbMessageEcho[]
+}
+
+interface SmbAppStateSyncValue {
+  metadata?: { display_phone_number: string; phone_number_id: string }
+  state_sync?: Array<{
+    type: string
+    /** Absent full_name/first_name on a 'remove' action. */
+    contact?: { full_name?: string; first_name?: string; phone_number: string }
+    action: 'add' | 'remove'
+  }>
+}
+
+interface HistoryMessage {
+  from: string
+  to: string
+  id: string
+  timestamp: string
+  type: string
+  text?: { body: string }
+  image?: { id: string; mime_type: string; caption?: string }
+  video?: { id: string; mime_type: string; caption?: string }
+  document?: { id: string; mime_type: string; filename?: string; caption?: string }
+  audio?: { id: string; mime_type: string }
+}
+
+interface HistoryValue {
+  metadata?: { display_phone_number: string; phone_number_id: string }
+  history?: Array<{
+    metadata?: { phase?: number; chunk_order?: number; progress?: number }
+    threads?: Array<{ id: string; messages: HistoryMessage[] }>
+    /** Present instead of `threads` when the customer declined to share
+     *  history (code 2593109) or another sync error occurred. */
+    errors?: Array<{ code: number; title?: string; message?: string }>
+  }>
+}
+
+interface AccountUpdateValue {
+  event?: string
+  waba_info?: { waba_id?: string }
+  disconnection_info?: { reason?: string; initiated_by?: string }
 }
 
 // GET - Webhook verification
@@ -269,6 +341,26 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         continue
       }
 
+      // Coexistence-only topics — each has its own value shape (see
+      // above), routed before the standard messages/statuses branch
+      // below, which assumes the messaging value shape.
+      if (change.field === 'smb_message_echoes') {
+        await handleMessageEchoes(change.value as unknown as SmbMessageEchoesValue)
+        continue
+      }
+      if (change.field === 'smb_app_state_sync') {
+        await handleAppStateSync(change.value as unknown as SmbAppStateSyncValue)
+        continue
+      }
+      if (change.field === 'history') {
+        await handleHistorySync(change.value as unknown as HistoryValue)
+        continue
+      }
+      if (change.field === 'account_update') {
+        await handleAccountUpdate(change.value as unknown as AccountUpdateValue)
+        continue
+      }
+
       const value = change.value
 
       // Handle status updates
@@ -340,6 +432,339 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
         )
       }
     }
+  }
+}
+
+// ============================================================
+// Coexistence handlers
+// ============================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WhatsAppConfigRow = any
+
+/**
+ * Resolve the single whatsapp_config row for a phone_number_id.
+ * Same "0 or ≥2 rows is unresolvable" shape as the inline lookup in
+ * processWebhook above, factored out because the Coexistence handlers
+ * below need it independently of the messages/statuses branch.
+ */
+async function resolveWhatsAppConfig(
+  phoneNumberId: string
+): Promise<WhatsAppConfigRow | null> {
+  const { data: configRows, error } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .select('*')
+    .eq('phone_number_id', phoneNumberId)
+
+  if (error) {
+    console.error(
+      '[coexistence] Error fetching whatsapp_config for phone_number_id:',
+      phoneNumberId,
+      error
+    )
+    return null
+  }
+  if (!configRows || configRows.length === 0) {
+    console.error('[coexistence] No config found for phone_number_id:', phoneNumberId)
+    return null
+  }
+  if (configRows.length > 1) {
+    console.error(
+      `[coexistence] Multiple configs (${configRows.length}) found for phone_number_id:`,
+      phoneNumberId
+    )
+    return null
+  }
+  return configRows[0]
+}
+
+const ECHO_ALLOWED_CONTENT_TYPES = new Set(['text', 'image', 'document', 'audio', 'video'])
+
+/**
+ * smb_message_echoes — messages the customer sent from their own
+ * WhatsApp Business app (or a linked device) after Coexistence
+ * onboarding. Mirrored into `messages` as sender_type='agent' with
+ * `origin='whatsapp_app'` so the CRM shows the full conversation
+ * regardless of which surface a message went out from. `revoke`/`edit`
+ * echoes patch a previously-echoed row instead of inserting a new one.
+ *
+ * Deliberately skips flows/automations/AI-reply/webhook dispatch —
+ * those are customer-inbound triggers; this is business-outbound
+ * traffic just mirrored for visibility.
+ */
+async function handleMessageEchoes(value: SmbMessageEchoesValue) {
+  const phoneNumberId = value.metadata?.phone_number_id
+  const echoes = value.message_echoes
+  if (!phoneNumberId || !echoes || echoes.length === 0) return
+
+  const config = await resolveWhatsAppConfig(phoneNumberId)
+  if (!config) return
+  const accessToken = decrypt(config.access_token)
+
+  for (const echo of echoes) {
+    try {
+      if (echo.type === 'revoke' && echo.revoke?.original_message_id) {
+        const { error } = await supabaseAdmin()
+          .from('messages')
+          .update({
+            content_text: '[mensagem apagada no WhatsApp Business app]',
+            media_url: null,
+          })
+          .eq('message_id', echo.revoke.original_message_id)
+        if (error) console.error('[coexistence] echo revoke update failed:', error)
+        continue
+      }
+
+      if (echo.type === 'edit' && echo.edit?.original_message_id) {
+        const { contentText, mediaUrl } = await parseMessageContent(
+          echo.edit.message as unknown as WhatsAppMessage,
+          accessToken
+        )
+        const { error } = await supabaseAdmin()
+          .from('messages')
+          .update({ content_text: contentText, media_url: mediaUrl })
+          .eq('message_id', echo.edit.original_message_id)
+        if (error) console.error('[coexistence] echo edit update failed:', error)
+        continue
+      }
+
+      // Name is unknown here (echoes carry no contact profile) — pass
+      // '' rather than the phone number so findOrCreateContact's
+      // `if (name && name !== existingContact.name)` guard skips the
+      // update branch instead of clobbering a real saved name.
+      const customerPhone = normalizePhone(echo.to)
+      const contactOutcome = await findOrCreateContact(
+        config.account_id,
+        config.user_id,
+        customerPhone,
+        ''
+      )
+      if (!contactOutcome) continue
+      const convResult = await findOrCreateConversation(
+        config.account_id,
+        config.user_id,
+        contactOutcome.contact.id
+      )
+      if (!convResult) continue
+
+      const { contentText, mediaUrl } = await parseMessageContent(
+        echo as unknown as WhatsAppMessage,
+        accessToken
+      )
+      const contentType = ECHO_ALLOWED_CONTENT_TYPES.has(echo.type) ? echo.type : 'text'
+
+      const { error: insertError } = await supabaseAdmin().from('messages').insert({
+        conversation_id: convResult.conversation.id,
+        sender_type: 'agent',
+        content_type: contentType,
+        content_text: contentText,
+        media_url: mediaUrl,
+        message_id: echo.id,
+        status: 'sent',
+        origin: 'whatsapp_app',
+        created_at: new Date(parseInt(echo.timestamp, 10) * 1000).toISOString(),
+      })
+      if (insertError) {
+        console.error('[coexistence] echo message insert failed:', insertError)
+        continue
+      }
+
+      const { error: convError } = await supabaseAdmin()
+        .from('conversations')
+        .update({
+          last_message_text: contentText || `[${echo.type}]`,
+          last_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', convResult.conversation.id)
+      if (convError) console.error('[coexistence] echo conversation update failed:', convError)
+    } catch (err) {
+      console.error('[coexistence] failed to process message echo:', err)
+    }
+  }
+}
+
+/**
+ * smb_app_state_sync — the customer's contacts as saved in their own
+ * WhatsApp Business app, sent once right after Coexistence onboarding
+ * (and again on future adds/edits). 'remove' actions are logged, not
+ * applied — deleting the CRM contact would cascade-delete its
+ * conversation history (see contacts/conversations FKs), which a
+ * customer tidying their phone's address book should not trigger.
+ */
+async function handleAppStateSync(value: SmbAppStateSyncValue) {
+  const phoneNumberId = value.metadata?.phone_number_id
+  const entries = value.state_sync
+  if (!phoneNumberId || !entries || entries.length === 0) return
+
+  const config = await resolveWhatsAppConfig(phoneNumberId)
+  if (!config) return
+
+  for (const entry of entries) {
+    if (entry.type !== 'contact' || !entry.contact?.phone_number) continue
+    try {
+      if (entry.action === 'remove') {
+        console.info(
+          '[coexistence] state_sync removed contact (not deleted in CRM):',
+          entry.contact.phone_number
+        )
+        continue
+      }
+      const phone = normalizePhone(entry.contact.phone_number)
+      const name = entry.contact.full_name || entry.contact.first_name || ''
+      await findOrCreateContact(config.account_id, config.user_id, phone, name)
+    } catch (err) {
+      console.error('[coexistence] failed to process state_sync contact:', err)
+    }
+  }
+
+  const { error } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .update({ contacts_synced_at: new Date().toISOString() })
+    .eq('id', config.id)
+    .is('contacts_synced_at', null)
+  if (error) console.error('[coexistence] contacts_synced_at update failed:', error)
+}
+
+/**
+ * history — up to 180 days of past messages, delivered in chunks
+ * across 3 phases after the customer approves sharing chat history in
+ * the Embedded Signup popup. Backfilled messages are tagged
+ * `origin='history_import'` and deduped by `message_id` (chunks can be
+ * redelivered by Meta, and history can overlap live Cloud API traffic
+ * received in the meantime). Deliberately does NOT touch
+ * conversations.last_message_text/last_message_at — those must keep
+ * reflecting real-time traffic, not decades-old backfill.
+ */
+async function handleHistorySync(value: HistoryValue) {
+  const phoneNumberId = value.metadata?.phone_number_id
+  const businessPhone = value.metadata?.display_phone_number ?? null
+  const chunks = value.history
+  if (!phoneNumberId || !chunks || chunks.length === 0) return
+
+  const config = await resolveWhatsAppConfig(phoneNumberId)
+  if (!config) return
+  const accessToken = decrypt(config.access_token)
+
+  for (const chunk of chunks) {
+    if (chunk.errors && chunk.errors.length > 0) {
+      const declined = chunk.errors.some((e) => e.code === 2593109)
+      console.warn(
+        declined
+          ? '[coexistence] customer declined to share chat history'
+          : '[coexistence] history sync error:',
+        chunk.errors
+      )
+      continue
+    }
+
+    for (const thread of chunk.threads ?? []) {
+      const customerPhone = normalizePhone(thread.id)
+      const contactOutcome = await findOrCreateContact(
+        config.account_id,
+        config.user_id,
+        customerPhone,
+        ''
+      )
+      if (!contactOutcome) continue
+      const convResult = await findOrCreateConversation(
+        config.account_id,
+        config.user_id,
+        contactOutcome.contact.id
+      )
+      if (!convResult) continue
+
+      for (const msg of thread.messages ?? []) {
+        try {
+          const { data: existingMsg } = await supabaseAdmin()
+            .from('messages')
+            .select('id')
+            .eq('message_id', msg.id)
+            .eq('conversation_id', convResult.conversation.id)
+            .maybeSingle()
+          if (existingMsg) continue
+
+          const { contentText, mediaUrl } = await parseMessageContent(
+            msg as unknown as WhatsAppMessage,
+            accessToken
+          )
+          const contentType = ECHO_ALLOWED_CONTENT_TYPES.has(msg.type) ? msg.type : 'text'
+          const senderType =
+            businessPhone && phonesMatch(msg.from, businessPhone) ? 'agent' : 'customer'
+
+          const { error: insertError } = await supabaseAdmin().from('messages').insert({
+            conversation_id: convResult.conversation.id,
+            sender_type: senderType,
+            content_type: contentType,
+            content_text: contentText,
+            media_url: mediaUrl,
+            message_id: msg.id,
+            status: 'delivered',
+            origin: 'history_import',
+            created_at: new Date(parseInt(msg.timestamp, 10) * 1000).toISOString(),
+          })
+          if (insertError) {
+            console.error('[coexistence] history message insert failed:', insertError)
+          }
+        } catch (err) {
+          console.error('[coexistence] failed to import history message:', err)
+        }
+      }
+    }
+
+    if (chunk.metadata?.progress === 100 || chunk.metadata?.phase === 2) {
+      const { error } = await supabaseAdmin()
+        .from('whatsapp_config')
+        .update({ history_synced_at: new Date().toISOString() })
+        .eq('id', config.id)
+      if (error) console.error('[coexistence] history_synced_at update failed:', error)
+    }
+  }
+}
+
+/**
+ * account_update — Coexistence disconnection/reconnection events.
+ * PARTNER_REMOVED / ACCOUNT_OFFBOARDED both mean the customer's number
+ * stopped routing through this app (disconnected in the WhatsApp
+ * Business app, downgraded, re-registered elsewhere, etc.) —
+ * `disconnection_info.reason` explains which. ACCOUNT_RECONNECTED
+ * fires when it comes back after such an event.
+ */
+async function handleAccountUpdate(value: AccountUpdateValue) {
+  const wabaId = value.waba_info?.waba_id
+  if (!wabaId) return
+
+  const { data: configRows, error } = await supabaseAdmin()
+    .from('whatsapp_config')
+    .select('id')
+    .eq('waba_id', wabaId)
+
+  if (error) {
+    console.error('[coexistence] account_update config lookup failed:', error)
+    return
+  }
+  if (!configRows || configRows.length === 0) return
+
+  const ids = configRows.map((r: { id: string }) => r.id)
+
+  if (value.event === 'PARTNER_REMOVED' || value.event === 'ACCOUNT_OFFBOARDED') {
+    console.warn(
+      '[coexistence] customer disconnected:',
+      wabaId,
+      value.disconnection_info?.reason,
+      value.disconnection_info?.initiated_by
+    )
+    const { error: updateError } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .update({ status: 'disconnected' })
+      .in('id', ids)
+    if (updateError) console.error('[coexistence] account_update disconnect failed:', updateError)
+  } else if (value.event === 'ACCOUNT_RECONNECTED') {
+    const { error: updateError } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .update({ status: 'connected' })
+      .in('id', ids)
+    if (updateError) console.error('[coexistence] account_update reconnect failed:', updateError)
   }
 }
 

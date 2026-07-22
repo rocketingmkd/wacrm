@@ -285,6 +285,18 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+  /**
+   * True when this number was connected via Coexistence
+   * (FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING) rather than a
+   * standard/new WABA connection — see persist-config.ts.
+   */
+  is_coexistence?: boolean;
+  /** Start of the 24h window Meta gives to run the one-time contacts/history sync. */
+  onboarded_at?: string;
+  /** Set once the smb_app_state_sync webhook sync completes. */
+  contacts_synced_at?: string;
+  /** Set once the history webhook sync reaches 100% progress. */
+  history_synced_at?: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

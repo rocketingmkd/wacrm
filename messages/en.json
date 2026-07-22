@@ -1504,7 +1504,12 @@
       "connecting": "Connecting...",
       "connectHelp": "You'll log in with the Facebook account that manages the number, pick (or create) the WhatsApp Business Account, and confirm. This is Coexistence mode: the number keeps working normally in the WhatsApp Business app on the phone at the same time it's connected here.",
       "connectError": "Could not complete the Facebook connection",
-      "connectSuccess": "WhatsApp connected successfully"
+      "connectSuccess": "WhatsApp connected successfully",
+      "coexistenceTitle": "Connected in Coexistence mode",
+      "coexistenceContactsSyncing": "Syncing contacts from the WhatsApp Business app…",
+      "coexistenceContactsSynced": "Contacts synced on {date}",
+      "coexistenceHistorySyncing": "Syncing chat history (can take a few minutes)…",
+      "coexistenceHistorySynced": "History synced on {date}"
     },
     "sections": {
       "overview": "Overview",

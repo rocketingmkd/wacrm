@@ -31,8 +31,12 @@ type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
 // The two arrive independently — order isn't guaranteed — so both are
 // buffered in refs and the actual POST only fires once both are in.
 interface EmbeddedSignupData {
-  phoneNumberId: string
+  // Absent for the Coexistence event (FINISH_WHATSAPP_BUSINESS_APP_
+  // ONBOARDING) — the backend resolves it from wabaId via
+  // getWabaPhoneNumbers since the popup doesn't always deliver it.
+  phoneNumberId?: string
   wabaId: string
+  isCoexistence?: boolean
 }
 
 declare global {
@@ -54,7 +58,7 @@ declare global {
 
 const EMBEDDED_SIGNUP_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const EMBEDDED_SIGNUP_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID;
-const EMBEDDED_SIGNUP_GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || 'v21.0';
+const EMBEDDED_SIGNUP_GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || 'v25.0';
 
 export function WhatsAppConfig() {
   const t = useTranslations('Settings.whatsapp');
@@ -198,6 +202,17 @@ export function WhatsAppConfig() {
           pendingSignupRef.current = { phoneNumberId, wabaId };
           tryFinishSignup();
         }
+      } else if (data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING') {
+        // Coexistence: customer connected a number already live in
+        // their WhatsApp Business app. This event may carry only
+        // waba_id (no phone_number_id) — the backend resolves the
+        // number from the WABA when it's missing here.
+        const phoneNumberId = data.data?.phone_number_id as string | undefined;
+        const wabaId = data.data?.waba_id as string | undefined;
+        if (wabaId) {
+          pendingSignupRef.current = { phoneNumberId, wabaId, isCoexistence: true };
+          tryFinishSignup();
+        }
       } else if (data.event === 'CANCEL') {
         resetSignupAttempt();
         setConnecting(false);
@@ -245,6 +260,7 @@ export function WhatsAppConfig() {
           code,
           phone_number_id: signup.phoneNumberId,
           waba_id: signup.wabaId,
+          is_coexistence: signup.isCoexistence ?? false,
         }),
       });
       const data = await res.json();
@@ -507,6 +523,37 @@ export function WhatsAppConfig() {
                 t('notConnectedDesc')}
           </AlertDescription>
         </Alert>
+
+        {/* Coexistence sync status — only shown for numbers connected via
+            Coexistence (an existing WhatsApp Business app number, not a
+            fresh WABA). Contacts/history sync is one-time and runs
+            asynchronously after connecting; this surfaces where it's at. */}
+        {config?.is_coexistence && (
+          <Alert className="bg-card border-border">
+            <div className="flex items-center gap-2">
+              <Link2 className="size-4 text-primary" />
+              <AlertTitle className="text-foreground mb-0">
+                {t('coexistenceTitle')}
+              </AlertTitle>
+            </div>
+            <AlertDescription className="text-muted-foreground mt-1 space-y-1 text-xs">
+              <p>
+                {config.contacts_synced_at
+                  ? t('coexistenceContactsSynced', {
+                      date: new Date(config.contacts_synced_at).toLocaleString(),
+                    })
+                  : t('coexistenceContactsSyncing')}
+              </p>
+              <p>
+                {config.history_synced_at
+                  ? t('coexistenceHistorySynced', {
+                      date: new Date(config.history_synced_at).toLocaleString(),
+                    })
+                  : t('coexistenceHistorySyncing')}
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Registration Status — the "is it actually live?" check.
             Credentials being valid is necessary but not sufficient;
