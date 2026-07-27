@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { getMediaUrl, downloadMedia, reportAutomaticEventToCapi } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -174,6 +174,25 @@ interface AccountUpdateValue {
   event?: string
   waba_info?: { waba_id?: string }
   disconnection_info?: { reason?: string; initiated_by?: string }
+}
+
+/**
+ * automatic_events — Meta scans the conversation (regex/NLP) and
+ * detects a lead or purchase on its own, then notifies the app via
+ * this field so it can be reported back through the Conversions API.
+ * Opt-in via the "Instruct Meta to automatically identify order and
+ * lead events" checkbox during Embedded Signup.
+ */
+interface AutomaticEventsValue {
+  metadata?: { display_phone_number: string; phone_number_id: string }
+  automatic_events?: Array<{
+    id: string
+    event_name: 'LeadSubmitted' | 'Purchase'
+    /** Unix seconds, as a string — same convention as message/status timestamps. */
+    timestamp: string
+    ctwa_clid: string
+    custom_data?: { currency: string; value: number }
+  }>
 }
 
 // GET - Webhook verification
@@ -358,6 +377,10 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
       if (change.field === 'account_update') {
         await handleAccountUpdate(change.value as unknown as AccountUpdateValue)
+        continue
+      }
+      if (change.field === 'automatic_events') {
+        await handleAutomaticEvents(change.value as unknown as AutomaticEventsValue)
         continue
       }
 
@@ -765,6 +788,53 @@ async function handleAccountUpdate(value: AccountUpdateValue) {
       .update({ status: 'connected' })
       .in('id', ids)
     if (updateError) console.error('[coexistence] account_update reconnect failed:', updateError)
+  }
+}
+
+/**
+ * automatic_events — reports the detected lead/purchase back to Meta's
+ * Conversions API for ad attribution. Needs WHATSAPP_CAPI_DATASET_ID
+ * set to a Meta Pixel/Dataset in the same Business Manager as the WABA;
+ * without it, detected events are only logged (not silently dropped —
+ * logged loudly so a missing env var is obvious, not a mystery gap in
+ * ad attribution).
+ */
+async function handleAutomaticEvents(value: AutomaticEventsValue) {
+  const phoneNumberId = value.metadata?.phone_number_id
+  const events = value.automatic_events
+  if (!phoneNumberId || !events || events.length === 0) return
+
+  const config = await resolveWhatsAppConfig(phoneNumberId)
+  if (!config) return
+
+  const datasetId = process.env.WHATSAPP_CAPI_DATASET_ID
+  if (!datasetId) {
+    console.warn(
+      '[automatic-events] WHATSAPP_CAPI_DATASET_ID not set — detected events logged only, not reported to Meta:',
+      events.map((e) => e.event_name),
+    )
+    return
+  }
+
+  const accessToken = decrypt(config.access_token)
+
+  for (const event of events) {
+    console.info('[automatic-events] detected:', event.event_name, event.id)
+    try {
+      const result = await reportAutomaticEventToCapi({
+        datasetId,
+        accessToken,
+        event: {
+          eventName: event.event_name,
+          eventTime: Number(event.timestamp),
+          ctwaClid: event.ctwa_clid,
+          customData: event.custom_data,
+        },
+      })
+      console.info('[automatic-events] reported to CAPI:', result)
+    } catch (err) {
+      console.error('[automatic-events] CAPI report failed:', err)
+    }
   }
 }
 

@@ -1173,3 +1173,62 @@ export async function downloadMedia(
   const buffer = Buffer.from(await response.arrayBuffer())
   return { buffer, contentType }
 }
+
+// ============================================================
+// Automatic Events API (Conversions API for WhatsApp)
+//
+// Counterpart to the inbound `automatic_events` webhook field: Meta's
+// own NLP/regex scan of a conversation detects a lead or purchase and
+// notifies the app, which reports it back here so the event is
+// attributed to the originating Click-to-WhatsApp ad. Requires the
+// `whatsapp_business_manage_events` permission and a Meta Pixel/Dataset
+// in the same Business Manager as the WABA. See handleAutomaticEvents
+// in the webhook route for the inbound side.
+// ============================================================
+
+export interface AutomaticEventReport {
+  eventName: 'LeadSubmitted' | 'Purchase'
+  /** Unix seconds. */
+  eventTime: number
+  ctwaClid: string
+  customData?: { currency: string; value: number }
+}
+
+export interface ReportAutomaticEventArgs {
+  datasetId: string
+  accessToken: string
+  event: AutomaticEventReport
+}
+
+export async function reportAutomaticEventToCapi(
+  args: ReportAutomaticEventArgs
+): Promise<{ eventsReceived: number }> {
+  const { datasetId, accessToken, event } = args
+  const url = `${META_API_BASE}/${datasetId}/events`
+  const body = {
+    data: [
+      {
+        event_name: event.eventName,
+        event_time: event.eventTime,
+        action_source: 'business_messaging',
+        messaging_channel: 'whatsapp',
+        user_data: { ctwa_clid: event.ctwaClid },
+        ...(event.customData ? { custom_data: event.customData } : {}),
+        messaging_outcome_data: { outcome_type: 'automatic_events' },
+      },
+    ],
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { eventsReceived: data.events_received ?? 0 }
+}
