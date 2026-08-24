@@ -78,10 +78,19 @@ export interface ExchangeCodeForTokenArgs {
 
 /**
  * Exchange the Embedded Signup authorization `code` for a business
- * integration system-user access token. Unlike a classic OAuth
- * redirect flow, the JS SDK's `response_type: 'code'` mode doesn't
- * require (or accept) a `redirect_uri` here — the code was already
- * scoped to the app via the popup.
+ * integration system-user access token.
+ *
+ * For the Coexistence (`whatsapp_business_app_onboarding`) path this
+ * endpoint rejects a bare GET with "Error validating verification
+ * code. Please make sure your redirect_uri is identical to the one
+ * you used in the OAuth dialog request" — even though the JS SDK
+ * popup flow never visibly redirects anywhere. Confirmed against the
+ * exact POST Meta's own App Dashboard "Trocar token" tool generates
+ * for this app/config: JSON body, `grant_type: authorization_code`,
+ * and a `redirect_uri` matching the page the popup was launched from.
+ * `redirect_uri` here must also be registered under "URIs de
+ * redirecionamento do OAuth válidos" (Configurações do Login do
+ * Facebook para Empresas) or Meta rejects the exchange outright.
  */
 export async function exchangeCodeForToken(
   args: ExchangeCodeForTokenArgs
@@ -92,8 +101,20 @@ export async function exchangeCodeForToken(
   if (!appId || !appSecret) {
     throw new Error('META_APP_ID and META_APP_SECRET must be set to exchange an Embedded Signup code')
   }
-  const url = `${META_API_BASE}/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&code=${encodeURIComponent(code)}`
-  const response = await fetch(url)
+  const redirectUri = process.env.NEXT_PUBLIC_SITE_URL
+    ? `${process.env.NEXT_PUBLIC_SITE_URL}/settings`
+    : 'https://rocket-crm.autosolution.pro/settings'
+  const response = await fetch(`${META_API_BASE}/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: appId,
+      client_secret: appSecret,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+    }),
+  })
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
