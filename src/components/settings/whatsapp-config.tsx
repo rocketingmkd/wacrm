@@ -323,36 +323,22 @@ export function WhatsAppConfig() {
         // to a token flow that also involves the connecting user's
         // personal access, instead of scoping strictly to the
         // system/business-integration token `exchangeCodeForToken`
-        // (meta-api.ts) expects. Verified against the exact `extras`
-        // Meta's own App Dashboard tester generates for this app/config
-        // (Casos de uso → Configurador de cadastro incorporado) — not
-        // just the reference snippet, which predates this field.
+        // (meta-api.ts) expects.
+        //
+        // Deliberately NO `setup` block here (the original reference
+        // snippet had one, all-null). Sending it caused a real error
+        // at the final "confirm your WhatsApp Business account" step
+        // in production ("<business_id> não é uma identificação da
+        // empresa válida") even though that business id is valid —
+        // Meta's own App Dashboard tester (Casos de uso →
+        // Configurador de cadastro incorporado), which is confirmed
+        // working, generates `extras` WITHOUT `setup` at all. Verified
+        // by decoding the exact `extras` that tester builds for this
+        // app/config.
         extras: {
           sessionInfoVersion: '3',
           version: 'v4',
           features: [{ name: 'app_only_install' }],
-          setup: {
-            business: {
-              id: null,
-              name: null,
-              email: null,
-              phone: { code: null, number: null },
-              website: null,
-              address: {
-                streetAddress1: null,
-                streetAddress2: null,
-                city: null,
-                state: null,
-                zipPostal: null,
-                country: null,
-              },
-              timezone: null,
-            },
-            phone: { displayName: null, category: null, description: null },
-            preVerifiedPhone: { ids: null },
-            solutionID: null,
-            whatsAppBusinessAccount: { ids: null },
-          },
           featureType: 'whatsapp_business_app_onboarding',
         },
       }
