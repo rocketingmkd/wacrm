@@ -102,8 +102,8 @@ export async function exchangeCodeForToken(
     throw new Error('META_APP_ID and META_APP_SECRET must be set to exchange an Embedded Signup code')
   }
   const redirectUri = process.env.NEXT_PUBLIC_SITE_URL
-    ? `${process.env.NEXT_PUBLIC_SITE_URL}/settings`
-    : 'https://rocket-crm.autosolution.pro/settings'
+    ? `${process.env.NEXT_PUBLIC_SITE_URL}/settings?tab=whatsapp`
+    : 'https://rocket-crm.autosolution.pro/settings?tab=whatsapp'
   const response = await fetch(`${META_API_BASE}/oauth/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
