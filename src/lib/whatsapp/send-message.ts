@@ -230,21 +230,29 @@ export async function sendMessageToConversation(
   }
 
   const contact = conversation.contact;
-  if (!contact?.phone) {
+  const waUserId: string | null = contact?.wa_user_id ?? null;
+  if (!contact?.phone && !waUserId) {
     throw new SendMessageError(
       'bad_request',
-      'Contact phone number not found',
+      'Contact has neither a phone number nor a WhatsApp user id',
       400
     );
   }
 
-  const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
-  if (!isValidE164(sanitizedPhone)) {
-    throw new SendMessageError(
-      'bad_request',
-      'Invalid phone number format',
-      400
-    );
+  // Phone is optional now (migration 039 — BSUID-only contacts have
+  // none), but if present it must be valid E.164 since it's still
+  // used as the fallback send target and for the auto-fix-on-success
+  // rewrite below.
+  let sanitizedPhone: string | null = null;
+  if (contact.phone) {
+    sanitizedPhone = sanitizePhoneForMeta(contact.phone);
+    if (!isValidE164(sanitizedPhone)) {
+      throw new SendMessageError(
+        'bad_request',
+        'Invalid phone number format',
+        400
+      );
+    }
   }
 
   // WhatsApp config, account-scoped.
@@ -329,12 +337,24 @@ export async function sendMessageToConversation(
     templateRow = data ?? null;
   }
 
-  const attempt = async (phone: string): Promise<string> => {
+  // A send candidate is either a phone-number variant or the contact's
+  // WhatsApp business-scoped user id (BSUID). `to` is still passed to
+  // every low-level sendX call (it's a required field on those
+  // interfaces) but is ignored by meta-api's recipientFields() helper
+  // whenever `recipientUserId` is set.
+  type SendCandidate =
+    | { kind: 'user_id'; value: string }
+    | { kind: 'phone'; value: string };
+
+  const attempt = async (candidate: SendCandidate): Promise<string> => {
+    const to = candidate.kind === 'phone' ? candidate.value : sanitizedPhone ?? '';
+    const recipientUserId = candidate.kind === 'user_id' ? candidate.value : undefined;
     if (messageType === 'template') {
       const result = await sendTemplateMessage({
         phoneNumberId: config.phone_number_id,
         accessToken,
-        to: phone,
+        to,
+        recipientUserId,
         templateName: templateName!,
         language: templateLanguage || 'en_US',
         template: templateRow ?? undefined,
@@ -348,7 +368,8 @@ export async function sendMessageToConversation(
       const result = await sendMediaMessage({
         phoneNumberId: config.phone_number_id,
         accessToken,
-        to: phone,
+        to,
+        recipientUserId,
         kind: messageType as MediaKind,
         link: mediaUrl!,
         caption: contentText || undefined,
@@ -363,7 +384,8 @@ export async function sendMessageToConversation(
         const result = await sendInteractiveButtons({
           phoneNumberId: config.phone_number_id,
           accessToken,
-          to: phone,
+          to,
+          recipientUserId,
           bodyText: p.body,
           headerText: p.header || undefined,
           footerText: p.footer || undefined,
@@ -375,7 +397,8 @@ export async function sendMessageToConversation(
       const result = await sendInteractiveList({
         phoneNumberId: config.phone_number_id,
         accessToken,
-        to: phone,
+        to,
+        recipientUserId,
         bodyText: p.body,
         buttonLabel: p.button_label,
         headerText: p.header || undefined,
@@ -388,36 +411,53 @@ export async function sendMessageToConversation(
     const result = await sendTextMessage({
       phoneNumberId: config.phone_number_id,
       accessToken,
-      to: phone,
+      to,
+      recipientUserId,
       text: contentText!,
       contextMessageId,
     });
     return result.messageId;
   };
 
-  // Send via Meta — retry across phone-number variants if Meta rejects
-  // with "recipient not in allowed list"; persist a working variant
-  // back to the contact so the next send goes straight through.
+  // Send via Meta. When the contact has a WhatsApp business-scoped
+  // user id (BSUID — captured on inbound messages that arrived via a
+  // username instead of a phone number, see migration 039), that's
+  // tried FIRST: it's the more durable identity, since a BSUID
+  // survives the customer changing phone numbers while a phone number
+  // doesn't survive them changing usernames. Phone-number variants are
+  // the fallback — and the ONLY option for contacts imported from a
+  // spreadsheet, which never have a wa_user_id.
   let waMessageId = '';
   let workingPhone = sanitizedPhone;
   try {
-    const variants = phoneVariants(sanitizedPhone);
+    const candidates: SendCandidate[] = [];
+    if (waUserId) candidates.push({ kind: 'user_id', value: waUserId });
+    if (sanitizedPhone) {
+      for (const variant of phoneVariants(sanitizedPhone)) {
+        candidates.push({ kind: 'phone', value: variant });
+      }
+    }
+
     let lastError: unknown = null;
 
-    for (const variant of variants) {
+    for (const candidate of candidates) {
       try {
-        waMessageId = await attempt(variant);
-        workingPhone = variant;
+        waMessageId = await attempt(candidate);
+        if (candidate.kind === 'phone') workingPhone = candidate.value;
         lastError = null;
         break;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (!isRecipientNotAllowedError(message)) {
+        // A BSUID can go stale (Meta regenerates it whenever the
+        // customer changes phone numbers) — any failure there, not
+        // just "recipient not allowed", should fall through to the
+        // phone variants rather than aborting the whole send.
+        if (candidate.kind === 'phone' && !isRecipientNotAllowedError(message)) {
           throw err;
         }
         lastError = err;
         console.warn(
-          `[send-message] variant "${variant}" rejected by Meta, trying next…`
+          `[send-message] candidate ${candidate.kind}:"${candidate.value}" rejected by Meta, trying next…`
         );
       }
     }

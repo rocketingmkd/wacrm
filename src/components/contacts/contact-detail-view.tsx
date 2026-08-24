@@ -110,7 +110,7 @@ export function ContactDetailView({
     if (data) {
       setContact(data);
       setEditName(data.name ?? '');
-      setEditPhone(data.phone);
+      setEditPhone(data.phone ?? '');
       setEditEmail(data.email ?? '');
       setEditCompany(data.company ?? '');
     }
@@ -191,14 +191,19 @@ export function ContactDetailView({
   }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
 
   async function copyPhone() {
-    if (!contact) return;
+    if (!contact?.phone) return;
     await navigator.clipboard.writeText(contact.phone);
     setCopiedPhone(true);
     setTimeout(() => setCopiedPhone(false), 2000);
   }
 
   async function saveDetails() {
-    if (!contactId || !editPhone.trim()) {
+    // Phone is required UNLESS this contact already has a WhatsApp
+    // business-scoped user id (migration 039) — a username-only
+    // contact created by the webhook is allowed to stay phone-less;
+    // staff just can't manually CREATE one without a phone via this
+    // form (there's no wa_user_id to fall back to for a brand-new row).
+    if (!contactId || (!editPhone.trim() && !contact?.wa_user_id)) {
       toast.error(t('toastPhoneRequired'));
       return;
     }
@@ -208,7 +213,7 @@ export function ContactDetailView({
       .from('contacts')
       .update({
         name: editName.trim() || null,
-        phone: editPhone.trim(),
+        phone: editPhone.trim() || null,
         email: editEmail.trim() || null,
         company: editCompany.trim() || null,
         updated_at: new Date().toISOString(),
@@ -407,15 +412,16 @@ export function ContactDetailView({
                   <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                     <button
                       onClick={copyPhone}
-                      className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                      disabled={!contact.phone}
+                      className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer disabled:cursor-default disabled:hover:text-muted-foreground"
                     >
                       <Phone className="size-3" />
-                      {contact.phone}
-                      {copiedPhone ? (
+                      {contact.phone || (contact.wa_username ? `@${contact.wa_username}` : 'Somente WhatsApp')}
+                      {contact.phone && (copiedPhone ? (
                         <Check className="size-3 text-primary" />
                       ) : (
                         <Copy className="size-3" />
-                      )}
+                      ))}
                     </button>
                     {contact.email && (
                       <span className="flex items-center gap-1">

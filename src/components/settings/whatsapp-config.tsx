@@ -49,7 +49,7 @@ declare global {
           config_id: string
           response_type: 'code'
           override_default_response_type: true
-          extras?: Record<string, string>
+          extras?: Record<string, unknown>
         }
       ) => void
     }
@@ -314,7 +314,47 @@ export function WhatsAppConfig() {
         config_id: EMBEDDED_SIGNUP_CONFIG_ID,
         response_type: 'code',
         override_default_response_type: true,
-        extras: { sessionInfoVersion: '3' },
+        // `featureType: 'whatsapp_business_app_onboarding'` is what
+        // makes Meta's popup offer Coexistence (connecting a number
+        // already live in the customer's WhatsApp Business app)
+        // instead of only the "create/pick a WABA" standard flow.
+        // `features: [{ name: 'app_only_install' }]` is required
+        // alongside it — without it Meta's popup can still fall back
+        // to a token flow that also involves the connecting user's
+        // personal access, instead of scoping strictly to the
+        // system/business-integration token `exchangeCodeForToken`
+        // (meta-api.ts) expects. Verified against the exact `extras`
+        // Meta's own App Dashboard tester generates for this app/config
+        // (Casos de uso → Configurador de cadastro incorporado) — not
+        // just the reference snippet, which predates this field.
+        extras: {
+          sessionInfoVersion: '3',
+          version: 'v4',
+          features: [{ name: 'app_only_install' }],
+          setup: {
+            business: {
+              id: null,
+              name: null,
+              email: null,
+              phone: { code: null, number: null },
+              website: null,
+              address: {
+                streetAddress1: null,
+                streetAddress2: null,
+                city: null,
+                state: null,
+                zipPostal: null,
+                country: null,
+              },
+              timezone: null,
+            },
+            phone: { displayName: null, category: null, description: null },
+            preVerifiedPhone: { ids: null },
+            solutionID: null,
+            whatsAppBusinessAccount: { ids: null },
+          },
+          featureType: 'whatsapp_business_app_onboarding',
+        },
       }
     );
   }

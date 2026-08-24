@@ -21,7 +21,8 @@ export function normalizeKey(phone: string): string {
 /** Minimal shape we need back from a contacts lookup. */
 export interface ExistingContact {
   id: string;
-  phone: string;
+  phone: string | null;
+  wa_user_id?: string | null;
   name?: string | null;
   [key: string]: unknown;
 }
@@ -51,8 +52,35 @@ export async function findExistingContact(
   if (error || !data) return null;
 
   return (
-    (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ?? null
+    (data as ExistingContact[]).find(
+      (c) => c.phone && phonesMatch(c.phone, phone),
+    ) ?? null
   );
+}
+
+/**
+ * Find an existing contact in `accountId` by their WhatsApp
+ * business-scoped user id (BSUID) — the identity Meta gives us when a
+ * customer messages via a username and no phone number is included
+ * on the webhook (see migration 039). Exact match only; unlike phone
+ * there's no format-variance to tolerate.
+ */
+export async function findExistingContactByWaUserId(
+  db: SupabaseClient,
+  accountId: string,
+  waUserId: string,
+): Promise<ExistingContact | null> {
+  if (!waUserId) return null;
+
+  const { data, error } = await db
+    .from("contacts")
+    .select("*")
+    .eq("account_id", accountId)
+    .eq("wa_user_id", waUserId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as ExistingContact;
 }
 
 /**
@@ -61,6 +89,7 @@ export async function findExistingContact(
  * exact matches but only warns on fuzzy ones.
  */
 export function isExactMatch(existing: ExistingContact, phone: string): boolean {
+  if (!existing.phone) return false;
   return normalizeKey(existing.phone) === normalizeKey(phone);
 }
 

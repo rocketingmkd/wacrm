@@ -166,7 +166,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     );
   }
 
-  const displayName = contact.name || contact.phone;
+  const displayName = contact.name || contact.phone || contact.wa_username || "Contato";
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
@@ -194,19 +194,24 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             )}
           </div>
 
-          {/* Phone */}
+          {/* Phone — contacts identified only via a WhatsApp username
+              (migration 039, no phone ever shared) have no number to
+              show or copy; fall back to the username. */}
           <div className="mt-4 space-y-2">
             <button
               onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
+              disabled={!contact.phone}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:hover:bg-transparent disabled:cursor-default"
             >
               <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{contact.phone}</span>
-              {copied ? (
+              <span className="flex-1 text-left">
+                {contact.phone || (contact.wa_username ? `@${contact.wa_username}` : "Somente WhatsApp (sem telefone)")}
+              </span>
+              {contact.phone && (copied ? (
                 <Check className="h-3 w-3 text-primary" />
               ) : (
                 <Copy className="h-3 w-3 text-muted-foreground" />
-              )}
+              ))}
             </button>
 
             {contact.email && (

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia, reportAutomaticEventToCapi } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { findExistingContact, findExistingContactByWaUserId, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
@@ -36,7 +36,17 @@ function supabaseAdmin() {
 
 interface WhatsAppMessage {
   id: string
-  from: string
+  /**
+   * Sender's phone number. OMITTED by Meta when the sender has
+   * WhatsApp usernames enabled, hasn't interacted with this business
+   * phone number in the last 30 days, and isn't in the business's
+   * contact book — in that case `from_user_id` is the only identity
+   * available. See https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids/
+   */
+  from?: string
+  /** Business-scoped user id (BSUID) — present whenever Meta's
+   *  usernames feature is in play, alongside `from` or in its place. */
+  from_user_id?: string
   timestamp: string
   type: string
   text?: { body: string }
@@ -79,8 +89,11 @@ interface WhatsAppWebhookEntry {
         phone_number_id: string
       }
       contacts?: Array<{
-        profile: { name: string }
-        wa_id: string
+        profile: { name: string; username?: string }
+        /** Omitted under the same conditions as message.from — see there. */
+        wa_id?: string
+        /** Business-scoped user id (BSUID), mirrors message.from_user_id. */
+        user_id?: string
       }>
       messages?: WhatsAppMessage[]
       statuses?: Array<{
@@ -1107,7 +1120,7 @@ async function handleReaction(
 
 async function processMessage(
   message: WhatsAppMessage,
-  contact: { profile: { name: string }; wa_id: string },
+  contact: { profile: { name: string; username?: string }; wa_id?: string; user_id?: string },
   // Tenancy. Resolved from the matched whatsapp_config row; every
   // contact / conversation / message row created downstream is
   // stamped with this so any member of the account can see it.
@@ -1118,15 +1131,26 @@ async function processMessage(
   configOwnerUserId: string,
   accessToken: string
 ) {
-  const senderPhone = normalizePhone(message.from)
+  // Both may be absent independently, but Meta always gives us at
+  // least one (see the WhatsAppMessage.from doc comment) — a message
+  // with neither is treated as unprocessable rather than guessed at.
+  const senderPhone = message.from ? normalizePhone(message.from) : null
+  const senderUserId = message.from_user_id ?? contact.user_id ?? null
+  if (!senderPhone && !senderUserId) {
+    console.error('[webhook] message has neither a phone number nor a user_id; dropping', message.id)
+    return
+  }
   const contactName = contact.profile.name
+  const contactUsername = contact.profile.username ?? null
 
   // Find or create contact
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     senderPhone,
-    contactName
+    contactName,
+    senderUserId,
+    contactUsername
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -1550,28 +1574,39 @@ interface ContactOutcome {
 async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
-  phone: string,
-  name: string
+  phone: string | null,
+  name: string,
+  waUserId: string | null = null,
+  waUsername: string | null = null,
 ): Promise<ContactOutcome | null> {
-  // Find an existing contact for this account by phone. The shared
-  // helper pre-filters in SQL by the last-8-digit suffix (so we don't
-  // pull every contact on every inbound message) then applies the
-  // strict `phonesMatch` in JS on the small candidate set. The same
-  // helper backs the manual contact form and CSV import, so all three
-  // paths agree on what "same number" means (issue #212).
-  const existingContact = await findExistingContact(
-    supabaseAdmin(),
-    accountId,
-    phone,
-  )
+  if (!phone && !waUserId) return null
+
+  // Find an existing contact for this account. Phone is the primary
+  // key when present — the shared helper pre-filters in SQL by the
+  // last-8-digit suffix (so we don't pull every contact on every
+  // inbound message) then applies the strict `phonesMatch` in JS on
+  // the small candidate set. The same helper backs the manual contact
+  // form and CSV import, so all three paths agree on what "same
+  // number" means (issue #212). When there's no phone at all (a
+  // username-only sender, migration 039), fall back to the BSUID.
+  const existingContact = phone
+    ? await findExistingContact(supabaseAdmin(), accountId, phone)
+    : await findExistingContactByWaUserId(supabaseAdmin(), accountId, waUserId!)
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existingContact.id)
+    // Update name if it changed, and backfill whichever identity this
+    // inbound message revealed that the stored row didn't have yet —
+    // e.g. a contact first seen as username-only later shares their
+    // phone number, or vice-versa a phone contact's BSUID surfaces on
+    // a later message. Never overwrite a non-null value with null.
+    const patch: Record<string, unknown> = {}
+    if (name && name !== existingContact.name) patch.name = name
+    if (phone && !existingContact.phone) patch.phone = phone
+    if (waUserId && !existingContact.wa_user_id) patch.wa_user_id = waUserId
+    if (waUsername && existingContact.wa_username !== waUsername) patch.wa_username = waUsername
+    if (Object.keys(patch).length > 0) {
+      patch.updated_at = new Date().toISOString()
+      await supabaseAdmin().from('contacts').update(patch).eq('id', existingContact.id)
     }
     return { contact: existingContact, wasCreated: false }
   }
@@ -1586,7 +1621,9 @@ async function findOrCreateContact(
       account_id: accountId,
       user_id: configOwnerUserId,
       phone,
-      name: name || phone,
+      wa_user_id: waUserId,
+      wa_username: waUsername,
+      name: name || phone || waUsername || waUserId,
     })
     .select()
     .single()
@@ -1594,10 +1631,13 @@ async function findOrCreateContact(
   if (createError) {
     // Lost a race: a concurrent inbound delivery (or another path)
     // created this contact between our lookup and insert, and the
-    // unique index (migration 022) rejected the duplicate. Re-resolve
-    // the existing row instead of dropping the message.
+    // unique index (migration 022 for phone / 039 for wa_user_id)
+    // rejected the duplicate. Re-resolve the existing row instead of
+    // dropping the message.
     if (isUniqueViolation(createError)) {
-      const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
+      const raced = phone
+        ? await findExistingContact(supabaseAdmin(), accountId, phone)
+        : await findExistingContactByWaUserId(supabaseAdmin(), accountId, waUserId!)
       if (raced) return { contact: raced, wasCreated: false }
     }
     console.error('Error creating contact:', createError)

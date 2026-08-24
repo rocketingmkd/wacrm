@@ -22,7 +22,9 @@ export interface ApiConversation {
   updated_at: string;
   contact: {
     id: string;
-    phone: string;
+    /** Null for a contact identified only via a WhatsApp username —
+     *  see `wa_user_id`/`wa_username` on the internal Contact type. */
+    phone: string | null;
     name: string | null;
     email: string | null;
     company: string | null;
