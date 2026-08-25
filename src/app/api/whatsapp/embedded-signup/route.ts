@@ -68,28 +68,40 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { code, waba_id, is_coexistence } = body
+    const { code, access_token, waba_id, is_coexistence } = body
     let { phone_number_id } = body
     const isCoexistence = Boolean(is_coexistence)
 
-    if (!code || !waba_id || (!phone_number_id && !isCoexistence)) {
+    if ((!code && !access_token) || !waba_id || (!phone_number_id && !isCoexistence)) {
       return NextResponse.json(
-        { error: 'code and waba_id are required (phone_number_id is required unless is_coexistence is set)' },
+        { error: 'code or access_token, and waba_id are required (phone_number_id is required unless is_coexistence is set)' },
         { status: 400 }
       )
     }
 
+    // `access_token` takes precedence when present — the frontend now
+    // exchanges the code for a token the instant it arrives (see
+    // POST /api/whatsapp/embedded-signup/exchange) rather than here,
+    // because Meta's `code` has only a 30-second TTL and the
+    // Coexistence path's waba_id/phone_number_id (delivered via a
+    // separate postMessage after the user finishes scanning a QR code
+    // with their phone) can easily arrive minutes later. `code` is
+    // kept as a fallback for any caller that still sends it directly.
     let accessToken: string
-    try {
-      const exchanged = await exchangeCodeForToken({ code })
-      accessToken = exchanged.accessToken
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Meta API error'
-      console.error('Embedded Signup code exchange failed:', message)
-      return NextResponse.json(
-        { error: `Meta API error: ${message}` },
-        { status: 400 }
-      )
+    if (access_token) {
+      accessToken = access_token
+    } else {
+      try {
+        const exchanged = await exchangeCodeForToken({ code })
+        accessToken = exchanged.accessToken
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+        console.error('Embedded Signup code exchange failed:', message)
+        return NextResponse.json(
+          { error: `Meta API error: ${message}` },
+          { status: 400 }
+        )
+      }
     }
 
     // Coexistence's FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING event can

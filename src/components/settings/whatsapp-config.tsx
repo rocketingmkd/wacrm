@@ -108,7 +108,13 @@ export function WhatsAppConfig() {
   const [registrationProbe, setRegistrationProbe] =
     useState<RegistrationProbe | null>(null);
 
-  const pendingCodeRef = useRef<string | null>(null);
+  // Holds the ACCESS TOKEN, not the raw code — the code is exchanged
+  // immediately on arrival (see the RCC_OAUTH_REDIRECT handler below)
+  // because Meta's code has only a 30-second TTL, and the Coexistence
+  // path's waba data can arrive minutes later (after the user scans a
+  // QR code with their phone). Waiting to exchange until both pieces
+  // were in hand meant the code was routinely already expired.
+  const pendingAccessTokenRef = useRef<string | null>(null);
   const pendingSignupRef = useRef<EmbeddedSignupData | null>(null);
   const signupFinishedRef = useRef(false);
   const signupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -204,8 +210,7 @@ export function WhatsAppConfig() {
 
       if (isOwnOrigin && data.type === 'RCC_OAUTH_REDIRECT') {
         if (data.code) {
-          pendingCodeRef.current = data.code;
-          tryFinishSignup();
+          void exchangeCodeImmediately(data.code);
         } else if (data.error) {
           console.error('Embedded Signup OAuth dialog error:', data.error);
           resetSignupAttempt();
@@ -251,7 +256,7 @@ export function WhatsAppConfig() {
   }, []);
 
   function resetSignupAttempt() {
-    pendingCodeRef.current = null;
+    pendingAccessTokenRef.current = null;
     pendingSignupRef.current = null;
     signupFinishedRef.current = false;
     if (signupTimeoutRef.current) {
@@ -260,26 +265,53 @@ export function WhatsAppConfig() {
     }
   }
 
+  // Exchanges the OAuth `code` for an access token the instant it
+  // arrives — see the pendingAccessTokenRef comment above for why
+  // this can't wait for the Coexistence waba data too.
+  async function exchangeCodeImmediately(code: string) {
+    try {
+      const res = await fetch('/api/whatsapp/embedded-signup/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.accessToken) {
+        toast.error(data.error || t('connectError'));
+        setConnecting(false);
+        resetSignupAttempt();
+        return;
+      }
+      pendingAccessTokenRef.current = data.accessToken;
+      tryFinishSignup();
+    } catch (err) {
+      console.error('Embedded Signup immediate exchange error:', err);
+      toast.error(t('connectError'));
+      setConnecting(false);
+      resetSignupAttempt();
+    }
+  }
+
   function tryFinishSignup() {
     if (signupFinishedRef.current) return;
-    const code = pendingCodeRef.current;
+    const accessToken = pendingAccessTokenRef.current;
     const signup = pendingSignupRef.current;
-    if (!code || !signup) return;
+    if (!accessToken || !signup) return;
     signupFinishedRef.current = true;
     if (signupTimeoutRef.current) {
       clearTimeout(signupTimeoutRef.current);
       signupTimeoutRef.current = null;
     }
-    finishEmbeddedSignup(code, signup);
+    finishEmbeddedSignup(accessToken, signup);
   }
 
-  async function finishEmbeddedSignup(code: string, signup: EmbeddedSignupData) {
+  async function finishEmbeddedSignup(accessToken: string, signup: EmbeddedSignupData) {
     try {
       const res = await fetch('/api/whatsapp/embedded-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code,
+          access_token: accessToken,
           phone_number_id: signup.phoneNumberId,
           waba_id: signup.wabaId,
           is_coexistence: signup.isCoexistence ?? false,
