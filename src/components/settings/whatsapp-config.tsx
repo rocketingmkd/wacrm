@@ -109,11 +109,12 @@ export function WhatsAppConfig() {
     useState<RegistrationProbe | null>(null);
 
   // Holds the ACCESS TOKEN, not the raw code — the code is exchanged
-  // immediately on arrival (see the RCC_OAUTH_REDIRECT handler below)
-  // because Meta's code has only a 30-second TTL, and the Coexistence
-  // path's waba data can arrive minutes later (after the user scans a
-  // QR code with their phone). Waiting to exchange until both pieces
-  // were in hand meant the code was routinely already expired.
+  // immediately on arrival (see the FB.login callback in
+  // handleConnectClick) because Meta's code has only a 30-second TTL,
+  // and the Coexistence path's waba data can arrive minutes later
+  // (after the user scans a QR code with their phone). Waiting to
+  // exchange until both pieces were in hand meant the code was
+  // routinely already expired.
   const pendingAccessTokenRef = useRef<string | null>(null);
   const pendingSignupRef = useRef<EmbeddedSignupData | null>(null);
   const signupFinishedRef = useRef(false);
@@ -185,39 +186,21 @@ export function WhatsAppConfig() {
     fetchConfig(accountId);
   }, [authLoading, profileLoading, user?.id, accountId, fetchConfig]);
 
-  // Listens for two independent postMessage channels:
-  //   - `WA_EMBEDDED_SIGNUP` (from *.facebook.com): carries the
-  //     phone_number_id/waba_id the user picked or created inside the
-  //     flow.
-  //   - `RCC_OAUTH_REDIRECT` (from our own /oauth/waba-signup page,
-  //     same origin): carries the OAuth `code` — see handleConnectClick,
-  //     which opens Meta's dialog directly instead of using FB.login()
-  //     so this page's URL is a real, matching redirect_uri.
-  // The two arrive independently — order isn't guaranteed — so both
-  // are buffered in refs and the actual POST only fires once both
-  // are in (see tryFinishSignup).
+  // Listens for Meta's `WA_EMBEDDED_SIGNUP` postMessage (from
+  // *.facebook.com), which carries the phone_number_id/waba_id the
+  // user picked or created inside the flow. This arrives independently
+  // of the FB.login callback (which carries the OAuth `code`) and the
+  // order isn't guaranteed — both are buffered in refs and the actual
+  // save POST only fires once both are in (see tryFinishSignup).
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       const isFacebookOrigin = event.origin.endsWith('.facebook.com') || event.origin === 'https://www.facebook.com';
-      const isOwnOrigin = event.origin === window.location.origin;
-      if (!isFacebookOrigin && !isOwnOrigin) return;
-      let data: { type?: string; event?: string; data?: Record<string, unknown>; code?: string; error?: string };
+      if (!isFacebookOrigin) return;
+      let data: { type?: string; event?: string; data?: Record<string, unknown> };
       try {
         data = JSON.parse(event.data);
       } catch {
         return; // not JSON — not ours
-      }
-
-      if (isOwnOrigin && data.type === 'RCC_OAUTH_REDIRECT') {
-        if (data.code) {
-          void exchangeCodeImmediately(data.code);
-        } else if (data.error) {
-          console.error('Embedded Signup OAuth dialog error:', data.error);
-          resetSignupAttempt();
-          setConnecting(false);
-          toast.error(t('connectError'));
-        }
-        return;
       }
 
       if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
@@ -335,21 +318,23 @@ export function WhatsAppConfig() {
     }
   }
 
-  // Builds and opens Meta's OAuth dialog directly instead of calling
-  // `FB.login()`. FB.login() lets the JS SDK pick its own (opaque,
-  // Meta-internal) redirect_uri for the popup — for the Coexistence
-  // (whatsapp_business_app_onboarding) path, the later token exchange
-  // rejects that with "Please make sure your redirect_uri is
-  // identical to the one you used in the OAuth dialog request".
-  // Verified by capturing the real dialog URL Meta's own App
-  // Dashboard tester opens (Casos de uso → Configurador de cadastro
-  // incorporado → "Entrar com o Facebook") — this mirrors it exactly,
-  // using OUR OWN /oauth/waba-signup page as redirect_uri so the same
-  // URL is used on both ends of the exchange (that page hands the
-  // `code` back via postMessage — see its RCC_OAUTH_REDIRECT handler
-  // above).
+  // Launches Meta's WhatsApp Embedded Signup via the FB JS SDK, exactly
+  // as the reference flow does. The SDK owns the popup and its
+  // redirect_uri; its callback hands back an OAuth `code` that we
+  // exchange server-side with NO redirect_uri (see exchangeCodeForToken
+  // in meta-api.ts). `featureType: 'whatsapp_business_app_onboarding'`
+  // is what makes the popup offer Coexistence (connecting a number
+  // already live in the customer's WhatsApp Business app) rather than
+  // only the "create/pick a WABA" standard flow. The `setup` block is
+  // all-nulls: we prefill nothing and let the customer fill it in.
   function handleConnectClick() {
     if (!EMBEDDED_SIGNUP_APP_ID || !EMBEDDED_SIGNUP_CONFIG_ID) {
+      toast.error(t('connectError'));
+      return;
+    }
+    if (!window.FB) {
+      // SDK script hasn't finished loading yet — rare, but tell the
+      // user to retry rather than silently no-op.
       toast.error(t('connectError'));
       return;
     }
@@ -366,32 +351,50 @@ export function WhatsAppConfig() {
       }
     }, 60_000);
 
-    const redirectUri = `${window.location.origin}/oauth/waba-signup`;
-    const dialogUrl = new URL('https://www.facebook.com/v26.0/dialog/oauth');
-    dialogUrl.searchParams.set('display', 'popup');
-    dialogUrl.searchParams.set('client_id', EMBEDDED_SIGNUP_APP_ID);
-    dialogUrl.searchParams.set('redirect_uri', redirectUri);
-    dialogUrl.searchParams.set('config_id', EMBEDDED_SIGNUP_CONFIG_ID);
-    dialogUrl.searchParams.set('response_type', 'code');
-    dialogUrl.searchParams.set('fallback_redirect_uri', redirectUri);
-    dialogUrl.searchParams.set('override_default_response_type', 'true');
-    // `featureType: 'whatsapp_business_app_onboarding'` is what makes
-    // Meta's popup offer Coexistence (connecting a number already
-    // live in the customer's WhatsApp Business app) instead of only
-    // the "create/pick a WABA" standard flow. `features:
-    // [{ name: 'app_only_install' }]` is required alongside it —
-    // without it Meta's popup can fall back to a token flow that also
-    // involves the connecting user's personal access, instead of
-    // scoping strictly to the system/business-integration token
-    // `exchangeCodeForToken` (meta-api.ts) expects.
-    dialogUrl.searchParams.set('extras', JSON.stringify({
-      sessionInfoVersion: '3',
-      version: 'v4',
-      features: [{ name: 'app_only_install' }],
-      featureType: 'whatsapp_business_app_onboarding',
-    }));
-
-    window.open(dialogUrl.toString(), 'facebook-embedded-signup', 'width=600,height=700');
+    window.FB.login(
+      (response) => {
+        const code = response.authResponse?.code;
+        if (code) {
+          void exchangeCodeImmediately(code);
+        } else {
+          console.error('Embedded Signup: FB.login returned no code', response);
+          resetSignupAttempt();
+          setConnecting(false);
+          toast.error(t('connectError'));
+        }
+      },
+      {
+        config_id: EMBEDDED_SIGNUP_CONFIG_ID,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          version: 'v3',
+          setup: {
+            business: {
+              id: null,
+              name: null,
+              email: null,
+              phone: { code: null, number: null },
+              website: null,
+              address: {
+                streetAddress1: null,
+                streetAddress2: null,
+                city: null,
+                state: null,
+                zipPostal: null,
+                country: null,
+              },
+              timezone: null,
+            },
+            phone: { displayName: null, category: null, description: null },
+            preVerifiedPhone: { ids: null },
+            solutionID: null,
+            whatsAppBusinessAccount: { ids: null },
+          },
+          featureType: 'whatsapp_business_app_onboarding',
+        },
+      }
+    );
   }
 
   async function handleTestConnection() {

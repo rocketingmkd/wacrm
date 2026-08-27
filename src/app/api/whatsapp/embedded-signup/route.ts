@@ -79,14 +79,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // `access_token` takes precedence when present — the frontend now
-    // exchanges the code for a token the instant it arrives (see
-    // POST /api/whatsapp/embedded-signup/exchange) rather than here,
-    // because Meta's `code` has only a 30-second TTL and the
-    // Coexistence path's waba_id/phone_number_id (delivered via a
-    // separate postMessage after the user finishes scanning a QR code
-    // with their phone) can easily arrive minutes later. `code` is
-    // kept as a fallback for any caller that still sends it directly.
+    // `access_token` takes precedence when present — the frontend
+    // exchanges the code for a token the instant the FB.login()
+    // callback fires (see POST /api/whatsapp/embedded-signup/exchange)
+    // rather than here, because Meta's `code` has only a 30-second TTL
+    // and the Coexistence path's waba_id/phone_number_id (delivered via
+    // a separate WA_EMBEDDED_SIGNUP postMessage after the user finishes
+    // scanning a QR code with their phone) can easily arrive minutes
+    // later. `code` is kept as a fallback for any caller that still
+    // sends it directly.
     let accessToken: string
     if (access_token) {
       accessToken = access_token

@@ -9,7 +9,7 @@ import { exchangeCodeForToken } from '@/lib/whatsapp/meta-api'
  * upon receipt — split out from the full save flow in
  * POST /api/whatsapp/embedded-signup because Meta's `code` has only a
  * 30-second TTL. For the Coexistence path the `code` arrives from the
- * OAuth dialog redirect well before the user finishes scanning the QR
+ * FB.login() callback well before the user finishes scanning the QR
  * code with their phone (which can take minutes) — waiting for both
  * the code AND the waba_id/phone_number_id (delivered separately via
  * the WA_EMBEDDED_SIGNUP postMessage) before exchanging meant the code

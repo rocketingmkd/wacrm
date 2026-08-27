@@ -80,22 +80,20 @@ export interface ExchangeCodeForTokenArgs {
  * Exchange the Embedded Signup authorization `code` for a business
  * integration system-user access token.
  *
- * For the Coexistence (`whatsapp_business_app_onboarding`) path this
- * endpoint rejects a code obtained via a redirect_uri it can't
- * revalidate with "Please make sure your redirect_uri is identical to
- * the one you used in the OAuth dialog request". Root cause: the
- * frontend used to call `FB.login()`, which picks its own opaque,
- * Meta-internal redirect_uri for the popup — one we have no way to
- * echo back here. Fixed by having whatsapp-config.tsx open Meta's
- * OAuth dialog itself with `/oauth/waba-signup` as `redirect_uri` (a
- * real page in this app that hands the `code` back via postMessage),
- * so the exact same URL is used on both ends of the exchange — it
- * must match verbatim, including path, and must be registered under
- * "URIs de redirecionamento do OAuth válidos" (Login do Facebook
- * para Empresas → Configurações) or Meta rejects the exchange
- * outright. The exchange itself is a POST with a JSON body and
- * `grant_type: authorization_code`, per the exact request Meta's own
- * App Dashboard "Trocar token" tool generates for this app/config.
+ * Mirrors the reference Embedded Signup flow verbatim: a bare exchange
+ * carrying ONLY `client_id`, `client_secret` and `code` — no
+ * `redirect_uri`, no `grant_type`. The frontend gets the `code` from
+ * the FB JS SDK's `FB.login()` (config_id + response_type:'code' +
+ * override_default_response_type), and the SDK owns the popup's
+ * redirect_uri internally. There is nothing for us to echo back here;
+ * passing a `redirect_uri` (which cannot match the SDK's own opaque
+ * value) is exactly what makes Meta reject the exchange with "Please
+ * make sure your redirect_uri is identical to the one you used in the
+ * OAuth dialog request" — the failure the Coexistence
+ * (`whatsapp_business_app_onboarding`) path hit for weeks.
+ *
+ * `META_APP_SECRET` never leaves the server — this is the only piece
+ * of the reference's client-side flow moved to the backend.
  */
 export async function exchangeCodeForToken(
   args: ExchangeCodeForTokenArgs
@@ -106,20 +104,15 @@ export async function exchangeCodeForToken(
   if (!appId || !appSecret) {
     throw new Error('META_APP_ID and META_APP_SECRET must be set to exchange an Embedded Signup code')
   }
-  const redirectUri = process.env.NEXT_PUBLIC_SITE_URL
-    ? `${process.env.NEXT_PUBLIC_SITE_URL}/oauth/waba-signup`
-    : 'https://rocket-crm.autosolution.pro/oauth/waba-signup'
-  const response = await fetch(`${META_API_BASE}/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: appId,
-      client_secret: appSecret,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri,
-    }),
+  const params = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    code,
   })
+  const response = await fetch(
+    `${META_API_BASE}/oauth/access_token?${params.toString()}`,
+    { method: 'POST' }
+  )
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
