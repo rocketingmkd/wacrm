@@ -1605,7 +1605,7 @@
       "nameLabel": "Nome",
       "namePlaceholder": "ex.: automação do Zapier",
       "scopesLabel": "Escopos",
-      "scopesHint": "Uma chave sem escopos ainda pode chamar <code className=\"text-[11px]\">GET /api/v1/me</code> para verificar se funciona.",
+      "scopesHint": "Uma chave sem escopos ainda pode chamar <code>GET /api/v1/me</code> para verificar se funciona.",
       "cancel": "Cancelar",
       "creating": "Criando…",
       "createKey": "Criar chave",
