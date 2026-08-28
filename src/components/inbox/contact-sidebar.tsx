@@ -5,8 +5,17 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag, PipelineStage } from "@/types";
+import type {
+  Contact,
+  Conversation,
+  Deal,
+  ContactNote,
+  Message,
+  Tag,
+  PipelineStage,
+} from "@/types";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { AiCopilotPanel } from "@/components/inbox/ai-copilot-panel";
 import {
   Phone,
   Mail,
@@ -25,9 +34,20 @@ import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /** The open conversation — drives the Gerente IA panel. */
+  conversation?: Conversation | null;
+  /** Thread messages, for the panel's live response-timing flags. */
+  messages?: Message[];
+  /** Push a generated draft into the composer (threaded up to the page). */
+  onInsertDraft?: (text: string) => void;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({
+  contact,
+  conversation,
+  messages = [],
+  onInsertDraft,
+}: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -221,6 +241,23 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               </div>
             )}
           </div>
+
+          {/* Gerente IA */}
+          {conversation?.id && (
+            <>
+              <div className="my-4 border-t border-border" />
+              <AiCopilotPanel
+                conversationId={conversation.id}
+                contactId={contact.id}
+                accountId={accountId ?? null}
+                messages={messages}
+                deals={deals}
+                stages={pipelineStages}
+                onInsertDraft={onInsertDraft ?? (() => {})}
+                onDataChanged={fetchContactData}
+              />
+            </>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

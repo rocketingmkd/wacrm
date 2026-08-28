@@ -118,6 +118,10 @@ interface MessageComposerProps {
   onOpenTemplates: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /** Text pushed in from outside (Gerente IA "Gerar rascunho"). The
+   *  `nonce` changes on every push so re-inserting the same text still
+   *  fires. Replaces the current composer text. */
+  insertText?: { text: string; nonce: number } | null;
 }
 
 function formatDuration(seconds: number): string {
@@ -140,6 +144,7 @@ export function MessageComposer({
   onOpenTemplates,
   replyTo,
   onClearReply,
+  insertText,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
 
@@ -147,6 +152,16 @@ export function MessageComposer({
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // External draft push (Gerente IA). Keyed on `nonce` so the same text
+  // pushed twice still lands.
+  const lastInsertNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!insertText || insertText.nonce === lastInsertNonce.current) return;
+    lastInsertNonce.current = insertText.nonce;
+    setText(insertText.text);
+    textareaRef.current?.focus();
+  }, [insertText]);
 
   // Interactive-message builder dialog + quick-reply picker.
   const [interactiveOpen, setInteractiveOpen] = useState(false);

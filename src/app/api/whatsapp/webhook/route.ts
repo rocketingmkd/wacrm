@@ -10,6 +10,7 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import { maybeAssignRoundRobin } from '@/lib/conversations/round-robin'
+import { refreshConversationInsight } from '@/lib/ai/copilot-refresh'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -20,6 +21,13 @@ import {
 // give it headroom beyond the platform default (Vercel clamps this to the
 // plan's ceiling). Tune as needed.
 export const maxDuration = 60
+
+// A customer message landing more than this long after the previous
+// message in the thread counts as "coming back after a lull" — the
+// point at which the Gerente IA copilot insight is worth recomputing.
+// Rapid-fire messages inside one burst fall under it and don't each
+// trigger an LLM call; the seller opening the thread forces a fresh one.
+const COPILOT_REFRESH_GAP_MS = 2 * 60_000
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1277,6 +1285,29 @@ async function processMessage(
 
   if (convError) {
     console.error('Error updating conversation:', convError)
+  }
+
+  // "Gerente IA" copilot — refresh this conversation's insight when the
+  // customer comes back after a lull (or on their very first message),
+  // NOT on every message in a live back-and-forth. `conversation` is the
+  // in-memory row from before the update above, so `last_message_at`
+  // still holds the PREVIOUS message's time — no extra query. Self-
+  // guards on "account has no AI configured" and "nothing to analyze",
+  // and runs in `after()` so it never delays the 200 to Meta.
+  const prevAt = conversation.last_message_at
+    ? new Date(conversation.last_message_at).getTime()
+    : 0
+  const openedNewTurn = !prevAt || Date.now() - prevAt > COPILOT_REFRESH_GAP_MS
+  if (openedNewTurn && message.type === 'text') {
+    after(async () => {
+      try {
+        await refreshConversationInsight(supabaseAdmin(), {
+          conversationId: conversation.id,
+        })
+      } catch (err) {
+        console.error('[copilot] webhook refresh failed:', err)
+      }
+    })
   }
 
   // If this contact was a recent broadcast recipient, flag the reply

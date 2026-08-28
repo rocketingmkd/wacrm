@@ -48,6 +48,11 @@ function InboxPageInner() {
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Draft text the Gerente IA panel pushes into the thread's composer.
+  // `nonce` changes per push so the same text re-inserts.
+  const [composerInsert, setComposerInsert] = useState<
+    { text: string; nonce: number } | null
+  >(null);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -623,6 +628,7 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            composerInsert={composerInsert}
           />
         </div>
 
@@ -632,7 +638,14 @@ function InboxPageInner() {
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
           <div className="hidden lg:block">
-            <ContactSidebar contact={activeContact} />
+            <ContactSidebar
+              contact={activeContact}
+              conversation={activeConversation}
+              messages={messages}
+              onInsertDraft={(text) =>
+                setComposerInsert({ text, nonce: Date.now() })
+              }
+            />
           </div>
         )}
       </div>

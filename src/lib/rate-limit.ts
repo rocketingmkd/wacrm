@@ -167,6 +167,14 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** "Gerente IA" copilot insight refresh, per user. Most POSTs return
+   *  the cached insight without an LLM call (the refresh is gated on the
+   *  conversation actually having moved), so this only really bites a
+   *  user hammering "Atualizar". 30/min per user. */
+  aiCopilot: { limit: 30, windowMs: 60_000 },
+  /** Copilot insight refresh, per account — caps the team's combined
+   *  forced refreshes on the shared BYO key. */
+  aiCopilotAccount: { limit: 90, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't
