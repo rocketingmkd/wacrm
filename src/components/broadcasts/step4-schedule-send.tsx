@@ -224,7 +224,7 @@ export function Step4ScheduleSend({
           </DialogTrigger>
           <DialogContent className="border-border bg-popover sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-popover-foreground">Confirm Broadcast</DialogTitle>
+              <DialogTitle className="text-popover-foreground">Confirmar disparo</DialogTitle>
               <DialogDescription className="text-muted-foreground">
                 You are about to send this broadcast to{' '}
                 <span className="font-medium text-popover-foreground">{estimatedReach.toLocaleString()}</span>{' '}

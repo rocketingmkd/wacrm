@@ -163,7 +163,7 @@ export function WhatsAppConfig() {
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
-      toast.error('Failed to load WhatsApp configuration');
+      toast.error('Falha ao carregar a configuração do WhatsApp');
     } finally {
       setLoading(false);
     }
@@ -409,19 +409,19 @@ export function WhatsAppConfig() {
         setStatusMessage('');
         toast.success(
           payload.phone_info?.verified_name
-            ? `Connected to ${payload.phone_info.verified_name}`
-            : 'API connection successful'
+            ? `Conectado a ${payload.phone_info.verified_name}`
+            : 'Conexão com a API bem-sucedida'
         );
       } else {
         setConnectionStatus('disconnected');
         setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
         setStatusMessage(payload.message || '');
-        toast.error(payload.message || 'API connection failed');
+        toast.error(payload.message || 'Falha na conexão com a API');
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
-      toast.error('Connection test failed. Check network and try again.');
+      toast.error('O teste de conexão falhou. Verifique a rede e tente de novo.');
     } finally {
       setTesting(false);
     }
@@ -437,17 +437,17 @@ export function WhatsAppConfig() {
       const data = (await res.json()) as RegistrationProbe;
       setRegistrationProbe(data);
       if (data.live) {
-        toast.success('Number is fully wired — Meta is delivering events.');
+        toast.success('Número totalmente configurado. A Meta está entregando os eventos.');
       } else {
         toast.error(
-          'Number is not fully registered. See the checks below for which step failed.',
+          'O número não está totalmente registrado. Veja abaixo qual etapa falhou.',
           { duration: 8000 },
         );
       }
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('verify-registration failed:', err);
-      toast.error('Could not reach the verification endpoint.');
+      toast.error('Não foi possível acessar o endpoint de verificação.');
     } finally {
       setVerifyingRegistration(false);
     }
@@ -482,7 +482,7 @@ export function WhatsAppConfig() {
   }
 
   async function handleReset() {
-    if (!confirm('This will delete the current WhatsApp config so you can re-enter it. Continue?')) {
+    if (!confirm('Isso vai apagar a configuração atual do WhatsApp para você inserir de novo. Continuar?')) {
       return;
     }
 
@@ -492,18 +492,18 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to reset configuration');
+        toast.error(data.error || 'Falha ao limpar a configuração');
         return;
       }
 
-      toast.success('Configuration cleared. You can now reconnect.');
+      toast.success('Configuração limpa. Agora você pode reconectar.');
       setConfig(null);
       setConnectionStatus('disconnected');
       setResetReason(null);
       setStatusMessage('');
     } catch (err) {
       console.error('Reset error:', err);
-      toast.error('Failed to reset configuration');
+      toast.error('Falha ao limpar a configuração');
     } finally {
       setResetting(false);
     }
@@ -793,7 +793,7 @@ export function WhatsAppConfig() {
             </p>
             {!embeddedSignupConfigured && (
               <p className="text-xs text-amber-400">
-                NEXT_PUBLIC_META_APP_ID / NEXT_PUBLIC_META_CONFIG_ID not set in this build — the connect button is disabled.
+                NEXT_PUBLIC_META_APP_ID / NEXT_PUBLIC_META_CONFIG_ID não definidos neste build. O botão de conectar está desativado.
               </p>
             )}
           </CardContent>

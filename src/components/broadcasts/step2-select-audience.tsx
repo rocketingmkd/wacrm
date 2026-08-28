@@ -445,7 +445,7 @@ export function Step2SelectAudience({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Select an audience type to see the estimate.
+            Selecione um tipo de público para ver a estimativa.
           </p>
         )}
       </div>

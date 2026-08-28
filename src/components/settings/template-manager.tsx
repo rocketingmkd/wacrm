@@ -841,7 +841,7 @@ export function TemplateManager() {
                 <div className="space-y-2 mt-2">
                   <Input
                     id="template-header-text"
-                    aria-label="Header text"
+                    aria-label="Texto do cabeçalho"
                     placeholder={t('headerTextPlaceholder')}
                     value={form.header_content}
                     onChange={(e) =>

@@ -235,7 +235,7 @@ export function MessageThread({
       .reverse()
       .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
+    if (!lastCustomerMsg) return { expired: true, remaining: "Sem mensagens do cliente" };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
@@ -482,7 +482,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(`Falha ao enviar: ${reason}`);
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -495,7 +495,7 @@ export function MessageThread({
       } catch (err) {
         console.error("Failed to send message:", err);
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        toast.error(`Falha ao enviar: ${reason}`);
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -548,7 +548,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send media:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(`Falha ao enviar: ${reason}`);
           onUpdateMessage(tempId, { status: "failed" });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
@@ -560,7 +560,7 @@ export function MessageThread({
       } catch (err) {
         console.error("Failed to send media:", err);
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        toast.error(`Falha ao enviar: ${reason}`);
         onUpdateMessage(tempId, { status: "failed" });
         void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
       }
@@ -605,7 +605,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
           console.error("Failed to send interactive message:", reason);
-          toast.error(`Failed to send: ${reason}`);
+          toast.error(`Falha ao enviar: ${reason}`);
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -614,7 +614,7 @@ export function MessageThread({
       } catch (err) {
         console.error("Failed to send interactive message:", err);
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send: ${reason}`);
+        toast.error(`Falha ao enviar: ${reason}`);
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -694,7 +694,7 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
-          toast.error(`Failed to send template: ${reason}`);
+          toast.error(`Falha ao enviar o modelo: ${reason}`);
           onUpdateMessage(tempId, { status: "failed" });
           return;
         }
@@ -703,7 +703,7 @@ export function MessageThread({
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send template: ${reason}`);
+        toast.error(`Falha ao enviar o modelo: ${reason}`);
         onUpdateMessage(tempId, { status: "failed" });
       }
     },
@@ -764,7 +764,7 @@ export function MessageThread({
         return;
       }
       if (messageId.startsWith("temp-")) {
-        toast.error("Wait for the message to finish sending");
+        toast.error("Aguarde a mensagem terminar de enviar");
         return;
       }
 
@@ -810,7 +810,7 @@ export function MessageThread({
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Reaction failed: ${reason}`);
+        toast.error(`Falha na reação: ${reason}`);
         setReactions(snapshot);
       }
     },
@@ -829,7 +829,7 @@ export function MessageThread({
 
       if (error) {
         console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
+        toast.error("Falha ao atualizar a atribuição");
         return;
       }
 
