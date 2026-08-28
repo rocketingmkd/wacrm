@@ -39,6 +39,7 @@ export function ThemedToaster() {
     <Toaster
       theme={isClient ? mode : DEFAULT_MODE}
       position="top-right"
+      containerAriaLabel="Notificações"
       toastOptions={{
         style: {
           background: "var(--popover)",
