@@ -19,7 +19,7 @@
 //     "filename": "invoice.pdf",             // optional, document filename
 //     "template": {                          // required when type=template
 //       "name": "order_update",
-//       "language": "en_US",
+//       "language": "pt_BR",
 //       "params": ["A123"] | { "body": [...] }   // array = positional body; object = structured
 //     },
 //     "reply_to_message_id": "<uuid>",       // optional, must be in the same conversation

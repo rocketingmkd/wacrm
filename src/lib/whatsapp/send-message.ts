@@ -325,7 +325,7 @@ export async function sendMessageToConversation(
       .select('*')
       .eq('account_id', accountId)
       .eq('name', templateName)
-      .eq('language', templateLanguage || 'en_US')
+      .eq('language', templateLanguage || 'pt_BR')
       .maybeSingle();
     if (data && !isMessageTemplate(data)) {
       throw new SendMessageError(
@@ -356,7 +356,7 @@ export async function sendMessageToConversation(
         to,
         recipientUserId,
         templateName: templateName!,
-        language: templateLanguage || 'en_US',
+        language: templateLanguage || 'pt_BR',
         template: templateRow ?? undefined,
         messageParams: templateMessageParams ?? undefined,
         params: templateParams || [],

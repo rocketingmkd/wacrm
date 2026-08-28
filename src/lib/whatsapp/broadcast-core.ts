@@ -89,7 +89,7 @@ export async function createBroadcast(
   params: CreateBroadcastParams
 ): Promise<BroadcastPlan> {
   const { name, templateName, recipients } = params;
-  const templateLanguage = params.templateLanguage || 'en_US';
+  const templateLanguage = params.templateLanguage || 'pt_BR';
 
   if (!templateName) {
     throw new BroadcastError('bad_request', "'template_name' is required", 400);

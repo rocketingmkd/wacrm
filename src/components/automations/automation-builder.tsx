@@ -170,7 +170,7 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     case "send_list":
       return toStepConfig(blankListPayload())
     case "send_template":
-      return { template_name: "", language: "en_US" }
+      return { template_name: "", language: "pt_BR" }
     case "add_tag":
     case "remove_tag":
       return { tag_id: "" }
@@ -587,7 +587,7 @@ function SendTemplateFields({
   const toValue = (name: string, lang: string) => `${name}::${lang}`
   const current = templateName ? toValue(templateName, language) : ""
   const hasMatch = templates.some(
-    (t) => toValue(t.name, t.language ?? "en_US") === current,
+    (t) => toValue(t.name, t.language ?? "pt_BR") === current,
   )
 
   return (
@@ -602,7 +602,7 @@ function SendTemplateFields({
       >
         <option value="">{t("templates.select")}</option>
         {templates.map((tmpl) => {
-          const lang = tmpl.language ?? "en_US"
+          const lang = tmpl.language ?? "pt_BR"
           return (
             <option key={tmpl.id} value={toValue(tmpl.name, lang)}>
               {tmpl.name} ({lang})

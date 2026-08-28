@@ -80,7 +80,7 @@ interface TemplateFormData {
 const emptyForm: TemplateFormData = {
   name: '',
   category: 'Marketing',
-  language: 'en_US',
+  language: 'pt_BR',
   header_format: 'none',
   header_content: '',
   header_media_url: '',
@@ -92,6 +92,8 @@ const emptyForm: TemplateFormData = {
 };
 
 const COMMON_LANGUAGE_CODES = [
+  'pt_BR',
+  'pt_PT',
   'en_US',
   'en_GB',
   'en',
@@ -102,8 +104,6 @@ const COMMON_LANGUAGE_CODES = [
   'fr_FR',
   'de',
   'it',
-  'pt_BR',
-  'pt_PT',
   'nl',
   'pl',
   'ru',
@@ -223,7 +223,7 @@ export function TemplateManager() {
     return {
       name: form.name.trim(),
       category: form.category,
-      language: form.language.trim() || 'en_US',
+      language: form.language.trim() || 'pt_BR',
       header_type: form.header_format === 'none' ? undefined : form.header_format,
       header_content:
         form.header_format === 'text' ? form.header_content.trim() : undefined,
@@ -244,7 +244,7 @@ export function TemplateManager() {
     setForm({
       name: template.name,
       category: template.category,
-      language: template.language || 'en_US',
+      language: template.language || 'pt_BR',
       header_format: (template.header_type ?? 'none') as HeaderFormat,
       header_content: template.header_content ?? '',
       header_media_url: template.header_media_url ?? '',
@@ -266,7 +266,7 @@ export function TemplateManager() {
     setForm({
       name: template.name,
       category: template.category,
-      language: template.language || 'en_US',
+      language: template.language || 'pt_BR',
       header_format: (template.header_type ?? 'none') as HeaderFormat,
       header_content: template.header_content ?? '',
       header_media_url: template.header_media_url ?? '',
@@ -773,7 +773,7 @@ export function TemplateManager() {
                 <Label className="text-muted-foreground">{t('language')}</Label>
                 <Input
                   list="template-language-codes"
-                  placeholder="en_US"
+                  placeholder="pt_BR"
                   value={form.language}
                   onChange={(e) =>
                     setForm({ ...form, language: e.target.value })

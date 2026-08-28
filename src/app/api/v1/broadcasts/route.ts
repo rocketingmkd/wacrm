@@ -6,7 +6,7 @@
 //   {
 //     "name": "July promo",                 // optional label
 //     "template_name": "promo_july",        // required, approved template
-//     "template_language": "en_US",         // optional (default en_US)
+//     "template_language": "pt_BR",         // optional (default pt_BR)
 //     "recipients": [                        // required, 1..1000
 //       { "to": "+14155550123", "params": ["Jane"] },
 //       { "to": "+14155550124" }
