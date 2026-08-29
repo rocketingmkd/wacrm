@@ -11,19 +11,32 @@ import {
   AlertTriangle,
   RotateCcw,
   Link2,
+  PlugZap,
+  ChevronRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslations } from 'next-intl';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { SettingsPanelHead } from './settings-panel-head';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
+interface PhoneInfo {
+  display_phone_number?: string;
+  verified_name?: string;
+}
 
 // Meta's Embedded Signup popup delivers the chosen WABA/phone number
 // via a `window.postMessage` (type `WA_EMBEDDED_SIGNUP`), separately
@@ -78,6 +91,11 @@ export function WhatsAppConfig() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('unknown');
   const [resetReason, setResetReason] = useState<ResetReason>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [phoneInfo, setPhoneInfo] = useState<PhoneInfo | null>(null);
+  // The summary card is always visible; the wall of alerts/diagnostics/
+  // actions below now live behind it in a popup — see the card + Dialog
+  // near the bottom of the render.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Guards against re-hydrating the form when the load effect below
   // re-runs for reasons unrelated to actually switching accounts —
   // e.g. Supabase's onAuthStateChange fires a token refresh (new
@@ -147,19 +165,23 @@ export function WhatsAppConfig() {
             setConnectionStatus('connected');
             setResetReason(null);
             setStatusMessage('');
+            setPhoneInfo(payload.phone_info ?? null);
           } else {
             setConnectionStatus('disconnected');
             setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
             setStatusMessage(payload.message || '');
+            setPhoneInfo(null);
           }
         } catch (err) {
           console.error('Health check failed:', err);
           setConnectionStatus('disconnected');
+          setPhoneInfo(null);
         }
       } else {
         setConnectionStatus('disconnected');
         setResetReason(null);
         setStatusMessage('');
+        setPhoneInfo(null);
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
@@ -407,6 +429,7 @@ export function WhatsAppConfig() {
         setConnectionStatus('connected');
         setResetReason(null);
         setStatusMessage('');
+        setPhoneInfo(payload.phone_info ?? null);
         toast.success(
           payload.phone_info?.verified_name
             ? `Conectado a ${payload.phone_info.verified_name}`
@@ -416,11 +439,13 @@ export function WhatsAppConfig() {
         setConnectionStatus('disconnected');
         setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
         setStatusMessage(payload.message || '');
+        setPhoneInfo(null);
         toast.error(payload.message || 'Falha na conexão com a API');
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
+      setPhoneInfo(null);
       toast.error('O teste de conexão falhou. Verifique a rede e tente de novo.');
     } finally {
       setTesting(false);
@@ -501,6 +526,7 @@ export function WhatsAppConfig() {
       setConnectionStatus('disconnected');
       setResetReason(null);
       setStatusMessage('');
+      setPhoneInfo(null);
     } catch (err) {
       console.error('Reset error:', err);
       toast.error('Falha ao limpar a configuração');
@@ -545,7 +571,48 @@ export function WhatsAppConfig() {
         title={t("title")}
         description={t("description")}
       />
-      <div className="max-w-2xl space-y-6">
+
+      {/* Summary card — always visible; clicking it opens the popup with
+          every connection detail (status, Coexistence sync, registration
+          diagnostics, connect/test/reset actions). Keeps this section
+          skimmable instead of a wall of stacked alerts. */}
+      <div className="max-w-2xl">
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+        >
+          <span
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+              connectionStatus === 'connected' ? 'bg-emerald-500/15' : 'bg-red-500/15',
+            )}
+          >
+            <PlugZap
+              className={cn(
+                'h-5 w-5',
+                connectionStatus === 'connected' ? 'text-emerald-400' : 'text-red-400',
+              )}
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">WhatsApp</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {connectionStatus === 'connected'
+                ? phoneInfo?.display_phone_number || phoneInfo?.verified_name || t('connectedDesc')
+                : t('notConnected')}
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      </div>
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">WhatsApp</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
           <Alert className="bg-amber-950/40 border-amber-600/40">
@@ -840,7 +907,9 @@ export function WhatsAppConfig() {
             </Button>
           )}
         </div>
-      </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
