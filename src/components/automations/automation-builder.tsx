@@ -750,7 +750,13 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
       {/* Canvas */}
       <div className="relative flex-1 overflow-y-auto">
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
-        <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
+        {/* max-w-3xl (not max-w-2xl): a condition's Yes/No branches need
+            room for two 320px step cards side by side (~650px + gap) —
+            max-w-2xl (672px) left only ~314px per column once you
+            subtract the page padding, which is narrower than the cards
+            it has to hold. See the `wrapperWidth` comment in
+            StepRenderer for the other half of this fix. */}
+        <div className="relative mx-auto flex max-w-3xl flex-col items-center gap-0 px-4 py-10">
           <ResourcesProvider>
             <TriggerCard
               type={state.trigger_type}
@@ -1085,19 +1091,29 @@ function StepRenderer({
   const Icon = meta.icon
   const expanded = props.expandedId === step.cid
   const isCondition = step.step_type === "condition"
-  // Card widths on mobile fill the full canvas column (max-w-2xl px-4
+  // Card widths on mobile fill the full canvas column (max-w-3xl px-4
   // still keeps them reasonable). On sm+ the original fixed widths
   // come back so the flow visual stays recognisable.
-  const width = isCondition
+  const cardWidth = isCondition
     ? "w-full max-w-[400px] sm:w-[400px]"
     : "w-full max-w-[320px] sm:w-80"
+  // A condition's outer wrapper must NOT be capped to the card's own
+  // (narrower) width — it also hosts the Yes/No branch columns below
+  // (ConditionBranches), and those need the full canvas width to lay two
+  // 320px step cards side by side. Applying `cardWidth` to this wrapper
+  // used to squeeze both branches into the condition card's 400px box,
+  // leaving ~194px per column — far narrower than the 320px cards nested
+  // inside, so they overflowed their column and visually landed on top
+  // of the sibling branch.
+  const wrapperWidth = isCondition ? "w-full" : cardWidth
 
   return (
     <>
-      <div className={cn("z-10 flex flex-col", width)}>
+      <div className={cn("z-10 flex flex-col items-center", wrapperWidth)}>
         <div
           className={cn(
             "rounded-lg border border-border border-l-4 bg-card shadow-lg",
+            cardWidth,
             meta.border,
           )}
         >
@@ -1112,7 +1128,11 @@ function StepRenderer({
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {isCondition ? "Condition" : step.step_type === "wait" ? "Wait" : "Action"}
+                {isCondition
+                  ? t("kindCondition")
+                  : step.step_type === "wait"
+                    ? t("kindWait")
+                    : t("kindAction")}
               </div>
               <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
               <div className="truncate text-[11px] text-muted-foreground">{previewFor(step)}</div>
@@ -1154,7 +1174,7 @@ function StepRenderer({
                   onClick={() => props.deleteStepAt(path)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  {t("delete", { defaultValue: "Delete" })}
+                  {t("delete")}
                 </Button>
               </div>
             </div>

@@ -922,6 +922,10 @@
       "saveDraft": "초안 저장",
       "untitled": "제목 없는 자동화",
       "backToAutomations": "자동화로 돌아가기",
+      "delete": "삭제",
+      "kindCondition": "조건",
+      "kindWait": "대기",
+      "kindAction": "작업",
       "toasts": {
         "saved": "자동화가 저장되었습니다",
         "created": "자동화가 생성되었습니다",

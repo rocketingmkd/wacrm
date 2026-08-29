@@ -923,6 +923,10 @@
       "saveDraft": "Salvar rascunho",
       "untitled": "Automação sem título",
       "backToAutomations": "Voltar às automações",
+      "delete": "Excluir",
+      "kindCondition": "Condição",
+      "kindWait": "Espera",
+      "kindAction": "Ação",
       "toasts": {
         "saved": "Automação salva",
         "created": "Automação criada",

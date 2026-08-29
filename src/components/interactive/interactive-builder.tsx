@@ -88,7 +88,16 @@ export function InteractiveBuilder({
   };
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row">
+    // `@container`: the editor/preview split below used to key off the
+    // *viewport* width (`md:flex-row`), so it switched to a side-by-side
+    // layout whenever the browser window was wide — even when this
+    // component was actually rendered inside a narrow host (e.g. a
+    // ~320px automation-step card), where a 280px preview column left
+    // almost nothing for the editor and everything overlapped/wrapped.
+    // Querying the immediate container's own width instead means it only
+    // goes side-by-side where it actually has room, regardless of host.
+    <div className="@container">
+      <div className="flex flex-col gap-4 @2xl:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         {/* Kind toggle */}
         <div className="flex gap-2">
@@ -161,7 +170,7 @@ export function InteractiveBuilder({
       </div>
 
       {showPreview && (
-        <div className="flex shrink-0 flex-col gap-1.5 md:w-[280px]">
+        <div className="flex shrink-0 flex-col gap-1.5 @2xl:w-[280px]">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Prévia
           </span>
@@ -170,6 +179,7 @@ export function InteractiveBuilder({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

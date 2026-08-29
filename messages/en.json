@@ -923,6 +923,10 @@
       "saveDraft": "Save Draft",
       "untitled": "Untitled automation",
       "backToAutomations": "Back to automations",
+      "delete": "Delete",
+      "kindCondition": "Condition",
+      "kindWait": "Wait",
+      "kindAction": "Action",
       "toasts": {
         "saved": "Automation saved",
         "created": "Automation created",
