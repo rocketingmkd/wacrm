@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { isCurrentUserPlatformAdmin } from '@/lib/auth/platform'
+import { PlatformShell } from './_components/platform-shell'
 
 // Server layout — gates the ENTIRE /platform tree on staff status
 // before rendering anything. `notFound()` (a genuine 404) rather than
@@ -13,6 +13,10 @@ import { isCurrentUserPlatformAdmin } from '@/lib/auth/platform'
 // (protectedPaths includes '/platform'); the actual is_platform_admin()
 // check happens here, not in middleware, to avoid a DB round trip on
 // every matched request.
+//
+// The actual app frame (sidebar, header, sign-out) lives in
+// PlatformShell (a client component) — kept separate from this file
+// so this server component's only job stays the auth gate.
 export const metadata: Metadata = {
   robots: {
     index: false,
@@ -34,35 +38,5 @@ export default async function PlatformLayout({
   const isStaff = await isCurrentUserPlatformAdmin()
   if (!isStaff) notFound()
 
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card px-6 py-3">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              Plataforma Rocketing
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Painel interno — gestão de contas e cobrança
-            </p>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/platform/accounts" className="text-muted-foreground hover:text-foreground">
-              Contas
-            </Link>
-            <Link href="/platform/webhooks" className="text-muted-foreground hover:text-foreground">
-              Webhooks
-            </Link>
-            <Link href="/platform/settings" className="text-muted-foreground hover:text-foreground">
-              Configurações
-            </Link>
-            <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
-              Voltar ao CRM
-            </Link>
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl p-6">{children}</main>
-    </div>
-  )
+  return <PlatformShell>{children}</PlatformShell>
 }
