@@ -27,6 +27,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Bot,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -109,6 +110,13 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * Desktop-only Gerente IA panel toggle — same shape as the contact-panel
+   * toggle above, since the two share one slot on the page (see
+   * `RightPanel` in `inbox/page.tsx`).
+   */
+  aiPanelOpen?: boolean;
+  onToggleAiPanel?: () => void;
   /** Draft text pushed from the Gerente IA panel into the composer. */
   composerInsert?: { text: string; nonce: number } | null;
 }
@@ -169,6 +177,8 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  aiPanelOpen,
+  onToggleAiPanel,
   composerInsert,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
@@ -945,6 +955,24 @@ export function MessageThread({
               ) : (
                 <PanelRightOpen className="h-4 w-4" />
               )}
+            </button>
+          )}
+
+          {/* Gerente IA panel toggle — desktop only, same slot as the
+              contact panel above (only one of the two is ever open). */}
+          {onToggleAiPanel && (
+            <button
+              type="button"
+              onClick={onToggleAiPanel}
+              aria-label={aiPanelOpen ? t("hideAiPanel") : t("showAiPanel")}
+              title={aiPanelOpen ? t("hideAi") : t("showAi")}
+              aria-pressed={aiPanelOpen}
+              className={cn(
+                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                aiPanelOpen ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              <Bot className="h-4 w-4" />
             </button>
           )}
 

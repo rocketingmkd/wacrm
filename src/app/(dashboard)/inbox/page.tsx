@@ -13,13 +13,22 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { AiPanel } from "@/components/inbox/ai-panel";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Remembers the agent's show/hide choice for the desktop contact panel
-// across reloads and sessions (device-scoped, like the theme prefs).
-const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+// Which desktop right-side panel is showing, if any. Contact info and
+// the Gerente IA copilot share the same slot — they're both wide enough
+// that showing both at once would crowd the thread, so opening one
+// replaces the other (tab-like), rather than each being an independent
+// show/hide toggle.
+type RightPanel = "contact" | "ai" | null;
+
+// Remembers the agent's panel choice across reloads and sessions
+// (device-scoped, like the theme prefs). Stores "contact" | "ai" |
+// "closed" — not a boolean anymore now that there are two panels.
+const RIGHT_PANEL_STORAGE_KEY = "wacrm:inbox:right-panel";
 
 // `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
 // boundary or the production build bails to CSR and errors out. Thin
@@ -66,34 +75,48 @@ function InboxPageInner() {
   const [resyncToken, setResyncToken] = useState(0);
 
   /**
-   * Whether the desktop contact sidebar (tags / deals / notes) is shown.
-   * Defaults to `true` (the historical behaviour) and is restored from
+   * Which desktop right-side panel (contact info, or the Gerente IA
+   * copilot) is shown, if any. Defaults to `"contact"` (the historical
+   * behaviour before the IA panel existed) and is restored from
    * localStorage after mount. We deliberately do NOT read localStorage in
-   * the initializer: the server renders with `true`, so reading a stored
-   * `false` synchronously would produce a hydration mismatch. The effect
-   * below reconciles to the stored value right after mount instead.
+   * the initializer: the server renders with `"contact"`, so reading a
+   * stored value synchronously would produce a hydration mismatch. The
+   * effect below reconciles to the stored value right after mount instead.
    */
-  const [contactPanelOpen, setContactPanelOpen] = useState(true);
+  const [rightPanel, setRightPanel] = useState<RightPanel>("contact");
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(CONTACT_PANEL_STORAGE_KEY);
-      if (stored !== null) setContactPanelOpen(stored === "true");
+      const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
+      if (stored === "contact" || stored === "ai") setRightPanel(stored);
+      else if (stored === "closed") setRightPanel(null);
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.
     }
   }, []);
 
+  const persistRightPanel = useCallback((next: RightPanel) => {
+    try {
+      localStorage.setItem(RIGHT_PANEL_STORAGE_KEY, next ?? "closed");
+    } catch {
+      // Persistence is best-effort; ignore storage failures.
+    }
+  }, []);
+
   const handleToggleContactPanel = useCallback(() => {
-    setContactPanelOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(CONTACT_PANEL_STORAGE_KEY, String(next));
-      } catch {
-        // Persistence is best-effort; ignore storage failures.
-      }
+    setRightPanel((prev) => {
+      const next = prev === "contact" ? null : "contact";
+      persistRightPanel(next);
       return next;
     });
-  }, []);
+  }, [persistRightPanel]);
+
+  const handleToggleAiPanel = useCallback(() => {
+    setRightPanel((prev) => {
+      const next = prev === "ai" ? null : "ai";
+      persistRightPanel(next);
+      return next;
+    });
+  }, [persistRightPanel]);
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -626,26 +649,34 @@ function InboxPageInner() {
             onBack={handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
-            contactPanelOpen={contactPanelOpen}
+            contactPanelOpen={rightPanel === "contact"}
             onToggleContactPanel={handleToggleContactPanel}
+            aiPanelOpen={rightPanel === "ai"}
+            onToggleAiPanel={handleToggleAiPanel}
             composerInsert={composerInsert}
           />
         </div>
 
-        {/* Right panel: Contact sidebar — desktop only, and only when the
-            agent hasn't collapsed it via the thread-header toggle (#258).
-            On mobile it's always hidden (the `lg:block` below), so the
-            toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
+        {/* Right panel: Contact sidebar or Gerente IA — desktop only, and
+            only when the agent hasn't collapsed it via the thread-header
+            toggles (#258). The two share this one slot (see `RightPanel`
+            above), so only one ever renders. On mobile it's always hidden
+            (the `lg:block` below), so the toggles — themselves desktop-only
+            — never affect it. */}
+        {rightPanel && (
           <div className="hidden lg:block">
-            <ContactSidebar
-              contact={activeContact}
-              conversation={activeConversation}
-              messages={messages}
-              onInsertDraft={(text) =>
-                setComposerInsert({ text, nonce: Date.now() })
-              }
-            />
+            {rightPanel === "contact" ? (
+              <ContactSidebar contact={activeContact} />
+            ) : (
+              <AiPanel
+                contact={activeContact}
+                conversation={activeConversation}
+                messages={messages}
+                onInsertDraft={(text) =>
+                  setComposerInsert({ text, nonce: Date.now() })
+                }
+              />
+            )}
           </div>
         )}
       </div>

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Bot,
-  ChevronDown,
   Clock,
   Loader2,
   RefreshCw,
@@ -45,8 +44,6 @@ interface AiCopilotPanelProps {
   onDataChanged: () => void;
 }
 
-const OPEN_KEY = "rcc.copilot.open";
-
 const TEMP_META: Record<
   CopilotTemperature,
   { label: string; dot: string; text: string }
@@ -72,7 +69,6 @@ export function AiCopilotPanel({
   onInsertDraft,
   onDataChanged,
 }: AiCopilotPanelProps) {
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [insight, setInsight] = useState<CopilotInsight | null>(null);
@@ -82,26 +78,6 @@ export function AiCopilotPanel({
   // Guards the auto-refresh so a stale insight only triggers one POST
   // per conversation view, not a loop.
   const autoRefreshedFor = useRef<string | null>(null);
-
-  useEffect(() => {
-    try {
-      setOpen(window.localStorage.getItem(OPEN_KEY) === "1");
-    } catch {
-      /* private mode */
-    }
-  }, []);
-
-  const toggle = () => {
-    setOpen((v) => {
-      const next = !v;
-      try {
-        window.localStorage.setItem(OPEN_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
 
   const textMsgCount = messages.filter((m) => m.content_type === "text").length;
   const timing = computeResponseTiming(messages);
@@ -165,27 +141,29 @@ export function AiCopilotPanel({
     }
   }, [conversationId]);
 
-  // Reset + (re)load when the open panel switches conversation.
+  // Reset + (re)load whenever the panel switches conversation (including
+  // the first mount — this panel only exists while the agent has it open,
+  // so there's no separate "opened" transition to key off anymore).
   useEffect(() => {
     setInsight(null);
     setMeta(null);
     setNotConfigured(false);
     autoRefreshedFor.current = null;
-    if (open && conversationId) void load();
-  }, [conversationId, open, load]);
+    if (conversationId) void load();
+  }, [conversationId, load]);
 
   // Auto-refresh once when what we loaded is behind the live thread
   // (or there's nothing cached yet). Not forced — the server still
   // skips the LLM call if nothing actually moved.
   useEffect(() => {
-    if (!open || !conversationId || loading || refreshing) return;
+    if (!conversationId || loading || refreshing) return;
     if (autoRefreshedFor.current === conversationId) return;
     const stale = !meta || meta.msg_count_at_gen < textMsgCount;
     if (stale && textMsgCount > 0) {
       autoRefreshedFor.current = conversationId;
       void refresh(false);
     }
-  }, [open, conversationId, loading, refreshing, meta, textMsgCount, refresh]);
+  }, [conversationId, loading, refreshing, meta, textMsgCount, refresh]);
 
   const activeDeal = deals.find((d) => d.status !== "lost") ?? deals[0] ?? null;
   const suggestedStage =
@@ -276,12 +254,10 @@ export function AiCopilotPanel({
 
   return (
     <div className="rounded-lg border border-border bg-muted/30">
-      {/* Header — always visible, one-glance signal even when collapsed */}
-      <button
-        type="button"
-        onClick={toggle}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
-      >
+      {/* Header — one-glance signal (temperature + waiting time). Static,
+          not a toggle: this panel is only mounted while the agent has it
+          open, so there's nothing left to collapse. */}
+      <div className="flex w-full items-center gap-2 px-3 py-2">
         <Bot className="h-4 w-4 shrink-0 text-primary" />
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Gerente IA
@@ -292,7 +268,7 @@ export function AiCopilotPanel({
         {timing.awaitingReplyMs != null && (
           <span
             className={cn(
-              "flex items-center gap-1 text-[10px] font-medium",
+              "ml-auto flex items-center gap-1 text-[10px] font-medium",
               awaitingWarn ? "text-amber-400" : "text-muted-foreground",
             )}
           >
@@ -300,16 +276,9 @@ export function AiCopilotPanel({
             {formatDurationPtBr(timing.awaitingReplyMs)}
           </span>
         )}
-        <ChevronDown
-          className={cn(
-            "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
+      </div>
 
-      {open && (
-        <div className="space-y-3 border-t border-border px-3 py-3 text-xs">
+      <div className="space-y-3 border-t border-border px-3 py-3 text-xs">
           {/* Timing flags — no AI, always live */}
           <div className="space-y-1">
             {timing.awaitingReplyMs != null && (
@@ -497,7 +466,6 @@ export function AiCopilotPanel({
             </button>
           </div>
         </div>
-      )}
     </div>
   );
 }
