@@ -11,6 +11,22 @@ import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import {
   ArrowLeft,
   ChevronDown,
   Plus,
@@ -660,6 +676,13 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
     setState((s) => ({ ...s, steps: moveAt(s.steps, path, direction) }))
   }
 
+  // Drag-and-drop reorder — same bucket the ↑/↓ buttons swap within
+  // (root list, or one condition's Yes/No branch), but jumps straight to
+  // the dropped index instead of one adjacent swap at a time.
+  function reorderStepsAt(scope: ParentScope, oldIndex: number, newIndex: number) {
+    setState((s) => ({ ...s, steps: reorderAt(s.steps, scope, oldIndex, newIndex) }))
+  }
+
   async function save() {
     setSaving(true)
     try {
@@ -774,6 +797,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
               addStepAt={addStepAt}
               deleteStepAt={deleteStepAt}
               moveStepAt={moveStepAt}
+              reorderStepsAt={reorderStepsAt}
             />
           </ResourcesProvider>
         </div>
@@ -1035,6 +1059,7 @@ interface StepListProps {
   addStepAt: (parent: ParentScope, index: number, type: AutomationStepType) => void
   deleteStepAt: (path: StepPath) => void
   moveStepAt: (path: StepPath, direction: -1 | 1) => void
+  reorderStepsAt: (scope: ParentScope, oldIndex: number, newIndex: number) => void
 }
 
 function StepList(props: StepListProps) {
@@ -1048,20 +1073,48 @@ function StepList(props: StepListProps) {
           return { kind: "branch", parentCid: last.parentCid, branch: last.branch } as const
         })()
 
+  // Drag-to-reorder within this one list (root, or a single condition's
+  // Yes/No branch) — each nesting level gets its own DndContext, so a
+  // drag can never jump into a different branch or the root list.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  )
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = steps.findIndex((s) => s.cid === active.id)
+    const newIndex = steps.findIndex((s) => s.cid === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    props.reorderStepsAt(parentScope, oldIndex, newIndex)
+  }
+
   return (
     <div className="flex flex-col items-center">
       <AddButton onPick={(t) => props.addStepAt(parentScope, 0, t)} />
-      {steps.map((step, idx) => (
-        <StepRenderer
-          key={step.cid}
-          step={step}
-          index={idx}
-          total={steps.length}
-          parentScope={parentScope}
-          parentPath={parentPath}
-          {...rest}
-        />
-      ))}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={steps.map((s) => s.cid)}
+          strategy={verticalListSortingStrategy}
+        >
+          {steps.map((step, idx) => (
+            <StepRenderer
+              key={step.cid}
+              step={step}
+              index={idx}
+              total={steps.length}
+              parentScope={parentScope}
+              parentPath={parentPath}
+              {...rest}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   )
 }
@@ -1107,9 +1160,25 @@ function StepRenderer({
   // of the sibling branch.
   const wrapperWidth = isCondition ? "w-full" : cardWidth
 
+  // Drag handle for reordering — registers this whole card (wrapper +,
+  // for a condition, its branches) as one sortable item within its
+  // StepList's DndContext. The handle is a separate button from the
+  // expand/collapse toggle below so a drag gesture can't also fire a
+  // click, and vice versa.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: step.cid })
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   return (
     <>
-      <div className={cn("z-10 flex flex-col items-center", wrapperWidth)}>
+      <div
+        ref={setNodeRef}
+        style={dragStyle}
+        className={cn("z-10 flex flex-col items-center", wrapperWidth, isDragging && "opacity-40")}
+      >
         <div
           className={cn(
             "rounded-lg border border-border border-l-4 bg-card shadow-lg",
@@ -1117,30 +1186,40 @@ function StepRenderer({
             meta.border,
           )}
         >
-          <button
-            type="button"
-            onClick={() => props.setExpandedId(expanded ? null : step.cid)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left"
-          >
-            <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
-              <Icon className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {isCondition
-                  ? t("kindCondition")
-                  : step.step_type === "wait"
-                    ? t("kindWait")
-                    : t("kindAction")}
+          <div className="flex w-full items-center gap-1 px-2 py-3">
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              aria-label={t("dragToReorder")}
+              className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => props.setExpandedId(expanded ? null : step.cid)}
+              className="flex min-w-0 flex-1 items-center gap-3 py-0 pr-2 text-left"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <Icon className="h-4 w-4" />
               </div>
-              <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
-              <div className="truncate text-[11px] text-muted-foreground">{previewFor(step)}</div>
-            </div>
-            <ChevronDown
-              className={cn("h-4 w-4 text-muted-foreground transition-transform", expanded && "rotate-180")}
-            />
-          </button>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {isCondition
+                    ? t("kindCondition")
+                    : step.step_type === "wait"
+                      ? t("kindWait")
+                      : t("kindAction")}
+                </div>
+                <div className="truncate text-sm font-medium text-foreground">{t(`steps.${meta.label}`)}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{previewFor(step)}</div>
+              </div>
+              <ChevronDown
+                className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")}
+              />
+            </button>
+          </div>
           {expanded && (
             <div className="border-t border-border px-4 py-3">
               <StepEditor
@@ -1711,6 +1790,26 @@ function moveInBranches(
   }
   const next = rest.length === 0 ? swap(bucket, head.index) : bucket
   return { ...branches, [head.branch]: next }
+}
+
+// Drag-and-drop reorder within one bucket (root list, or a single
+// condition's Yes/No branch) — same one-hop `ParentScope` addressing as
+// `insertAt` below, since a drag only ever happens within the list a
+// single `StepList`/DndContext instance owns.
+function reorderAt(
+  steps: BuilderStep[],
+  scope: ParentScope,
+  oldIndex: number,
+  newIndex: number,
+): BuilderStep[] {
+  if (scope.kind === "root") {
+    return arrayMove(steps, oldIndex, newIndex)
+  }
+  return steps.map((s) => {
+    if (s.cid !== scope.parentCid || !s.branches) return s
+    const bucket = arrayMove(s.branches[scope.branch], oldIndex, newIndex)
+    return { ...s, branches: { ...s.branches, [scope.branch]: bucket } }
+  })
 }
 
 // ------------------------------------------------------------

@@ -926,6 +926,7 @@
       "kindCondition": "조건",
       "kindWait": "대기",
       "kindAction": "작업",
+      "dragToReorder": "드래그하여 순서 변경",
       "toasts": {
         "saved": "자동화가 저장되었습니다",
         "created": "자동화가 생성되었습니다",

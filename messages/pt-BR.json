@@ -927,6 +927,7 @@
       "kindCondition": "Condição",
       "kindWait": "Espera",
       "kindAction": "Ação",
+      "dragToReorder": "Arrastar para reordenar",
       "toasts": {
         "saved": "Automação salva",
         "created": "Automação criada",
