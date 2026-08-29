@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  requireRole: vi.fn(),
+  requireWrite: vi.fn(),
   add: vi.fn(),
   remove: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/account', () => ({
-  requireRole: mocks.requireRole,
+  requireWrite: mocks.requireWrite,
   toErrorResponse: vi.fn(() =>
     Response.json({ error: 'auth failed' }, { status: 403 })
   ),
@@ -49,10 +49,10 @@ function request(method: 'POST' | 'DELETE', body: unknown) {
 const params = { params: Promise.resolve({ id: 'contact-1' }) };
 
 beforeEach(() => {
-  mocks.requireRole.mockReset();
+  mocks.requireWrite.mockReset();
   mocks.add.mockReset();
   mocks.remove.mockReset();
-  mocks.requireRole.mockResolvedValue(context);
+  mocks.requireWrite.mockResolvedValue(context);
 });
 
 describe('/api/contacts/[id]/tags', () => {
@@ -62,7 +62,7 @@ describe('/api/contacts/[id]/tags', () => {
     const response = await POST(request('POST', { tag_id: 'tag-1' }), params);
 
     expect(response.status).toBe(200);
-    expect(mocks.requireRole).toHaveBeenCalledWith('agent');
+    expect(mocks.requireWrite).toHaveBeenCalledWith('agent');
     expect(mocks.add).toHaveBeenCalledWith({
       db: context.supabase,
       accountId: 'account-1',

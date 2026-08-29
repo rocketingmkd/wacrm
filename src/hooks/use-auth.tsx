@@ -20,6 +20,13 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import {
+  isWriteLocked,
+  billingWarning as billingWarningFor,
+  isBillingStatus,
+  type BillingSummary,
+  type BillingWarning,
+} from "@/lib/billing/state";
 
 interface Profile {
   id: string;
@@ -102,6 +109,29 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+
+  // ----------------------------------------------------------
+  // Billing (added by the platform-billing series)
+  //
+  // `billing` is null while loading OR when the account somehow has
+  // no account_billing row yet (shouldn't happen post-041 — every
+  // account gets one from handle_new_user / the backfill — but the
+  // client-side derivation fails OPEN on null, same as the server's
+  // account_write_locked()).
+  // ----------------------------------------------------------
+
+  /** Raw billing summary for the caller's account. Null while loading. */
+  billing: BillingSummary | null;
+  /**
+   * Cosmetic mirror of the server-side write-lock (is_account_member()
+   * in RLS — see supabase/migrations/041_platform_billing.sql). The
+   * SERVER is the real gate; this only drives the banner and disables
+   * buttons so the failure reads as "read-only" instead of a raw
+   * error after the fact.
+   */
+  isReadOnly: boolean;
+  /** What (if anything) the billing banner should show. Null = healthy. */
+  billingWarning: BillingWarning | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -115,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [billing, setBilling] = useState<BillingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
@@ -166,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // (with account_id / account_role) still resolves even if the
         // account name lookup itself can't.
         let accountRow: AccountSummary | null = null;
+        let billingRow: BillingSummary | null = null;
         if (data.account_id) {
           const { data: account, error: accountErr } = await supabase
             .from("accounts")
@@ -186,6 +218,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: account.id,
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
+            };
+          }
+
+          // Third point lookup, same rationale as the accounts one
+          // above: a plain query by account_id, not an embedded join,
+          // so a stale PostgREST schema-cache entry for the new FK
+          // can't blank billing state on top of everything else.
+          // account_billing is readable by any account member (see
+          // the account_billing_select RLS policy, migration 041) —
+          // no write policy exists, so this is read-only by design.
+          const { data: billingData, error: billingErr } = await supabase
+            .from("account_billing")
+            .select("status, trial_ends_at, current_period_end, past_due_since")
+            .eq("account_id", data.account_id)
+            .maybeSingle();
+          if (billingErr) {
+            console.error("[AuthProvider] fetchBilling error:", {
+              message: billingErr.message,
+              details: billingErr.details,
+              hint: billingErr.hint,
+              code: billingErr.code,
+            });
+          } else if (billingData && isBillingStatus(billingData.status)) {
+            billingRow = {
+              status: billingData.status,
+              trial_ends_at: billingData.trial_ends_at,
+              current_period_end: billingData.current_period_end,
+              past_due_since: billingData.past_due_since,
             };
           }
         }
@@ -214,6 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_role: accountRole,
         });
         setAccount(accountRow);
+        setBilling(billingRow);
       } else {
         lastFetchedUserIdRef.current = null;
       }
@@ -287,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setBilling(null);
         setProfileLoading(false);
       }
 
@@ -306,6 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setBilling(null);
     window.location.href = "/login";
   }, []);
 
@@ -330,8 +393,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      isReadOnly: isWriteLocked(billing),
+      billingWarning: billingWarningFor(billing),
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, billing]);
 
   return (
     <AuthContext.Provider
@@ -343,6 +408,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         account,
+        billing,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         ...derived,
       }}
@@ -373,6 +439,7 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
+      billing: null,
       defaultCurrency: DEFAULT_CURRENCY,
       accountId: null,
       accountRole: null,
@@ -383,6 +450,13 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      // Out-of-provider fallback fails closed on every capability
+      // above, but `isReadOnly: false` here (not true) — this branch
+      // means there's no auth context at all (a bug, not a locked
+      // account), and a spurious "read-only" banner would be
+      // actively misleading in that state.
+      isReadOnly: false,
+      billingWarning: null,
     };
   }
   return ctx;

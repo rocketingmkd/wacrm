@@ -8,6 +8,8 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit';
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account';
+import { isAccountWriteLocked } from '@/lib/billing/write-lock';
 
 /**
  * POST /api/whatsapp/react
@@ -49,6 +51,15 @@ export async function POST(request: Request) {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       );
+    }
+
+    // Belt-and-braces ahead of the Meta send below: message_reactions
+    // writes go through RLS (already write-lock-aware post-041), but
+    // that's AFTER we'd have already sent the reaction to Meta —
+    // check first so a locked account can't end up with a reaction
+    // live on WhatsApp but not mirrored locally.
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError());
     }
 
     const body = await request.json();

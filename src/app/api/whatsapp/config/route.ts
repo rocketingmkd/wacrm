@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { saveVerifiedWhatsAppConfig, SaveConfigError } from '@/lib/whatsapp/persist-config'
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 /**
  * Resolve the caller's account_id from their profile. Inlined here
@@ -164,6 +166,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // saveVerifiedWhatsAppConfig writes via the service-role client
+    // (see src/lib/whatsapp/persist-config.ts), which bypasses RLS —
+    // is_account_member()'s write-lock never runs for it, so it must
+    // be checked explicitly here.
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
+    }
+
     const body = await request.json()
     const { phone_number_id, waba_id, access_token, verify_token, pin } = body
 
@@ -238,6 +248,10 @@ export async function DELETE() {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     const { error: deleteError } = await supabase

@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -148,6 +150,10 @@ export async function POST() {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     const { data: config, error: configError } = await supabase

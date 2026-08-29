@@ -38,18 +38,27 @@ export type CanAction =
  *   <Button disabled={!canEdit} title={canEdit ? "Save" : "Read-only"} />
  */
 export function useCan(action: CanAction): boolean {
-  const { profileLoading, accountRole } = useAuth();
+  const { profileLoading, accountRole, isReadOnly } = useAuth();
   if (profileLoading || !accountRole) return false;
 
   switch (action) {
+    // These three are "can write" actions — folding the billing
+    // write-lock in here means every existing call site (GatedButton
+    // canAct={useCan('send-messages')} etc.) disables itself on a
+    // locked account automatically, with zero call-site changes.
+    // This is cosmetic: the real gate is RLS (is_account_member() in
+    // supabase/migrations/041_platform_billing.sql) — a call site
+    // that skipped useCan entirely still can't actually write.
     case "manage-members":
-      return canManageMembers(accountRole);
+      return canManageMembers(accountRole) && !isReadOnly;
     case "edit-settings":
-      return canEditSettings(accountRole);
+      return canEditSettings(accountRole) && !isReadOnly;
     case "send-messages":
-      return canSendMessages(accountRole);
+      return canSendMessages(accountRole) && !isReadOnly;
+    // A locked account is, definitionally, "view only" — even for a
+    // role that would otherwise be able to write.
     case "view-only":
-      return canViewOnly(accountRole);
+      return canViewOnly(accountRole) || isReadOnly;
     case "delete-account":
       return canDeleteAccount(accountRole);
     case "transfer-ownership":

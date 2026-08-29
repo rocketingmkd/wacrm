@@ -32,9 +32,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
-import { hasScope, type ApiScope } from '@/lib/api-keys/scopes';
-import { forbidden, rateLimited, unauthorized } from '@/lib/api/v1/respond';
+import { hasScope, isWriteScope, type ApiScope } from '@/lib/api-keys/scopes';
+import { forbidden, paymentRequired, rateLimited, unauthorized } from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { isAccountWriteLocked } from '@/lib/billing/write-lock';
 
 export interface ApiKeyContext {
   /** Discriminant — lets shared logic tell key auth from cookie auth. */
@@ -70,9 +71,10 @@ function extractKey(request: Request): string | null {
  * single scope. Throws an `ApiError` (mapped to the envelope by
  * `toApiErrorResponse`) on any failure:
  *
- *   401 unauthorized — no key, malformed, unknown, revoked, expired
- *   403 forbidden    — valid key without the required scope
- *   429 rate_limited — per-key budget exhausted
+ *   401 unauthorized      — no key, malformed, unknown, revoked, expired
+ *   403 forbidden         — valid key without the required scope
+ *   402 payment_required  — valid key + scope, but the account is billing-locked
+ *   429 rate_limited      — per-key budget exhausted
  *
  * On success, bumps `last_used_at` (fire-and-forget) and returns the
  * account context.
@@ -103,6 +105,18 @@ export async function requireApiKey(
 
   if (scope && !hasScope(row.scopes, scope)) {
     throw forbidden(`This API key is missing the '${scope}' scope`);
+  }
+
+  // This client is service-role (see the module doc above) — it
+  // bypasses RLS entirely, so is_account_member()'s write-lock check
+  // never runs for it. This is the ONLY enforcement point for a
+  // billing-locked account on the public API; unlike the dashboard,
+  // there is no RLS backstop here.
+  if (scope && isWriteScope(scope)) {
+    const locked = await isAccountWriteLocked(supabaseAdmin(), row.account_id);
+    if (locked) {
+      throw paymentRequired();
+    }
   }
 
   touchLastUsed(row.id);

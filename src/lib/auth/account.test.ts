@@ -66,9 +66,19 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
-const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
-  "./account"
-);
+const isAccountWriteLocked = vi.fn<(...args: unknown[]) => Promise<boolean>>();
+vi.mock("@/lib/billing/write-lock", () => ({
+  isAccountWriteLocked: (...args: unknown[]) => isAccountWriteLocked(...args),
+}));
+
+const {
+  getCurrentAccount,
+  requireWrite,
+  UnauthorizedError,
+  ForbiddenError,
+  PaymentRequiredError,
+  toErrorResponse,
+} = await import("./account");
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -172,5 +182,53 @@ describe("getCurrentAccount", () => {
     await expect(getCurrentAccount()).rejects.toThrow(
       "Profile is not linked to an account",
     );
+  });
+});
+
+describe("requireWrite", () => {
+  function makeWritableClient(role = "agent") {
+    return makeClient({
+      user: { id: "user-1" },
+      byTable: {
+        profiles: { data: { account_id: "acct-1", account_role: role }, error: null },
+        accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
+      },
+    });
+  }
+
+  it("resolves the context when the account is not write-locked", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(false);
+
+    const ctx = await requireWrite("agent");
+    expect(ctx.accountId).toBe("acct-1");
+    expect(isAccountWriteLocked).toHaveBeenCalledWith(client, "acct-1");
+  });
+
+  it("throws PaymentRequiredError when the account is write-locked", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(true);
+
+    await expect(requireWrite("agent")).rejects.toBeInstanceOf(PaymentRequiredError);
+  });
+
+  it("still enforces the role check before even looking at billing", async () => {
+    const { client } = makeWritableClient("viewer");
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(false);
+
+    await expect(requireWrite("agent")).rejects.toBeInstanceOf(ForbiddenError);
+    expect(isAccountWriteLocked).not.toHaveBeenCalled();
+  });
+});
+
+describe("toErrorResponse", () => {
+  it("maps PaymentRequiredError to 402 with a stable error code", async () => {
+    const res = toErrorResponse(new PaymentRequiredError());
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body).toEqual({ error: "Account is read-only", code: "account_read_only" });
   });
 });

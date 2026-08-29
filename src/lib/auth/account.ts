@@ -29,6 +29,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import { isAccountWriteLocked } from "@/lib/billing/write-lock";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
 
 // ------------------------------------------------------------
@@ -55,6 +56,27 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * Thrown by `requireWrite` when the caller has the right role but
+ * their ACCOUNT is billing-locked (trial lapsed, expired, canceled).
+ * 402 rather than 403 because it's a distinct axis from role — "your
+ * account", not "your permissions" — which lets the client branch on
+ * `code: 'account_read_only'` without string-matching the message.
+ *
+ * This is a UX layer, not the real gate: RLS (is_account_member(),
+ * see supabase/migrations/041_platform_billing.sql) already rejects
+ * the underlying write regardless of whether a route remembers to
+ * call requireWrite. This class exists so API routes can turn that
+ * opaque Postgres 42501 into a clean, actionable response instead.
+ */
+export class PaymentRequiredError extends Error {
+  readonly status = 402 as const;
+  constructor(message = "Account is read-only") {
+    super(message);
+    this.name = "PaymentRequiredError";
+  }
+}
+
+/**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
  *
@@ -67,6 +89,12 @@ export class ForbiddenError extends Error {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
+  if (err instanceof PaymentRequiredError) {
+    return NextResponse.json(
+      { error: err.message, code: "account_read_only" },
+      { status: err.status },
+    );
+  }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
@@ -185,6 +213,33 @@ export async function requireRole(min: AccountRole): Promise<AccountContext> {
     throw new ForbiddenError(
       `This action requires the '${min}' role or higher`,
     );
+  }
+  return ctx;
+}
+
+/**
+ * Like `requireRole`, but for MUTATING handlers only: also rejects
+ * when the caller's account is billing-locked (trial lapsed, expired
+ * or canceled — see src/lib/billing/state.ts), throwing
+ * `PaymentRequiredError` (402) instead of letting the write fall
+ * through to an opaque RLS rejection.
+ *
+ * Deliberately NOT folded into `requireRole` itself: that would add a
+ * billing round trip to every read too (GET routes call `requireRole`
+ * constantly). Swap `requireRole('agent')` → `requireWrite('agent')`
+ * only on the handler(s) that actually mutate data — a route that
+ * exports both GET and POST typically keeps GET on `requireRole` and
+ * only changes POST/PATCH/DELETE.
+ *
+ * This is UX only. The real gate is RLS: even if a route forgets this
+ * wrapper, the underlying `.insert()/.update()/.delete()` still fails
+ * under `is_account_member()` for a locked account. What this adds is
+ * a clean 402 instead of a raw Postgres 42501.
+ */
+export async function requireWrite(min: AccountRole): Promise<AccountContext> {
+  const ctx = await requireRole(min);
+  if (await isAccountWriteLocked(ctx.supabase, ctx.accountId)) {
+    throw new PaymentRequiredError();
   }
   return ctx;
 }

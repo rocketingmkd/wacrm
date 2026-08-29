@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { validateFlowForActivation } from '@/lib/flows/validate'
 
@@ -29,7 +29,7 @@ export async function POST(
   // below bypasses RLS, so enforce the role here (a viewer passes the
   // membership-only ownership check).
   try {
-    await requireRole('agent')
+    await requireWrite('agent')
   } catch (err) {
     return toErrorResponse(err)
   }

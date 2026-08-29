@@ -9,6 +9,7 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -29,6 +30,7 @@ interface DispatchArgs {
  * or slow LLM call must not affect the webhook's 200 to Meta.
  *
  * Eligibility gates (any → silent no-op):
+ *   - the account is billing write-locked (trial lapsed, expired, canceled)
  *   - AI off / auto-reply disabled for the account
  *   - a human agent is assigned (they own the thread)
  *   - auto-reply was disabled for this conversation (prior handoff)
@@ -46,6 +48,11 @@ export async function dispatchInboundToAiReply(
 
   try {
     const db = supabaseAdmin()
+
+    // This engine runs entirely on the service-role client, which
+    // bypasses RLS — is_account_member()'s write-lock never runs for
+    // it, so a billing-locked account must be checked explicitly here.
+    if (await isAccountWriteLocked(db, accountId)) return
 
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return

@@ -70,7 +70,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+  // '/platform' is the staff-only cross-tenant panel — this only
+  // gates SESSION (any logged-in user reaches the route); the actual
+  // is_platform_admin() authorization check lives in
+  // src/app/platform/layout.tsx (requirePlatformAdmin()), not here,
+  // to avoid a DB round trip on every matched request.
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/platform']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

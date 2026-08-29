@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -10,6 +10,13 @@ import {
   validateSendMessageParams,
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
+import {
+  requireWrite,
+  toErrorResponse,
+  UnauthorizedError,
+  ForbiddenError,
+  PaymentRequiredError,
+} from '@/lib/auth/account'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -22,42 +29,22 @@ import {
 // dashboard's internal `{ error }` shape.
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // requireWrite('agent') resolves auth + account + role AND the
+    // billing write-lock in one call. Previously this route only
+    // checked "does the caller have a profile linked to an account" —
+    // no role check at all — so a viewer could reach the Meta send
+    // call below and only fail afterwards, at the local `messages`
+    // insert (which RLS already gates at 'agent'). That left a real
+    // gap: the WhatsApp message went out even though it never got
+    // persisted. requireWrite('agent') closes that gap as a side
+    // effect of adding the billing gate.
+    const { supabase, accountId, userId } = await requireWrite('agent')
 
     // Per-user rate limit. Bucket key is scoped to this route so
     // `/broadcast` has an independent budget.
-    const limit = checkRateLimit(`send:${user.id}`, RATE_LIMITS.send)
+    const limit = checkRateLimit(`send:${userId}`, RATE_LIMITS.send)
     if (!limit.success) {
       return rateLimitResponse(limit)
-    }
-
-    // Resolve the caller's account_id. Every downstream lookup
-    // (conversation, whatsapp_config, message_templates) is account-
-    // scoped post-multi-user, so the previous `user_id` filters
-    // returned nothing for teammates who didn't author the row.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
     }
 
     const body = await request.json()
@@ -148,7 +135,7 @@ export async function POST(request: Request) {
       const resolved = await findOrCreateConversation(
         supabase,
         accountId,
-        user.id,
+        userId,
         contact_id
       )
       if (!resolved) {
@@ -201,6 +188,16 @@ export async function POST(request: Request) {
       throw err
     }
   } catch (error) {
+    // requireWrite('agent') throws UnauthorizedError / ForbiddenError /
+    // PaymentRequiredError — those carry their own status + message and
+    // must not be swallowed into a generic 500 "Failed to send message".
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError ||
+      error instanceof PaymentRequiredError
+    ) {
+      return toErrorResponse(error)
+    }
     console.error('Error in WhatsApp send POST:', error)
     return NextResponse.json(
       { error: 'Failed to send message' },
@@ -209,7 +206,7 @@ export async function POST(request: Request) {
   }
 }
 
-type SendSupabase = Awaited<ReturnType<typeof createClient>>
+type SendSupabase = SupabaseClient
 
 /**
  * Return the contact's conversation id in this account, creating one if

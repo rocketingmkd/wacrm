@@ -19,6 +19,7 @@ import type {
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -67,6 +68,16 @@ export interface DispatchInput {
 export async function runAutomationsForTrigger(input: DispatchInput): Promise<void> {
   try {
     const db = supabaseAdmin()
+
+    // This engine runs entirely on the service-role client, which
+    // bypasses RLS — is_account_member()'s write-lock never runs for
+    // it, so a billing-locked account must be checked explicitly
+    // here. Inbound messages still land regardless (the webhook route
+    // never gates receiving) — only running automations (tagging,
+    // moving deals, sending WhatsApp) stops.
+    if (await isAccountWriteLocked(db, input.accountId)) {
+      return
+    }
 
     // Tenant isolation. `contactId` can be caller-supplied (the manual
     // POST /api/automations/engine entrypoint reads it straight from the
@@ -139,6 +150,21 @@ export async function resumePendingExecution(pending: {
   context: AutomationContext
 }): Promise<void> {
   const db = supabaseAdmin()
+
+  // The cron already claimed this row (status → 'running') before
+  // calling us, so on a locked account we can't just `return` — that
+  // would strand the row at 'running' forever (the cron's claim query
+  // only looks at status='pending'). Revert the claim instead: the
+  // account may unlock later (payment catches up) and the paused
+  // Wait step should resume then, not be silently dropped.
+  if (await isAccountWriteLocked(db, pending.account_id)) {
+    await db
+      .from('automation_pending_executions')
+      .update({ status: 'pending' })
+      .eq('id', pending.id)
+    return
+  }
+
   const { data: automation, error } = await db
     .from('automations')
     .select('*')

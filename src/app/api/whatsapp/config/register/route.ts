@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { registerPhoneNumber } from '@/lib/whatsapp/meta-api'
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 /**
  * POST /api/whatsapp/config/register
@@ -39,6 +41,10 @@ export async function POST(request: Request) {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     const body = await request.json()

@@ -19,6 +19,15 @@ vi.mock("@/lib/api-keys/store", () => ({
   touchLastUsed: (id: string) => touchLastUsed(id),
 }));
 
+// Mock the billing write-lock check — requireApiKey calls it directly
+// for write scopes (the public API runs on a service-role client,
+// which bypasses RLS, so this IS the enforcement point, unlike the
+// dashboard where RLS is the real gate).
+const isAccountWriteLocked = vi.fn<(...args: unknown[]) => Promise<boolean>>();
+vi.mock("@/lib/billing/write-lock", () => ({
+  isAccountWriteLocked: (...args: unknown[]) => isAccountWriteLocked(...args),
+}));
+
 // Import AFTER the mocks are registered.
 const { requireApiKey } = await import("./api-context");
 
@@ -47,6 +56,8 @@ beforeEach(() => {
   __resetRateLimitForTests();
   findActiveKeyByHash.mockReset();
   touchLastUsed.mockReset();
+  isAccountWriteLocked.mockReset();
+  isAccountWriteLocked.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -128,5 +139,48 @@ describe("requireApiKey", () => {
       "rate_limited",
       429,
     );
+  });
+
+  describe("billing write-lock", () => {
+    it("402s a write scope when the account is billing-locked", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ scopes: ["messages:send"] }));
+      isAccountWriteLocked.mockResolvedValue(true);
+      await expectApiError(
+        requireApiKey(reqWith(`Bearer ${KEY}`), "messages:send"),
+        "payment_required",
+        402,
+      );
+    });
+
+    it("does not check the write-lock at all for a read scope", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ scopes: ["contacts:read"] }));
+      const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:read");
+      expect(ctx.accountId).toBe("acct-1");
+      expect(isAccountWriteLocked).not.toHaveBeenCalled();
+    });
+
+    it("does not check the write-lock when no scope is required at all", async () => {
+      findActiveKeyByHash.mockResolvedValue(row());
+      await requireApiKey(reqWith(`Bearer ${KEY}`));
+      expect(isAccountWriteLocked).not.toHaveBeenCalled();
+    });
+
+    it("passes a write scope through when the account is not locked", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ scopes: ["broadcasts:send"] }));
+      isAccountWriteLocked.mockResolvedValue(false);
+      const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "broadcasts:send");
+      expect(ctx.accountId).toBe("acct-1");
+    });
+
+    it("checks the write-lock for the key's own account_id", async () => {
+      findActiveKeyByHash.mockResolvedValue(
+        row({ account_id: "acct-42", scopes: ["contacts:write"] }),
+      );
+      await requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:write");
+      expect(isAccountWriteLocked).toHaveBeenCalledWith(
+        expect.anything(),
+        "acct-42",
+      );
+    });
   });
 });

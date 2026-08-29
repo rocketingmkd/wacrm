@@ -10,6 +10,8 @@ import {
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 /**
  * Shared upsert payload builder — both the Meta-failure path and the
@@ -110,6 +112,10 @@ export async function POST(request: Request) {
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     let payload: TemplatePayload

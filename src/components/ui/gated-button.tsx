@@ -49,6 +49,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 interface GatedButtonProps extends Omit<ComponentProps<typeof Button>, "title"> {
   /** False → button is disabled and the wrapper span shows the
@@ -74,9 +75,18 @@ export function GatedButton({
   children,
   ...rest
 }: GatedButtonProps) {
+  // Reads isReadOnly directly (rather than requiring every call site
+  // to thread it through) so the billing-specific tooltip applies
+  // automatically wherever `canAct` came from `useCan(...)` — those
+  // three actions already fold `!isReadOnly` into their boolean (see
+  // src/hooks/use-can.ts), so this only changes the COPY, not whether
+  // the button is disabled.
+  const { isReadOnly } = useAuth();
   const effectivelyDisabled = disabled || !canAct;
   const tooltip = !canAct && gateReason
-    ? `Somente leitura — sua função não permite ${gateReason}`
+    ? isReadOnly
+      ? "Somente leitura — assinatura expirada. Regularize o pagamento para voltar a escrever."
+      : `Somente leitura — sua função não permite ${gateReason}`
     : title;
 
   return (

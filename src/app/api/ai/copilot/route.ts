@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireRole, requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { refreshConversationInsight } from '@/lib/ai/copilot-refresh'
@@ -80,7 +80,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId } = await requireRole('agent')
+    // Refreshing calls the LLM and writes conversation_insights — a
+    // write. GET above stays on requireRole: reading a cached insight
+    // must keep working for a read-only (billing-locked) account.
+    const { supabase, accountId, userId } = await requireWrite('agent')
 
     const userLimit = checkRateLimit(`ai-copilot:${userId}`, RATE_LIMITS.aiCopilot)
     if (!userLimit.success) return rateLimitResponse(userLimit)

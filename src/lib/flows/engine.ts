@@ -33,6 +33,7 @@
  */
 
 import { supabaseAdmin } from "./admin-client";
+import { isAccountWriteLocked } from "@/lib/billing/write-lock";
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
@@ -837,6 +838,16 @@ export async function dispatchInboundToFlows(
 ): Promise<DispatchInboundResult> {
   const db = supabaseAdmin();
   try {
+    // This engine runs entirely on the service-role client, which
+    // bypasses RLS — is_account_member()'s write-lock never runs for
+    // it, so a billing-locked account must be checked explicitly here.
+    // Inbound messages themselves must still land (see the webhook
+    // route, which never gates receiving) — only the flow engine's
+    // own writes (advancing a run, sending outbound WhatsApp) stop.
+    if (await isAccountWriteLocked(db, input.accountId)) {
+      return { consumed: false, outcome: "no_match" };
+    }
+
     const activeRun = await loadActiveRunForContact(
       db,
       input.accountId,

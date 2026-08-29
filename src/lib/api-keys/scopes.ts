@@ -73,3 +73,24 @@ export function hasScope(
 ): boolean {
   return granted.includes(required);
 }
+
+/**
+ * Scopes that mutate account data or spend WhatsApp send budget.
+ * `requireApiKey` (src/lib/auth/api-context.ts) checks this to gate
+ * write requests on a billing-locked account — the public API runs
+ * on a service-role client, which bypasses RLS entirely, so this is
+ * the ONLY enforcement point for /api/v1 writes (unlike the
+ * dashboard, where RLS itself is the real gate). `messages:read`,
+ * `contacts:read`, `conversations:read` are read-only and stay
+ * available to a locked account, same as the rest of the app.
+ */
+const WRITE_SCOPES = new Set<ApiScope>([
+  'messages:send',
+  'contacts:write',
+  'broadcasts:send',
+  'webhooks:manage',
+]);
+
+export function isWriteScope(scope: ApiScope): boolean {
+  return WRITE_SCOPES.has(scope);
+}

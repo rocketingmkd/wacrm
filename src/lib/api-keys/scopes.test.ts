@@ -4,6 +4,7 @@ import {
   SCOPE_DESCRIPTIONS,
   hasScope,
   isApiScope,
+  isWriteScope,
   normalizeScopes,
 } from './scopes';
 
@@ -58,6 +59,18 @@ describe('SCOPE_DESCRIPTIONS', () => {
   it('has a description for every scope', () => {
     for (const s of API_SCOPES) {
       expect(SCOPE_DESCRIPTIONS[s]).toBeTruthy();
+    }
+  });
+});
+
+describe('isWriteScope', () => {
+  it('classifies every scope as read or write, matching the billing write-lock gate', () => {
+    const writeScopes = new Set(['messages:send', 'contacts:write', 'broadcasts:send', 'webhooks:manage']);
+    const readScopes = new Set(['messages:read', 'contacts:read', 'conversations:read']);
+    for (const s of API_SCOPES) {
+      if (writeScopes.has(s)) expect(isWriteScope(s)).toBe(true);
+      else if (readScopes.has(s)) expect(isWriteScope(s)).toBe(false);
+      else throw new Error(`Scope '${s}' is not classified in this test — add it above`);
     }
   });
 });

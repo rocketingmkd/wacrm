@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
 
 import {
   getCurrentAccount,
-  requireRole,
+  requireWrite,
   toErrorResponse,
 } from "@/lib/auth/account";
 import {
@@ -51,7 +51,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireWrite("admin");
 
     const limit = checkRateLimit(
       `admin:roundRobin:${ctx.userId}`,

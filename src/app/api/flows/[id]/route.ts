@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 
 /**
@@ -97,7 +97,7 @@ export async function PUT(
   // it, but this route mutates via the service-role client which bypasses
   // RLS, so the role must be enforced here (a viewer passes ownership).
   try {
-    await requireRole('agent')
+    await requireWrite('agent')
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -192,7 +192,7 @@ export async function DELETE(
   // Writes require at least `agent` — see the PUT handler note. The
   // service-role client below bypasses the agent-gated flows_delete RLS.
   try {
-    await requireRole('agent')
+    await requireWrite('agent')
   } catch (err) {
     return toErrorResponse(err)
   }

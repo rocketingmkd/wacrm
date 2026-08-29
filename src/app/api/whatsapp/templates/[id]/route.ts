@@ -11,6 +11,8 @@ import {
 } from '@/lib/whatsapp/template-validators'
 import { buildMetaTemplatePayload } from '@/lib/whatsapp/template-components'
 import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
+import { PaymentRequiredError, toErrorResponse } from '@/lib/auth/account'
+import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 
 /**
  * Per-template lifecycle endpoint.
@@ -78,6 +80,10 @@ export async function PATCH(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     let payload: TemplatePayload
@@ -271,6 +277,10 @@ export async function DELETE(
         { error: 'Your profile is not linked to an account.' },
         { status: 403 },
       )
+    }
+
+    if (await isAccountWriteLocked(supabase, accountId)) {
+      return toErrorResponse(new PaymentRequiredError())
     }
 
     const { data: existing, error: lookupErr } = await supabase

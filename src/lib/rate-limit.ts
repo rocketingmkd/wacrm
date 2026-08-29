@@ -175,6 +175,12 @@ export const RATE_LIMITS = {
   /** Copilot insight refresh, per account — caps the team's combined
    *  forced refreshes on the shared BYO key. */
   aiCopilotAccount: { limit: 90, windowMs: 60_000 },
+  /** Rocketing Pay billing webhook, per source IP. Applied BEFORE
+   *  token verification — otherwise billing_webhook_logs itself
+   *  becomes the flood target. 60/min per IP is comfortably above
+   *  Rocketing Pay's own real delivery rate (charges/renewals trickle
+   *  in, not burst) while bounding an attacker hammering the URL. */
+  billingWebhook: { limit: 60, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

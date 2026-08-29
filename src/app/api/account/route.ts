@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 
 import {
-  requireRole,
+  requireWrite,
   getCurrentAccount,
   toErrorResponse,
 } from "@/lib/auth/account";
@@ -40,7 +40,7 @@ const MAX_NAME_LEN = 80;
 
 export async function PATCH(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireWrite("admin");
 
     // Per-user limit on admin-class mutations. Bounds accidental
     // abuse (script run in a loop) and a compromised admin session

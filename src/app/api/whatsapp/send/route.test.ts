@@ -14,6 +14,8 @@ const messageInserts: Array<Record<string, unknown>> = []
 // Toggles for the per-test scenario.
 let existingConversation: Record<string, unknown> | null = null
 let contactRow: Record<string, unknown> | null = null
+// Controls the account_write_locked() RPC requireWrite() calls internally.
+let accountWriteLocked = false
 // A conversation created during the request becomes retrievable by id —
 // the shared send core re-loads the conversation (with its contact) from
 // just the id, so the mock must model insert-then-select-by-id.
@@ -35,7 +37,9 @@ function makeSupabaseMock() {
     const selectResult = () => {
       switch (table) {
         case 'profiles':
-          return { data: { account_id: 'acct-1' }, error: null }
+          return { data: { account_id: 'acct-1', account_role: 'owner' }, error: null }
+        case 'accounts':
+          return { data: { id: 'acct-1', name: 'Acme' }, error: null }
         case 'contacts':
           return { data: contactRow, error: null }
         case 'conversations':
@@ -115,6 +119,14 @@ function makeSupabaseMock() {
       })),
     },
     from: vi.fn((table: string) => builder(table)),
+    // requireWrite() calls account_write_locked() via RPC as its billing
+    // gate — resolve it from the per-test `accountWriteLocked` toggle.
+    rpc: vi.fn(async (fn: string) => {
+      if (fn === 'account_write_locked') {
+        return { data: accountWriteLocked, error: null }
+      }
+      return { data: null, error: null }
+    }),
   }
 }
 
@@ -179,6 +191,7 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     existingConversation = null
     createdConversation = null
     contactRow = CONTACT
+    accountWriteLocked = false
     supabaseMock = makeSupabaseMock()
     sendTemplateMessage.mockClear()
   })
@@ -257,5 +270,17 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
       }),
     )
     expect(res.status).toBe(400)
+  })
+
+  it('402s without calling Meta when the account is billing write-locked', async () => {
+    accountWriteLocked = true
+    supabaseMock = makeSupabaseMock()
+
+    const res = await postContactTemplate()
+    const json = await res.json()
+
+    expect(res.status).toBe(402)
+    expect(json.code).toBe('account_read_only')
+    expect(sendTemplateMessage).not.toHaveBeenCalled()
   })
 })

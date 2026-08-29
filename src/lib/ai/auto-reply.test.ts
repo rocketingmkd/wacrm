@@ -14,7 +14,16 @@ const h = vi.hoisted(() => ({
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
+    writeLocked: false as boolean,
   },
+}))
+
+// The billing write-lock check is a separate concern from this
+// file's eligibility-gate tests — mock it directly (not via the
+// generic `rpc` mock below, which is reserved for claim_ai_reply_slot)
+// so it doesn't interfere with the rpcCalls assertions.
+vi.mock('@/lib/billing/write-lock', () => ({
+  isAccountWriteLocked: async () => h.state.writeLocked,
 }))
 
 vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
@@ -91,6 +100,7 @@ beforeEach(() => {
   h.state.claim = true
   h.state.updatePayload = null
   h.state.rpcCalls = []
+  h.state.writeLocked = false
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
@@ -138,6 +148,14 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
   it('skips when AI is off / not configured', async () => {
     h.loadAiConfig.mockResolvedValue(null)
     await dispatchInboundToAiReply(ARGS)
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('skips when the account is billing write-locked, before even loading config', async () => {
+    h.state.writeLocked = true
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.loadAiConfig).not.toHaveBeenCalled()
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
