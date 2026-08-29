@@ -21,6 +21,7 @@ export type ApiErrorCode =
   | 'unauthorized' // missing / malformed / unknown / revoked / expired key
   | 'forbidden' // valid key, but missing the required scope
   | 'payment_required' // valid key + scope, but the account is billing-locked
+  | 'plan_upgrade_required' // valid key, but the account's plan doesn't include API access
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'
@@ -71,6 +72,19 @@ export function paymentRequired(
   message = 'This account is read-only until its subscription is regularized',
 ): ApiError {
   return new ApiError('payment_required', message, 402);
+}
+
+/**
+ * 403 — valid key, but the account's PLAN doesn't include API access
+ * at all (Starter — see src/lib/billing/plan.ts). Distinct from
+ * `forbidden` (missing scope) and `payment_required` (billing status)
+ * — this is a tier gate, and fires even for an account in perfectly
+ * good billing standing.
+ */
+export function planUpgradeRequired(
+  message = 'API access requires the Pro plan',
+): ApiError {
+  return new ApiError('plan_upgrade_required', message, 403);
 }
 
 /** 400 — bad input. */

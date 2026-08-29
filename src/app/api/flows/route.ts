@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { requireWrite, toErrorResponse } from '@/lib/auth/account'
+import { requireFeature, requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
 
@@ -8,34 +7,21 @@ import { getFlowTemplate } from '@/lib/flows/templates'
  * GET /api/flows — list the caller's flows.
  * POST /api/flows — create a new (draft) flow.
  *
- * Available to every authenticated user. The previous per-account
- * beta gate was removed when Flows went to soft-GA; the UI still
- * shows a "Beta" label so users know the surface is young, but the
- * routes themselves are open.
+ * Flows is a Pro-plan feature (src/lib/billing/plan.ts) — gated here
+ * via requireFeature/requireWriteFeature rather than the plain
+ * role checks alone, on top of the pre-existing note below about the
+ * service-role client bypassing RLS for the actual insert.
  */
 
-async function requireUser(): Promise<
-  | { ok: true; userId: string; supabase: Awaited<ReturnType<typeof createClient>> }
-  | { ok: false; status: number; body: { error: string } }
-> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return { ok: false, status: 401, body: { error: 'Unauthorized' } }
-  }
-  return { ok: true, userId: user.id, supabase }
-}
-
 export async function GET() {
-  const guard = await requireUser()
-  if (!guard.ok) {
-    return NextResponse.json(guard.body, { status: guard.status })
+  let ctx
+  try {
+    ctx = await requireFeature('viewer', 'flows')
+  } catch (err) {
+    return toErrorResponse(err)
   }
-  const { supabase } = guard
 
-  const { data, error } = await supabase
+  const { data, error } = await ctx.supabase
     .from('flows')
     .select('*')
     .order('created_at', { ascending: false })
@@ -48,34 +34,15 @@ export async function GET() {
 export async function POST(request: Request) {
   // Creating a flow is a write — the RLS flows_insert policy requires
   // `agent`, but this route inserts via the service-role client which
-  // bypasses RLS, so the role must be enforced here.
+  // bypasses RLS, so both the role AND the plan-feature check must be
+  // enforced here.
+  let ctx
   try {
-    await requireWrite('agent')
+    ctx = await requireWriteFeature('agent', 'flows')
   } catch (err) {
     return toErrorResponse(err)
   }
-
-  const guard = await requireUser()
-  if (!guard.ok) {
-    return NextResponse.json(guard.body, { status: guard.status })
-  }
-  const { userId, supabase } = guard
-
-  // Resolve the caller's account_id — `flows.account_id` is NOT NULL
-  // post-017, so an INSERT without it trips the not-null constraint
-  // even though the admin client below bypasses RLS.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', userId)
-    .single()
-  const accountId = profile?.account_id as string | undefined
-  if (!accountId) {
-    return NextResponse.json(
-      { error: 'Your profile is not linked to an account.' },
-      { status: 403 },
-    )
-  }
+  const { userId, accountId } = ctx
 
   const body = (await request.json().catch(() => null)) as
     | {

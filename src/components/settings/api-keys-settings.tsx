@@ -70,7 +70,7 @@ function keyStatus(k: ApiKey): 'active' | 'revoked' | 'expired' {
 }
 
 export function ApiKeysSettings() {
-  const { canEditSettings } = useAuth();
+  const { canEditSettings, planFeatures } = useAuth();
   const t = useTranslations('Settings.apiKeys');
 
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -145,14 +145,23 @@ export function ApiKeysSettings() {
           })
         }
         action={
-          <RequireRole min="admin">
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />
-              {t('newApiKey')}
-            </Button>
-          </RequireRole>
+          planFeatures.apiAccess ? (
+            <RequireRole min="admin">
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                {t('newApiKey')}
+              </Button>
+            </RequireRole>
+          ) : undefined
         }
       />
+
+      {!planFeatures.apiAccess && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+          Chaves de API são um recurso do plano Pro. Você ainda pode ver e revogar chaves
+          existentes, mas não pode criar novas nem usá-las enquanto a conta estiver no Starter.
+        </div>
+      )}
 
       {keys.length === 0 ? (
         <Card>

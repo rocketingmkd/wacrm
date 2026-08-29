@@ -33,9 +33,16 @@ import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { findActiveKeyByHash, touchLastUsed } from '@/lib/api-keys/store';
 import { hashApiKey, looksLikeApiKey } from '@/lib/api-keys/keys';
 import { hasScope, isWriteScope, type ApiScope } from '@/lib/api-keys/scopes';
-import { forbidden, paymentRequired, rateLimited, unauthorized } from '@/lib/api/v1/respond';
+import {
+  forbidden,
+  paymentRequired,
+  planUpgradeRequired,
+  rateLimited,
+  unauthorized,
+} from '@/lib/api/v1/respond';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import { isAccountWriteLocked } from '@/lib/billing/write-lock';
+import { checkAccountFeature } from '@/lib/billing/feature-gate';
 
 export interface ApiKeyContext {
   /** Discriminant — lets shared logic tell key auth from cookie auth. */
@@ -71,10 +78,11 @@ function extractKey(request: Request): string | null {
  * single scope. Throws an `ApiError` (mapped to the envelope by
  * `toApiErrorResponse`) on any failure:
  *
- *   401 unauthorized      — no key, malformed, unknown, revoked, expired
- *   403 forbidden         — valid key without the required scope
- *   402 payment_required  — valid key + scope, but the account is billing-locked
- *   429 rate_limited      — per-key budget exhausted
+ *   401 unauthorized          — no key, malformed, unknown, revoked, expired
+ *   403 forbidden             — valid key without the required scope
+ *   403 plan_upgrade_required — valid key, but the account's plan has no API access
+ *   402 payment_required      — valid key + scope, but the account is billing-locked
+ *   429 rate_limited          — per-key budget exhausted
  *
  * On success, bumps `last_used_at` (fire-and-forget) and returns the
  * account context.
@@ -105,6 +113,16 @@ export async function requireApiKey(
 
   if (scope && !hasScope(row.scopes, scope)) {
     throw forbidden(`This API key is missing the '${scope}' scope`);
+  }
+
+  // The public API itself is a Pro-plan feature (src/lib/billing/
+  // plan.ts) — checked on every call, not just write scopes, so a key
+  // minted while the account was on Pro stops authenticating the
+  // moment a downgrade to Starter takes effect (via /platform forcing
+  // a plan change, or a future self-serve downgrade).
+  const hasApiAccess = await checkAccountFeature(supabaseAdmin(), row.account_id, 'apiAccess')
+  if (!hasApiAccess) {
+    throw planUpgradeRequired();
   }
 
   // This client is service-role (see the module doc above) — it

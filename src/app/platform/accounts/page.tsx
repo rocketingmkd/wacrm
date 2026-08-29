@@ -32,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { BILLING_STATUSES, type BillingStatus } from '@/lib/billing/state';
+import { isPlan } from '@/lib/billing/plan';
 
 const PAGE_SIZE = 25;
 
@@ -55,6 +56,11 @@ const STATUS_LABEL: Record<BillingStatus, string> = {
   past_due: 'Pagamento pendente',
   expired: 'Trial expirado',
   canceled: 'Cancelado',
+};
+
+const PLAN_LABEL: Record<'starter' | 'pro', string> = {
+  starter: 'Starter',
+  pro: 'Pro',
 };
 
 const STATUS_TONE: Record<BillingStatus, string> = {
@@ -217,7 +223,7 @@ export default function PlatformAccountsPage() {
                       <StatusBadge status={a.status} />
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">
-                      {a.plan ?? '—'}
+                      {isPlan(a.plan) ? PLAN_LABEL[a.plan] : (a.plan ?? '—')}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground lg:table-cell">
                       {fmtDate(a.status === 'trialing' ? a.trial_ends_at : a.current_period_end)}

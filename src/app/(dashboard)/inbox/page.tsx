@@ -14,6 +14,7 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { AiPanel } from "@/components/inbox/ai-panel";
+import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { planFeatures } = useAuth();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -652,7 +654,7 @@ function InboxPageInner() {
             contactPanelOpen={rightPanel === "contact"}
             onToggleContactPanel={handleToggleContactPanel}
             aiPanelOpen={rightPanel === "ai"}
-            onToggleAiPanel={handleToggleAiPanel}
+            onToggleAiPanel={planFeatures.aiCopilot ? handleToggleAiPanel : undefined}
             composerInsert={composerInsert}
           />
         </div>
@@ -665,9 +667,7 @@ function InboxPageInner() {
             — never affect it. */}
         {rightPanel && (
           <div className="hidden lg:block">
-            {rightPanel === "contact" ? (
-              <ContactSidebar contact={activeContact} />
-            ) : (
+            {rightPanel === "ai" && planFeatures.aiCopilot ? (
               <AiPanel
                 contact={activeContact}
                 conversation={activeConversation}
@@ -676,6 +676,12 @@ function InboxPageInner() {
                   setComposerInsert({ text, nonce: Date.now() })
                 }
               />
+            ) : (
+              // Falls back here for "contact", and also for a stale
+              // "ai" persisted in localStorage from before a downgrade
+              // to a plan without Gerente IA (src/lib/billing/plan.ts)
+              // — never render AiPanel without the feature.
+              <ContactSidebar contact={activeContact} />
             )}
           </div>
         )}

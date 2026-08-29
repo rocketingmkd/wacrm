@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
+import type { PlanFeatures } from "@/lib/billing/plan";
 import {
   Bell,
   Bot,
@@ -87,6 +88,13 @@ interface NavItem {
    * Purely informational — doesn't affect routing or access.
    */
   beta?: boolean;
+  /**
+   * Pro-plan feature this nav item requires (src/lib/billing/plan.ts).
+   * Hidden entirely (not just disabled) for a Starter account — the
+   * server-side gate (requireFeature/requireWriteFeature) is the real
+   * enforcement; this just avoids advertising a route that would 403.
+   */
+  feature?: keyof PlanFeatures;
 }
 
 const navItems: NavItem[] = [
@@ -97,7 +105,7 @@ const navItems: NavItem[] = [
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true, feature: "flows" },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
 ];
 
@@ -116,7 +124,10 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, planFeatures, signOut } = useAuth();
+  const visibleNavItems = navItems.filter(
+    (item) => !item.feature || planFeatures[item.feature],
+  );
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -206,7 +217,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Main navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));

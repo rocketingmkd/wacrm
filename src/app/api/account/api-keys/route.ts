@@ -21,7 +21,7 @@ import { NextResponse } from 'next/server';
 
 import {
   getCurrentAccount,
-  requireWrite,
+  requireWriteFeature,
   toErrorResponse,
 } from '@/lib/auth/account';
 import { generateApiKey } from '@/lib/api-keys/keys';
@@ -70,7 +70,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const ctx = await requireWrite('admin');
+    const ctx = await requireWriteFeature('admin', 'apiAccess');
 
     const limit = checkRateLimit(
       `admin:apiKeyCreate:${ctx.userId}`,

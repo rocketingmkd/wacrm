@@ -28,6 +28,14 @@ vi.mock("@/lib/billing/write-lock", () => ({
   isAccountWriteLocked: (...args: unknown[]) => isAccountWriteLocked(...args),
 }));
 
+// Mock the plan-feature check — requireApiKey gates the entire public
+// API on the 'apiAccess' feature (Pro-plan only), checked on every
+// call regardless of scope.
+const checkAccountFeature = vi.fn<(...args: unknown[]) => Promise<boolean>>();
+vi.mock("@/lib/billing/feature-gate", () => ({
+  checkAccountFeature: (...args: unknown[]) => checkAccountFeature(...args),
+}));
+
 // Import AFTER the mocks are registered.
 const { requireApiKey } = await import("./api-context");
 
@@ -58,6 +66,8 @@ beforeEach(() => {
   touchLastUsed.mockReset();
   isAccountWriteLocked.mockReset();
   isAccountWriteLocked.mockResolvedValue(false);
+  checkAccountFeature.mockReset();
+  checkAccountFeature.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -181,6 +191,41 @@ describe("requireApiKey", () => {
         expect.anything(),
         "acct-42",
       );
+    });
+  });
+
+  describe("plan feature gate (apiAccess)", () => {
+    it("403s with plan_upgrade_required when the account's plan lacks apiAccess", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ scopes: ["contacts:read"] }));
+      checkAccountFeature.mockResolvedValue(false);
+      await expectApiError(
+        requireApiKey(reqWith(`Bearer ${KEY}`), "contacts:read"),
+        "plan_upgrade_required",
+        403,
+      );
+    });
+
+    it("checks apiAccess even when no scope is required at all", async () => {
+      findActiveKeyByHash.mockResolvedValue(row());
+      checkAccountFeature.mockResolvedValue(false);
+      await expectApiError(requireApiKey(reqWith(`Bearer ${KEY}`)), "plan_upgrade_required", 403);
+    });
+
+    it("checks apiAccess for the key's own account_id", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ account_id: "acct-42" }));
+      await requireApiKey(reqWith(`Bearer ${KEY}`));
+      expect(checkAccountFeature).toHaveBeenCalledWith(
+        expect.anything(),
+        "acct-42",
+        "apiAccess",
+      );
+    });
+
+    it("passes through when the plan has apiAccess", async () => {
+      findActiveKeyByHash.mockResolvedValue(row({ scopes: ["messages:read"] }));
+      checkAccountFeature.mockResolvedValue(true);
+      const ctx = await requireApiKey(reqWith(`Bearer ${KEY}`), "messages:read");
+      expect(ctx.accountId).toBe("acct-1");
     });
   });
 });

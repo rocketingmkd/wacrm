@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BILLING_STATUSES, type BillingStatus } from '@/lib/billing/state';
+import { PLANS, isPlan, type Plan } from '@/lib/billing/plan';
 import {
   WebhookPayloadDialog,
   type WebhookLogDetail,
@@ -65,6 +66,11 @@ const STATUS_LABEL: Record<BillingStatus, string> = {
   canceled: 'Cancelado',
 };
 
+const PLAN_LABEL: Record<Plan, string> = {
+  starter: 'Starter (R$97/mês)',
+  pro: 'Pro (R$197/mês)',
+};
+
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('pt-BR', {
@@ -99,7 +105,7 @@ export default function PlatformAccountDetailPage({
 
   // Form state
   const [trialDays, setTrialDays] = useState('7');
-  const [planInput, setPlanInput] = useState('');
+  const [planInput, setPlanInput] = useState<Plan | ''>('');
   const [forceStatus, setForceStatus] = useState<BillingStatus>('active');
   const [statusNote, setStatusNote] = useState('');
 
@@ -116,7 +122,7 @@ export default function PlatformAccountDetailPage({
       setAccount(body.account);
       setWebhookLogs(body.webhook_logs ?? []);
       setAuditLog(body.audit_log ?? []);
-      setPlanInput(body.account?.plan ?? '');
+      setPlanInput(isPlan(body.account?.plan) ? body.account.plan : '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar conta');
     } finally {
@@ -192,7 +198,9 @@ export default function PlatformAccountDetailPage({
           <CardHeader>
             <CardTitle className="text-xs font-medium text-muted-foreground">Plano</CardTitle>
           </CardHeader>
-          <CardContent className="text-lg font-semibold">{account.plan ?? '—'}</CardContent>
+          <CardContent className="text-lg font-semibold">
+            {isPlan(account.plan) ? PLAN_LABEL[account.plan] : (account.plan ?? '—')}
+          </CardContent>
         </Card>
         <Card size="sm">
           <CardHeader>
@@ -263,17 +271,28 @@ export default function PlatformAccountDetailPage({
             <CardTitle>Plano</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Label className="text-xs text-muted-foreground">Slug do plano</Label>
-            <Input
-              placeholder="ex: pro"
-              value={planInput}
-              onChange={(e) => setPlanInput(e.target.value)}
-            />
+            <Label className="text-xs text-muted-foreground">Plano</Label>
+            <Select
+              value={planInput || 'none'}
+              onValueChange={(v) => setPlanInput(v === 'none' ? '' : (v as Plan))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhum</SelectItem>
+                {PLANS.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {PLAN_LABEL[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               variant="outline"
               disabled={busy !== null}
-              onClick={() => runAction('set_plan', { action: 'set_plan', plan: planInput.trim() || null })}
+              onClick={() => runAction('set_plan', { action: 'set_plan', plan: planInput || null })}
             >
               {busy === 'set_plan' ? <Loader2 className="size-3.5 animate-spin" /> : 'Salvar plano'}
             </Button>

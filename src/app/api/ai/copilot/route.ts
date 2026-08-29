@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireRole, requireWrite, toErrorResponse } from '@/lib/auth/account'
+import { requireFeature, requireWriteFeature, toErrorResponse, type AccountContext } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { refreshConversationInsight } from '@/lib/ai/copilot-refresh'
@@ -12,12 +12,13 @@ import type { CopilotInsight } from '@/lib/ai/copilot'
  *   POST { conversation_id, force? } → refresh it (LLM call only when
  *                                      the thread moved, or force=true)
  *
- * agent+ ; RLS scopes the caller to their account, so a conversation
- * from another account reads as "not found".
+ * agent+, Pro-plan only (src/lib/billing/plan.ts) ; RLS scopes the
+ * caller to their account, so a conversation from another account
+ * reads as "not found".
  */
 
 async function resolveConversationAccount(
-  supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
+  supabase: AccountContext['supabase'],
   conversationId: string,
 ): Promise<boolean> {
   const { data } = await supabase
@@ -47,7 +48,7 @@ function serialize(
 
 export async function GET(request: Request) {
   try {
-    const { supabase } = await requireRole('agent')
+    const { supabase } = await requireFeature('agent', 'aiCopilot')
     const conversationId =
       new URL(request.url).searchParams.get('conversation_id') ?? ''
     if (!conversationId) {
@@ -81,9 +82,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     // Refreshing calls the LLM and writes conversation_insights — a
-    // write. GET above stays on requireRole: reading a cached insight
-    // must keep working for a read-only (billing-locked) account.
-    const { supabase, accountId, userId } = await requireWrite('agent')
+    // write. GET above stays on requireFeature (no billing-lock
+    // check): reading a cached insight must keep working for a
+    // read-only (billing-locked) account, as long as its plan
+    // includes the feature at all.
+    const { supabase, accountId, userId } = await requireWriteFeature('agent', 'aiCopilot')
 
     const userLimit = checkRateLimit(`ai-copilot:${userId}`, RATE_LIMITS.aiCopilot)
     if (!userLimit.success) return rateLimitResponse(userLimit)

@@ -3,6 +3,7 @@ import { requirePlatformAdmin } from '@/lib/auth/platform'
 import { toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { isBillingStatus, type BillingStatus } from '@/lib/billing/state'
+import { isPlan } from '@/lib/billing/plan'
 
 // PATCH /api/platform/accounts/[accountId]/billing
 //
@@ -113,8 +114,11 @@ export async function PATCH(
         break
       }
       case 'set_plan': {
-        if (body.plan !== null && typeof body.plan !== 'string') {
-          return NextResponse.json({ error: 'plan must be a string or null' }, { status: 400 })
+        if (body.plan !== null && !isPlan(body.plan)) {
+          return NextResponse.json(
+            { error: "plan must be 'starter', 'pro', or null" },
+            { status: 400 },
+          )
         }
         patch.plan = body.plan
         break

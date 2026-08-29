@@ -30,6 +30,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import { isAccountWriteLocked } from "@/lib/billing/write-lock";
+import { checkAccountFeature } from "@/lib/billing/feature-gate";
+import type { PlanFeatures } from "@/lib/billing/plan";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
 
 // ------------------------------------------------------------
@@ -77,6 +79,24 @@ export class PaymentRequiredError extends Error {
 }
 
 /**
+ * Thrown by `requireFeature` / `requireWriteFeature` when the caller
+ * is authenticated, has the right role, and their account is in good
+ * standing — but their PLAN (Starter vs Pro, see
+ * src/lib/billing/plan.ts) doesn't include the feature being called.
+ * 403 (not 402 — this isn't about payment status, it's about tier)
+ * with a distinct `code: 'plan_upgrade_required'` so the client can
+ * show "upgrade to Pro" copy instead of the generic role-forbidden
+ * message.
+ */
+export class FeatureNotAvailableError extends Error {
+  readonly status = 403 as const;
+  constructor(message = "This feature requires the Pro plan") {
+    super(message);
+    this.name = "FeatureNotAvailableError";
+  }
+}
+
+/**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
  *
@@ -92,6 +112,12 @@ export function toErrorResponse(err: unknown): NextResponse {
   if (err instanceof PaymentRequiredError) {
     return NextResponse.json(
       { error: err.message, code: "account_read_only" },
+      { status: err.status },
+    );
+  }
+  if (err instanceof FeatureNotAvailableError) {
+    return NextResponse.json(
+      { error: err.message, code: "plan_upgrade_required" },
       { status: err.status },
     );
   }
@@ -240,6 +266,45 @@ export async function requireWrite(min: AccountRole): Promise<AccountContext> {
   const ctx = await requireRole(min);
   if (await isAccountWriteLocked(ctx.supabase, ctx.accountId)) {
     throw new PaymentRequiredError();
+  }
+  return ctx;
+}
+
+/**
+ * Like `requireRole`, but also rejects when the caller's PLAN doesn't
+ * include `feature` (Flows, Gerente IA / aiCopilot, apiAccess — see
+ * src/lib/billing/plan.ts). Deliberately independent of billing lock:
+ * a Pro account that's `past_due` (still writable — see
+ * src/lib/billing/state.ts) should keep its plan features; a Starter
+ * account that's perfectly current still doesn't get Pro features.
+ * Use this for READ routes gated by plan (e.g. `GET /api/flows`); use
+ * `requireWriteFeature` below for mutating ones.
+ */
+export async function requireFeature(
+  min: AccountRole,
+  feature: keyof PlanFeatures,
+): Promise<AccountContext> {
+  const ctx = await requireRole(min);
+  if (!(await checkAccountFeature(ctx.supabase, ctx.accountId, feature))) {
+    throw new FeatureNotAvailableError();
+  }
+  return ctx;
+}
+
+/**
+ * `requireWrite` + the plan-feature check — both axes a mutating
+ * Flows/Copilot/API-key route needs: is the account allowed to write
+ * at all (billing), AND does its plan include this feature at all
+ * (tier). Order matters for the error the caller sees: billing lock
+ * first (the more urgent "go pay" message), then plan tier.
+ */
+export async function requireWriteFeature(
+  min: AccountRole,
+  feature: keyof PlanFeatures,
+): Promise<AccountContext> {
+  const ctx = await requireWrite(min);
+  if (!(await checkAccountFeature(ctx.supabase, ctx.accountId, feature))) {
+    throw new FeatureNotAvailableError();
   }
   return ctx;
 }

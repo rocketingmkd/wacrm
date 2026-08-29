@@ -71,12 +71,20 @@ vi.mock("@/lib/billing/write-lock", () => ({
   isAccountWriteLocked: (...args: unknown[]) => isAccountWriteLocked(...args),
 }));
 
+const checkAccountFeature = vi.fn<(...args: unknown[]) => Promise<boolean>>();
+vi.mock("@/lib/billing/feature-gate", () => ({
+  checkAccountFeature: (...args: unknown[]) => checkAccountFeature(...args),
+}));
+
 const {
   getCurrentAccount,
   requireWrite,
+  requireFeature,
+  requireWriteFeature,
   UnauthorizedError,
   ForbiddenError,
   PaymentRequiredError,
+  FeatureNotAvailableError,
   toErrorResponse,
 } = await import("./account");
 
@@ -224,11 +232,88 @@ describe("requireWrite", () => {
   });
 });
 
+describe("requireFeature / requireWriteFeature", () => {
+  function makeWritableClient(role = "agent") {
+    return makeClient({
+      user: { id: "user-1" },
+      byTable: {
+        profiles: { data: { account_id: "acct-1", account_role: role }, error: null },
+        accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
+      },
+    });
+  }
+
+  it("requireFeature resolves when the plan has the feature, without checking billing lock", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    checkAccountFeature.mockResolvedValue(true);
+
+    const ctx = await requireFeature("agent", "flows");
+    expect(ctx.accountId).toBe("acct-1");
+    expect(checkAccountFeature).toHaveBeenCalledWith(client, "acct-1", "flows");
+    expect(isAccountWriteLocked).not.toHaveBeenCalled();
+  });
+
+  it("requireFeature throws FeatureNotAvailableError when the plan lacks it", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    checkAccountFeature.mockResolvedValue(false);
+
+    await expect(requireFeature("agent", "aiCopilot")).rejects.toBeInstanceOf(
+      FeatureNotAvailableError,
+    );
+  });
+
+  it("requireWriteFeature checks billing lock first, then the feature", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(false);
+    checkAccountFeature.mockResolvedValue(true);
+
+    const ctx = await requireWriteFeature("agent", "apiAccess");
+    expect(ctx.accountId).toBe("acct-1");
+    expect(isAccountWriteLocked).toHaveBeenCalled();
+    expect(checkAccountFeature).toHaveBeenCalledWith(client, "acct-1", "apiAccess");
+  });
+
+  it("requireWriteFeature throws PaymentRequiredError before ever checking the feature, when locked", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(true);
+
+    await expect(requireWriteFeature("agent", "flows")).rejects.toBeInstanceOf(
+      PaymentRequiredError,
+    );
+    expect(checkAccountFeature).not.toHaveBeenCalled();
+  });
+
+  it("requireWriteFeature throws FeatureNotAvailableError when not locked but the plan lacks the feature", async () => {
+    const { client } = makeWritableClient();
+    createClient.mockReturnValue(client);
+    isAccountWriteLocked.mockResolvedValue(false);
+    checkAccountFeature.mockResolvedValue(false);
+
+    await expect(requireWriteFeature("agent", "flows")).rejects.toBeInstanceOf(
+      FeatureNotAvailableError,
+    );
+  });
+});
+
 describe("toErrorResponse", () => {
   it("maps PaymentRequiredError to 402 with a stable error code", async () => {
     const res = toErrorResponse(new PaymentRequiredError());
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body).toEqual({ error: "Account is read-only", code: "account_read_only" });
+  });
+
+  it("maps FeatureNotAvailableError to 403 with a stable error code", async () => {
+    const res = toErrorResponse(new FeatureNotAvailableError());
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "This feature requires the Pro plan",
+      code: "plan_upgrade_required",
+    });
   });
 });

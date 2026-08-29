@@ -27,6 +27,7 @@ import {
   type BillingSummary,
   type BillingWarning,
 } from "@/lib/billing/state";
+import { accountHasFeature, type PlanFeatures } from "@/lib/billing/plan";
 
 interface Profile {
   id: string;
@@ -132,6 +133,16 @@ interface AuthContextValue {
   isReadOnly: boolean;
   /** What (if anything) the billing banner should show. Null = healthy. */
   billingWarning: BillingWarning | null;
+  /**
+   * Which Pro-plan features (Flows, Gerente IA, API access — see
+   * src/lib/billing/plan.ts) the account currently has unlocked.
+   * Cosmetic only, same as `isReadOnly` — the real gate is
+   * `requireFeature`/`requireWriteFeature` server-side. Defaults to
+   * all-true while loading/no billing row, matching
+   * `accountHasFeature`'s fail-open policy — never flash a "locked"
+   * state for data that hasn't arrived yet.
+   */
+  planFeatures: PlanFeatures;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -146,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
   const [billing, setBilling] = useState<BillingSummary | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
@@ -198,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // account name lookup itself can't.
         let accountRow: AccountSummary | null = null;
         let billingRow: BillingSummary | null = null;
+        let planValue: string | null = null;
         if (data.account_id) {
           const { data: account, error: accountErr } = await supabase
             .from("accounts")
@@ -230,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // no write policy exists, so this is read-only by design.
           const { data: billingData, error: billingErr } = await supabase
             .from("account_billing")
-            .select("status, trial_ends_at, current_period_end, past_due_since")
+            .select("status, plan, trial_ends_at, current_period_end, past_due_since")
             .eq("account_id", data.account_id)
             .maybeSingle();
           if (billingErr) {
@@ -247,6 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               current_period_end: billingData.current_period_end,
               past_due_since: billingData.past_due_since,
             };
+            planValue = billingData.plan ?? null;
           }
         }
 
@@ -275,6 +289,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         setAccount(accountRow);
         setBilling(billingRow);
+        setPlan(planValue);
       } else {
         lastFetchedUserIdRef.current = null;
       }
@@ -349,6 +364,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setAccount(null);
         setBilling(null);
+        setPlan(null);
         setProfileLoading(false);
       }
 
@@ -369,6 +385,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setAccount(null);
     setBilling(null);
+    setPlan(null);
     window.location.href = "/login";
   }, []);
 
@@ -383,6 +400,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // dependencies downstream.
   const derived = useMemo(() => {
     const role = profile?.account_role ?? null;
+    // accountHasFeature only needs { status, plan } — billing carries
+    // status, plan is tracked separately (see the fetchProfile note
+    // above); null billing means "not loaded / no row", which
+    // accountHasFeature already treats as fail-open.
+    const billingForFeatures = billing ? { status: billing.status, plan } : null;
     return {
       accountRole: role,
       accountId: profile?.account_id ?? null,
@@ -395,8 +417,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canSendMessages: role ? canSendMessagesFor(role) : false,
       isReadOnly: isWriteLocked(billing),
       billingWarning: billingWarningFor(billing),
+      planFeatures: {
+        flows: accountHasFeature(billingForFeatures, "flows"),
+        aiCopilot: accountHasFeature(billingForFeatures, "aiCopilot"),
+        apiAccess: accountHasFeature(billingForFeatures, "apiAccess"),
+      },
     };
-  }, [profile?.account_role, profile?.account_id, billing]);
+  }, [profile?.account_role, profile?.account_id, billing, plan]);
 
   return (
     <AuthContext.Provider
@@ -457,6 +484,10 @@ export function useAuth(): AuthContextValue {
       // actively misleading in that state.
       isReadOnly: false,
       billingWarning: null,
+      // Same "not a real signal, don't act on it" reasoning as
+      // isReadOnly above — all-true so a bug that renders outside the
+      // provider doesn't ALSO hide every Pro feature's UI.
+      planFeatures: { flows: true, aiCopilot: true, apiAccess: true },
     };
   }
   return ctx;
