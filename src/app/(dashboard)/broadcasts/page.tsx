@@ -192,7 +192,7 @@ export default function BroadcastsPage() {
           <MetaPricingDialog />
           <GatedButton
             canAct={canCreate}
-            gateReason="create broadcasts"
+            gateReason="criar disparos"
             onClick={() => router.push('/broadcasts/new')}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
@@ -211,7 +211,7 @@ export default function BroadcastsPage() {
           </p>
           <GatedButton
             canAct={canCreate}
-            gateReason="create broadcasts"
+            gateReason="criar disparos"
             onClick={() => router.push('/broadcasts/new')}
             className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
           >
