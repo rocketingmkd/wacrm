@@ -810,6 +810,7 @@
       "subtitle": "Build workflows that react to WhatsApp® events automatically.",
       "create": "Create Automation",
       "retry": "Retry",
+      "loadError": "Failed to load automations",
       "templatesTitle": "Quick-start templates",
       "emptyTitle": "No automations yet",
       "emptyDesc": "Pick a template above or create one from scratch.",

@@ -41,7 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
-import { triggerMeta, formatRelative } from "@/lib/automations/trigger-meta"
+import { triggerPillClass, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
@@ -77,7 +77,7 @@ export default function AutomationsPage() {
       if (fetchErr) throw fetchErr
       setAutomations((data ?? []) as Automation[])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automations")
+      setError(err instanceof Error ? err.message : t("loadError"))
     }
   }
 
@@ -169,7 +169,7 @@ export default function AutomationsPage() {
         </div>
         <GatedButton
           canAct={canCreate}
-          gateReason="create automations"
+          gateReason="criar automações"
           onClick={() => router.push("/automations/new")}
           className="bg-primary text-primary-foreground hover:bg-primary/90"
         >
@@ -278,7 +278,9 @@ function AutomationCard({
   onDelete: () => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const meta = triggerMeta(automation.trigger_type)
+  const tBuilder = useTranslations("Automations.builder")
+  const pillClass = triggerPillClass(automation.trigger_type)
+  const triggerLabel = tBuilder(`triggers.${automation.trigger_type}.label`)
   return (
     <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
       <div className="flex items-center gap-4 p-4">
@@ -312,10 +314,10 @@ function AutomationCard({
             <span
               className={cn(
                 "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                meta.pillClass,
+                pillClass,
               )}
             >
-              {meta.label}
+              {triggerLabel}
             </span>
             <span className="tabular-nums">
               {automation.execution_count === 1

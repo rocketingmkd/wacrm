@@ -809,6 +809,7 @@
       "subtitle": "WhatsApp® 이벤트에 자동으로 반응하는 워크플로를 만드세요.",
       "create": "자동화 만들기",
       "retry": "다시 시도",
+      "loadError": "자동화를 불러오지 못했습니다",
       "templatesTitle": "빠른 시작 템플릿",
       "emptyTitle": "아직 자동화가 없습니다",
       "emptyDesc": "위의 템플릿을 선택하거나 처음부터 새로 만드세요.",

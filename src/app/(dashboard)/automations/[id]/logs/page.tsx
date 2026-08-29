@@ -22,6 +22,19 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/automations/trigger-meta"
 
+/**
+ * `trigger_event`/`step_type` are the raw enum values stored on the log
+ * row (`AutomationTriggerType`/`AutomationStepType`) — map them through
+ * the builder's own catalog (`Automations.builder.triggers.*.label` /
+ * `.steps.*`) instead of showing the English snake_case value as-is.
+ */
+function triggerLabel(t: ReturnType<typeof useTranslations>, value: string): string {
+  return t.has(`triggers.${value}.label`) ? t(`triggers.${value}.label`) : value
+}
+function stepLabel(t: ReturnType<typeof useTranslations>, value: string): string {
+  return t.has(`steps.${value}`) ? t(`steps.${value}`) : value
+}
+
 export default function AutomationLogsPage({
   params,
 }: {
@@ -30,6 +43,7 @@ export default function AutomationLogsPage({
   const { id } = use(params)
   const router = useRouter()
   const t = useTranslations("Automations.logs")
+  const tBuilder = useTranslations("Automations.builder")
 
   const [automation, setAutomation] = useState<Automation | null>(null)
   const [logs, setLogs] = useState<AutomationLog[] | null>(null)
@@ -132,7 +146,7 @@ export default function AutomationLogsPage({
                       {log.contact?.name ?? log.contact?.phone ?? t("unknownContact")}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {log.trigger_event} · {log.steps_executed?.length ?? 0}{" "}
+                      {triggerLabel(tBuilder, log.trigger_event)} · {log.steps_executed?.length ?? 0}{" "}
                       {log.steps_executed?.length === 1 ? t("step", { count: 1 }).replace("1 ", "") : t("stepPlural", { count: log.steps_executed?.length ?? 0 }).replace(/^[0-9]+ /, "")}
                     </div>
                   </div>
@@ -149,7 +163,7 @@ export default function AutomationLogsPage({
                     )}
                     <ul className="space-y-1.5">
                       {(log.steps_executed ?? []).map((r, i) => (
-                        <StepRow key={i} result={r} />
+                        <StepRow key={i} result={r} t={tBuilder} />
                       ))}
                       {(log.steps_executed ?? []).length === 0 && (
                         <li className="text-xs text-muted-foreground">{t("noSteps")}</li>
@@ -185,7 +199,13 @@ function StatusBadge({ status, t }: { status: AutomationLog["status"], t: Return
   )
 }
 
-function StepRow({ result }: { result: AutomationLogStepResult }) {
+function StepRow({
+  result,
+  t,
+}: {
+  result: AutomationLogStepResult
+  t: ReturnType<typeof useTranslations>
+}) {
   const ok = result.status === "success"
   return (
     <li className="flex items-start gap-2 text-xs">
@@ -198,7 +218,7 @@ function StepRow({ result }: { result: AutomationLogStepResult }) {
       >
         {ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
       </span>
-      <span className="text-muted-foreground">{result.step_type}</span>
+      <span className="text-muted-foreground">{stepLabel(t, result.step_type)}</span>
       {result.detail && (
         <span className="truncate text-muted-foreground">— {result.detail}</span>
       )}
