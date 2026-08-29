@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server'
-import { verifyRocketingPayToken } from '@/lib/billing/webhook-auth'
+import { verifyStoredWebhookToken } from '@/lib/billing/webhook-token-store'
 import { processBillingWebhook } from '@/lib/billing/process-webhook'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
@@ -9,12 +9,16 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 // Receives billing events from Rocketing Pay (rocketingpay.com.br —
 // the user's own checkout platform, already handling real recurring
 // billing for the "Dinheiro Sob Controle" app). Verifies a static
-// Bearer token (ROCKETING_PAY_WEBHOOK_TOKEN — DIFFERENT from the
-// WhatsApp webhook's HMAC signature scheme, since Rocketing Pay signs
-// nothing, it just presents a shared secret), then activates/updates
-// the matching account's billing state. Never creates an account —
-// the customer signs up in the CRM first; this only upgrades/adjusts
-// an existing one, matched by e-mail.
+// Bearer token — DB-backed (platform_webhook_tokens, migration 043),
+// generated/rotated from /platform/integrations, NOT an env var — a
+// staff member can rotate it from the UI without a redeploy, and the
+// plaintext is shown exactly once at generation time (same "reveal
+// once" convention as api_keys). DIFFERENT scheme from the WhatsApp
+// webhook's HMAC signature, since Rocketing Pay signs nothing, it
+// just presents a shared secret. Once verified, this activates/
+// updates the matching account's billing state. Never creates an
+// account — the customer signs up in the CRM first; this only
+// upgrades/adjusts an existing one, matched by e-mail.
 //
 // Route shape mirrors src/app/api/whatsapp/webhook/route.ts: verify
 // against the RAW body, respond 200 immediately, do the real work in
@@ -35,7 +39,11 @@ export async function POST(request: Request) {
 
   const raw = await request.text()
 
-  if (!verifyRocketingPayToken(request.headers.get('authorization'))) {
+  const authorized = await verifyStoredWebhookToken(
+    'rocketing_pay',
+    request.headers.get('authorization'),
+  )
+  if (!authorized) {
     // 401 (not 200) so a misconfigured token is loud in Rocketing
     // Pay's own delivery dashboard, mirroring the WhatsApp webhook's
     // reasoning for rejecting invalid signatures visibly.
