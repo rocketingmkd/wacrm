@@ -23,15 +23,19 @@ export async function GET(request: Request) {
     const accountId = url.searchParams.get('account_id')
     const outcomeParam = url.searchParams.get('outcome')
     const outcome = outcomeParam && VALID_OUTCOMES.has(outcomeParam) ? outcomeParam : null
+    const q = url.searchParams.get('q')?.trim() ?? ''
     const page = Math.max(0, Number(url.searchParams.get('page')) || 0)
 
     const from = page * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
 
+    // payload/headers included so staff can inspect exactly what
+    // Rocketing Pay sent — the whole point of this page for
+    // diagnosing "why didn't this event do what I expected".
     let query = ctx.admin
       .from('billing_webhook_logs')
       .select(
-        'id, received_at, account_id, email, event, resolved_status, action, outcome, error_message, external_transaction_id, external_product_id, amount',
+        'id, received_at, account_id, email, event, resolved_status, action, outcome, error_message, external_transaction_id, external_product_id, amount, payload, headers',
         { count: 'exact' },
       )
       .order('received_at', { ascending: false })
@@ -39,6 +43,7 @@ export async function GET(request: Request) {
 
     if (accountId) query = query.eq('account_id', accountId)
     if (outcome) query = query.eq('outcome', outcome)
+    if (q) query = query.ilike('email', `%${q}%`)
 
     const { data, error, count } = await query
 

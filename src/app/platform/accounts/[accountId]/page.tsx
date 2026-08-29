@@ -9,7 +9,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Code2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BILLING_STATUSES, type BillingStatus } from '@/lib/billing/state';
+import {
+  WebhookPayloadDialog,
+  type WebhookLogDetail,
+} from '../../_components/webhook-payload-dialog';
 
 interface AccountDetail {
   id: string;
@@ -42,17 +46,7 @@ interface AccountDetail {
   contact_count: number;
 }
 
-interface WebhookLogRow {
-  id: string;
-  received_at: string;
-  event: string | null;
-  resolved_status: string | null;
-  action: string;
-  outcome: 'success' | 'ignored' | 'error';
-  error_message: string | null;
-  amount: number | null;
-  external_transaction_id: string | null;
-}
+type WebhookLogRow = WebhookLogDetail;
 
 interface AuditLogRow {
   id: string;
@@ -101,6 +95,7 @@ export default function PlatformAccountDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [selectedLog, setSelectedLog] = useState<WebhookLogRow | null>(null);
 
   // Form state
   const [trialDays, setTrialDays] = useState('7');
@@ -334,7 +329,11 @@ export default function PlatformAccountDetailPage({
           ) : (
             <ul className="divide-y divide-border">
               {webhookLogs.map((log) => (
-                <li key={log.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                <li
+                  key={log.id}
+                  className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50"
+                  onClick={() => setSelectedLog(log)}
+                >
                   <Badge variant="outline" className={OUTCOME_TONE[log.outcome]}>
                     {log.outcome}
                   </Badge>
@@ -349,6 +348,17 @@ export default function PlatformAccountDetailPage({
                   <span className="ml-auto text-xs text-muted-foreground">
                     {fmtDateTime(log.received_at)}
                   </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedLog(log);
+                    }}
+                  >
+                    <Code2 className="size-3.5" /> JSON
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -379,6 +389,8 @@ export default function PlatformAccountDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <WebhookPayloadDialog log={selectedLog} onClose={() => setSelectedLog(null)} />
     </div>
   );
 }

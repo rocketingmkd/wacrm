@@ -38,7 +38,7 @@ export async function GET(
       ctx.admin
         .from('billing_webhook_logs')
         .select(
-          'id, received_at, event, resolved_status, action, outcome, error_message, amount, external_transaction_id',
+          'id, received_at, event, resolved_status, action, outcome, error_message, amount, external_transaction_id, payload, headers',
         )
         .eq('account_id', accountId)
         .order('received_at', { ascending: false })
