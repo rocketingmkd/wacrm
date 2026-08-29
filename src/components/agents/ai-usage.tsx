@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { BarChart3, Bot, PencilLine } from 'lucide-react';
+import { BarChart3, Bot, PencilLine, Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import {
@@ -37,6 +37,7 @@ interface UsageResponse {
   by_mode: {
     auto_reply: { calls: number; tokens: number };
     draft: { calls: number; tokens: number };
+    copilot: { calls: number; tokens: number };
   };
   by_model: {
     model: string;
@@ -109,8 +110,8 @@ export function AiUsageCard() {
               <BarChart3 className="h-4 w-4 text-primary" /> Uso de tokens
             </CardTitle>
             <CardDescription>
-              Tokens gastos na sua chave do provedor por rascunhos e pelo bot de
-              resposta automática. Apenas contagens, nenhum conteúdo de mensagem é guardado aqui.
+              Tokens gastos na sua chave do provedor por rascunhos, pelo bot de
+              resposta automática e pelo Gerente IA. Apenas contagens, nenhum conteúdo de mensagem é guardado aqui.
             </CardDescription>
           </div>
           <Select
@@ -143,7 +144,7 @@ export function AiUsageCard() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <Stat label="Total de tokens" value={formatCompactNumber(data.totals.total_tokens)} />
               <Stat label="Chamadas ao LLM" value={String(data.totals.calls)} />
               <Stat
@@ -155,6 +156,11 @@ export function AiUsageCard() {
                 label="Rascunhos"
                 value={formatCompactNumber(data.by_mode.draft.tokens)}
                 icon={PencilLine}
+              />
+              <Stat
+                label="Gerente IA"
+                value={formatCompactNumber(data.by_mode.copilot.tokens)}
+                icon={Sparkles}
               />
             </div>
 
