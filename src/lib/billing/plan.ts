@@ -29,11 +29,16 @@ export interface PlanFeatures {
   aiCopilot: boolean;
   /** Public API key management + /api/v1/* + outbound webhook subscriptions. */
   apiAccess: boolean;
+  /** Multiple AI agents per account + transfer between them. Starter
+   *  keeps exactly 1 agent (the receptionist), behaving like today —
+   *  enforced not by this boolean alone but by POST /api/ai/agents also
+   *  allowing a first agent regardless of plan (see that route). */
+  aiAgents: boolean;
 }
 
 export const PLAN_FEATURES: Record<Plan, PlanFeatures> = {
-  starter: { flows: false, aiCopilot: false, apiAccess: false },
-  pro: { flows: true, aiCopilot: true, apiAccess: true },
+  starter: { flows: false, aiCopilot: false, apiAccess: false, aiAgents: false },
+  pro: { flows: true, aiCopilot: true, apiAccess: true, aiAgents: true },
 };
 
 /** The subset of `account_billing` feature-gating needs to read. */

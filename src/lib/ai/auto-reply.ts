@@ -1,15 +1,23 @@
 import { supabaseAdmin } from './admin-client'
-import { loadAiConfig } from './config'
+import { loadAiAgent, loadReceptionistAgent } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
-import { buildSystemPrompt } from './defaults'
+import { buildSystemPrompt, type TransferableAgent } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
+import type { AiConfig, ChatMessage } from './types'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/** How many agent-to-agent transfers one inbound message may trigger
+ *  in a single dispatch before we give up and hand off to a human
+ *  instead — prevents two mis-configured agents from ping-ponging a
+ *  conversation forever on the account's own BYO key. */
+const MAX_TRANSFER_HOPS = 3
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -19,6 +27,13 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+}
+
+interface ConversationRow {
+  assigned_agent_id: string | null
+  ai_autoreply_disabled: boolean
+  ai_reply_count: number
+  active_ai_agent_id: string | null
 }
 
 /**
@@ -31,15 +46,24 @@ interface DispatchArgs {
  *
  * Eligibility gates (any → silent no-op):
  *   - the account is billing write-locked (trial lapsed, expired, canceled)
- *   - AI off / auto-reply disabled for the account
  *   - a human agent is assigned (they own the thread)
  *   - auto-reply was disabled for this conversation (prior handoff)
+ *   - no agent is on duty (no active/receptionist agent, or it's off)
  *   - the per-conversation reply cap is reached
  *   - there's nothing to reply to
  *
  * The 24h WhatsApp session window is inherently open here — we're
  * reacting to a customer message that just landed — so no separate
  * window check is needed.
+ *
+ * Multi-agent: which agent replies is `conversations.active_ai_agent_id`
+ * (falling back to the account's receptionist when unset). If that
+ * agent decides to transfer (`[[TRANSFER:<slug>]]`), the conversation
+ * is re-dispatched internally to the target agent in the SAME
+ * invocation — up to `MAX_TRANSFER_HOPS` times — so the customer gets
+ * the right agent's answer in one interaction rather than waiting for
+ * their next message. Exceeding the hop limit degrades to a human
+ * handoff instead of silently dropping the message.
  */
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
@@ -54,8 +78,21 @@ export async function dispatchInboundToAiReply(
     // it, so a billing-locked account must be checked explicitly here.
     if (await isAccountWriteLocked(db, accountId)) return
 
-    const config = await loadAiConfig(db, accountId)
-    if (!config || !config.autoReplyEnabled) return
+    const { data: conv, error: convErr } = await db
+      .from('conversations')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, active_ai_agent_id')
+      .eq('id', conversationId)
+      .maybeSingle()
+    if (convErr || !conv) return
+    const conversation = conv as ConversationRow
+    if (conversation.assigned_agent_id) return // a human owns this thread
+    if (conversation.ai_autoreply_disabled) return // handed off / turned off here
+
+    const agent = conversation.active_ai_agent_id
+      ? (await loadAiAgent(db, accountId, conversation.active_ai_agent_id)) ??
+        (await loadReceptionistAgent(db, accountId))
+      : await loadReceptionistAgent(db, accountId)
+    if (!agent || !agent.autoReplyEnabled) return
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -74,17 +111,9 @@ export async function dispatchInboundToAiReply(
       .limit(1)
     if (autoResponders && autoResponders.length > 0) return
 
-    const { data: conv, error: convErr } = await db
-      .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
-      .eq('id', conversationId)
-      .maybeSingle()
-    if (convErr || !conv) return
-    if (conv.assigned_agent_id) return // a human owns this thread
-    if (conv.ai_autoreply_disabled) return // handed off / turned off here
     // Cheap early-out; the authoritative cap check is the atomic claim
-    // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+    // inside runAgentTurn (this read can race a concurrent inbound).
+    if (conversation.ai_reply_count >= agent.autoReplyMaxPerConversation) return
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
@@ -105,96 +134,238 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    // Ground the reply in the account's knowledge base (best-effort).
-    const knowledge = await retrieveKnowledge(
-      db,
+    await runAgentTurn(db, {
       accountId,
-      config,
-      latestUserMessage(messages),
-    )
-
-    const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
-      mode: 'auto_reply',
-      knowledge,
-    })
-
-    const { text, handoff, usage } = await generateReply({
-      config,
-      systemPrompt,
-      messages,
-    })
-
-    // Record token spend on the account's BYO key. Fire-and-forget so it
-    // never adds latency to the customer-facing send: `logAiUsage`
-    // swallows its own errors, so the floating promise can't reject.
-    // Logged regardless of handoff — the provider call happened either
-    // way.
-    void logAiUsage(db, {
-      accountId,
-      conversationId,
-      mode: 'auto_reply',
-      provider: config.provider,
-      model: config.model,
-      usage,
-    })
-
-    if (handoff || !text) {
-      // The model can't (or shouldn't) answer — stop auto-replying on
-      // this thread and hand it to a human. We (a) pause the bot here
-      // (sticky until re-enabled), (b) route the conversation to the
-      // configured handoff agent — null leaves it in the shared queue —
-      // and (c) leave a short internal note so whoever picks it up has
-      // context. Assigning fires the `on_conversation_assigned` trigger,
-      // which notifies the agent.
-      const summary = buildHandoffSummary({
-        messages,
-        replyCount: conv.ai_reply_count ?? 0,
-      })
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
-      }
-      // Only set the assignee when a target is configured AND the thread
-      // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
-      }
-      await db.from('conversations').update(update).eq('id', conversationId)
-      return
-    }
-
-    // Atomically claim a reply slot: the cap check + increment happen in
-    // one UPDATE, so concurrent inbounds can never overshoot the cap. If
-    // another inbound just took the last slot, `claimed` is false and we
-    // skip the send. (We consume a slot slightly before the send lands —
-    // fail-safe: under-reply rather than over-reply.)
-    const { data: claimed, error: claimErr } = await db.rpc(
-      'claim_ai_reply_slot',
-      {
-        conversation_id: conversationId,
-        max_replies: config.autoReplyMaxPerConversation,
-      },
-    )
-    if (claimErr) {
-      // A real error here (vs. losing the cap race) is almost always a
-      // deploy issue — e.g. `claim_ai_reply_slot` not EXECUTE-able by the
-      // service role, or the migration not applied. Log it loudly: a
-      // silent return makes "auto-reply never fires" undiagnosable.
-      console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
-      return
-    }
-    if (claimed !== true) return // lost the per-conversation cap race
-
-    await engineSendText({
-      accountId,
-      userId: configOwnerUserId,
       conversationId,
       contactId,
-      text,
-      aiGenerated: true,
+      configOwnerUserId,
+      agent,
+      messages,
+      replyCount: conversation.ai_reply_count ?? 0,
+      hopsRemaining: MAX_TRANSFER_HOPS,
     })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }
+}
+
+interface TurnState {
+  accountId: string
+  conversationId: string
+  contactId: string
+  configOwnerUserId: string
+  agent: AiConfig
+  messages: ChatMessage[]
+  /** The conversation's shared reply tally as of the start of this
+   *  turn — incremented locally after a successful send so a transfer
+   *  chain within one dispatch respects each agent's own cap against
+   *  the running total, without an extra round-trip per hop. */
+  replyCount: number
+  hopsRemaining: number
+}
+
+/**
+ * Run one agent's turn, following transfers (if any) up to
+ * `hopsRemaining` before returning. Never throws — same contract as
+ * `dispatchInboundToAiReply`, which is its only caller.
+ */
+async function runAgentTurn(db: SupabaseClient, state: TurnState): Promise<void> {
+  const { accountId, conversationId, contactId, configOwnerUserId, agent, messages, replyCount } =
+    state
+
+  if (replyCount >= agent.autoReplyMaxPerConversation) return // this agent's cap is already spent
+
+  // Ground the reply in this agent's own knowledge base (best-effort).
+  const knowledge = await retrieveKnowledge(
+    db,
+    accountId,
+    agent.id,
+    agent,
+    latestUserMessage(messages),
+  )
+
+  const siblings = await loadTransferSiblings(db, accountId, agent.id)
+
+  const systemPrompt = buildSystemPrompt({
+    userPrompt: agent.systemPrompt,
+    mode: 'auto_reply',
+    knowledge,
+    availableAgents: siblings,
+  })
+
+  const { text, handoff, transferToSlug, usage } = await generateReply({
+    config: agent,
+    systemPrompt,
+    messages,
+  })
+
+  // Record token spend on the account's BYO key. Fire-and-forget so it
+  // never adds latency to the customer-facing send: `logAiUsage`
+  // swallows its own errors, so the floating promise can't reject.
+  // Logged regardless of outcome — the provider call happened either way.
+  void logAiUsage(db, {
+    accountId,
+    conversationId,
+    mode: 'auto_reply',
+    provider: agent.provider,
+    model: agent.model,
+    agentId: agent.id,
+    usage,
+  })
+
+  const target = transferToSlug
+    ? siblings.find((s) => s.slug === transferToSlug)
+    : undefined
+
+  if (target && state.hopsRemaining > 0) {
+    let nextReplyCount = state.replyCount
+    // The model may leave a short lead-in before the marker (e.g. "let
+    // me get you the right person") — send it as a normal message if
+    // so; a bare marker (empty text after parsing) sends nothing.
+    if (text) {
+      nextReplyCount = await claimAndSend(db, {
+        accountId,
+        conversationId,
+        contactId,
+        configOwnerUserId,
+        text,
+        maxReplies: agent.autoReplyMaxPerConversation,
+        replyCountBefore: state.replyCount,
+      })
+    }
+
+    await db
+      .from('conversations')
+      .update({ active_ai_agent_id: target.id })
+      .eq('id', conversationId)
+
+    const nextAgent = await loadAiAgent(db, accountId, target.id)
+    // Defensive: siblings was filtered to active+auto_reply_enabled
+    // agents moments ago, but a concurrent edit could have turned the
+    // target off in between — fall back to a human handoff rather than
+    // silently dropping the transfer.
+    if (nextAgent && nextAgent.autoReplyEnabled) {
+      // Re-fetch the transcript so the next agent sees the message
+      // that was just sent (if any), not a stale copy.
+      const nextMessages = text
+        ? await buildConversationContext(db, conversationId)
+        : state.messages
+      await runAgentTurn(db, {
+        ...state,
+        agent: nextAgent,
+        messages: nextMessages,
+        replyCount: nextReplyCount,
+        hopsRemaining: state.hopsRemaining - 1,
+      })
+      return
+    }
+  }
+
+  const hopLimitExceeded = Boolean(target) && state.hopsRemaining <= 0
+
+  if (handoff || hopLimitExceeded || !text) {
+    // The model can't (or shouldn't) answer — or a transfer chain ran
+    // out of hops — so stop auto-replying on this thread and hand it to
+    // a human. We (a) pause the bot here (sticky until re-enabled), (b)
+    // route the conversation to the CURRENT agent's configured handoff
+    // target — null leaves it in the shared queue — and (c) leave a
+    // short internal note so whoever picks it up has context. Assigning
+    // fires the `on_conversation_assigned` trigger, which notifies the
+    // agent.
+    const summary = buildHandoffSummary({
+      messages,
+      replyCount: state.replyCount,
+    })
+    const update: Record<string, unknown> = {
+      ai_autoreply_disabled: true,
+      ai_handoff_summary: hopLimitExceeded
+        ? `${summary} (transfer loop hit the ${MAX_TRANSFER_HOPS}-hop limit — routed to a human instead.)`
+        : summary,
+    }
+    // Only set the assignee when a target is configured — the thread
+    // is guaranteed unowned here: `dispatchInboundToAiReply` already
+    // returned early if a human was assigned, and nothing in this
+    // function's own path assigns one before this point.
+    if (agent.handoffAgentId) {
+      update.assigned_agent_id = agent.handoffAgentId
+    }
+    await db.from('conversations').update(update).eq('id', conversationId)
+    return
+  }
+
+  await claimAndSend(db, {
+    accountId,
+    conversationId,
+    contactId,
+    configOwnerUserId,
+    text,
+    maxReplies: agent.autoReplyMaxPerConversation,
+    replyCountBefore: state.replyCount,
+  })
+}
+
+/**
+ * Atomically claim a reply slot and send, mirroring the pre-multi-agent
+ * behaviour exactly: the cap check + increment happen in one UPDATE, so
+ * concurrent inbounds can never overshoot the cap. If another inbound
+ * just took the last slot, the claim fails and nothing is sent. Returns
+ * the reply count to assume for the rest of this dispatch (incremented
+ * only when the claim succeeded).
+ */
+async function claimAndSend(
+  db: SupabaseClient,
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string
+    configOwnerUserId: string
+    text: string
+    maxReplies: number
+    replyCountBefore: number
+  },
+): Promise<number> {
+  const { data: claimed, error: claimErr } = await db.rpc('claim_ai_reply_slot', {
+    conversation_id: args.conversationId,
+    max_replies: args.maxReplies,
+  })
+  if (claimErr) {
+    // A real error here (vs. losing the cap race) is almost always a
+    // deploy issue — e.g. `claim_ai_reply_slot` not EXECUTE-able by the
+    // service role, or the migration not applied. Log it loudly: a
+    // silent return makes "auto-reply never fires" undiagnosable.
+    console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
+    return args.replyCountBefore
+  }
+  if (claimed !== true) return args.replyCountBefore // lost the per-conversation cap race
+
+  await engineSendText({
+    accountId: args.accountId,
+    userId: args.configOwnerUserId,
+    conversationId: args.conversationId,
+    contactId: args.contactId,
+    text: args.text,
+    aiGenerated: true,
+  })
+  return args.replyCountBefore + 1
+}
+
+/** Active, auto-reply-enabled sibling agents this account's agent
+ *  could transfer to — feeds both the transfer-menu prompt block and
+ *  the dispatcher's slug→agent resolution. Naturally empty on a
+ *  single-agent (Starter) account, which keeps behaviour identical to
+ *  the pre-multi-agent bot with zero extra branching. */
+async function loadTransferSiblings(
+  db: SupabaseClient,
+  accountId: string,
+  currentAgentId: string,
+): Promise<TransferableAgent[]> {
+  const { data, error } = await db
+    .from('ai_agents')
+    .select('id, slug, name, description')
+    .eq('account_id', accountId)
+    .eq('is_active', true)
+    .eq('auto_reply_enabled', true)
+    .neq('id', currentAgentId)
+  if (error || !data) return []
+  return data as TransferableAgent[]
 }

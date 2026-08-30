@@ -2,26 +2,72 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight } from 'lucide-react';
+import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight, ArrowLeftRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Turn {
   role: 'user' | 'assistant';
   content: string;
   /** assistant-only: the agent signalled a human handoff on this turn. */
   handoff?: boolean;
+  /** assistant-only: the agent asked to transfer to another agent's slug
+   *  (not simulated here — just surfaced, see the multi-agent plan). */
+  transferTo?: string | null;
+}
+
+interface AgentOption {
+  id: string;
+  name: string;
+  slug: string;
+  is_receptionist: boolean;
 }
 
 export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [agentId, setAgentId] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, sending]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/ai/agents');
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const list = (data.agents as AgentOption[]) ?? [];
+        setAgents(list);
+        const receptionist = list.find((a) => a.is_receptionist);
+        setAgentId(receptionist?.id ?? list[0]?.id ?? '');
+      } catch {
+        // Best-effort — the playground still works against the
+        // receptionist by default even if the picker fails to load.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeAgent = (id: string | null) => {
+    if (!id) return;
+    setAgentId(id);
+    setTurns([]); // switching agent mid-transcript would be misleading
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -35,8 +81,9 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       const res = await fetch('/api/ai/playground', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send only role+content — the server ignores anything else.
         body: JSON.stringify({
+          agent_id: agentId || undefined,
+          // Send only role+content — the server ignores anything else.
           messages: next.map((t) => ({ role: t.role, content: t.content })),
         }),
       });
@@ -61,6 +108,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
               ? data.reply
               : '',
           handoff: Boolean(data.handoff),
+          transferTo: typeof data.transfer_to === 'string' ? data.transfer_to : null,
         },
       ]);
     } catch {
@@ -82,20 +130,31 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   return (
     <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Playground</span>
-          <span className="text-xs text-muted-foreground">
-            teste as respostas como se você fosse um cliente
-          </span>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Bot className="h-4 w-4 shrink-0 text-primary" />
+          <span className="shrink-0 text-sm font-medium text-foreground">Playground</span>
+          {agents.length > 1 && (
+            <Select value={agentId} onValueChange={changeAgent} disabled={sending}>
+              <SelectTrigger className="h-7 w-auto min-w-[9rem] gap-1 px-2 text-xs">
+                <SelectValue placeholder="Agente" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setTurns([])}
           disabled={turns.length === 0 || sending}
-          className="text-muted-foreground"
+          className="shrink-0 text-muted-foreground"
         >
           <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Limpar
         </Button>
@@ -153,6 +212,17 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
                 >
                   <UserCircle2 className="h-3.5 w-3.5" />
                   Transferiria para um humano aqui
+                </p>
+              )}
+              {t.role === 'assistant' && t.transferTo && (
+                <p
+                  className={cn(
+                    'flex items-center gap-1 text-xs text-sky-500',
+                    t.content && 'mt-1.5 border-t border-border/50 pt-1.5',
+                  )}
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                  Transferiria para o agente &quot;{t.transferTo}&quot; aqui
                 </p>
               )}
             </div>

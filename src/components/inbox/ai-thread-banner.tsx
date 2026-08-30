@@ -10,13 +10,19 @@ import { useAuth } from "@/hooks/use-auth";
 // ------------------------------------------------------------
 // Account AI status is the same for every conversation, so cache it per
 // account and reuse it across thread switches instead of hitting
-// /api/ai/config every time the agent opens a chat.
+// /api/ai/agents every time the agent opens a chat.
 //
 // Keyed by accountId (a multi-account user switching workspaces must not
 // see the previous account's status), and only *successful* fetches are
 // cached — a transient failure returns a default without poisoning the
 // cache, so it retries on the next thread open rather than hiding the
 // banner for the whole session.
+//
+// Multi-agent note: this only answers "does the account have ANY agent
+// that could auto-reply" — which specific agent is on duty for a given
+// conversation (`conversations.active_ai_agent_id`) isn't surfaced here
+// yet, so the banner's copy stays generic ("the AI") rather than naming
+// the agent. Naming it is a follow-up, not required for correctness.
 // ------------------------------------------------------------
 interface AiAccountStatus {
   autoReplyOn: boolean;
@@ -27,13 +33,18 @@ async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus>
   const cached = statusCache.get(accountId);
   if (cached) return cached;
   try {
-    const res = await fetch("/api/ai/config", { cache: "no-store" });
+    const res = await fetch("/api/ai/agents", { cache: "no-store" });
     if (!res.ok) return { autoReplyOn: false }; // don't cache a transient failure
     const j = await res.json();
+    const agents = Array.isArray(j?.agents) ? j.agents : [];
     const status = {
-      // AI auto-reply is "live" only when configured, the master switch
-      // is on, and the inbound bot is enabled.
-      autoReplyOn: !!(j?.configured && j?.is_active && j?.auto_reply_enabled),
+      // AI auto-reply is "live" for the account when at least one agent
+      // is active with the inbound bot enabled — which one applies to a
+      // given thread is resolved server-side per conversation.
+      autoReplyOn: agents.some(
+        (a: { is_active?: boolean; auto_reply_enabled?: boolean }) =>
+          a?.is_active && a?.auto_reply_enabled,
+      ),
     };
     statusCache.set(accountId, status);
     return status;

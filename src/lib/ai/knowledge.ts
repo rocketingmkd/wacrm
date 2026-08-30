@@ -27,6 +27,7 @@ interface MatchRow {
 export async function ingestDocument(
   db: SupabaseClient,
   accountId: string,
+  agentId: string,
   config: Pick<AiConfig, 'embeddingsApiKey'>,
   documentId: string,
   content: string,
@@ -61,6 +62,7 @@ export async function ingestDocument(
   const rows = chunks.map((content, i) => ({
     document_id: documentId,
     account_id: accountId,
+    agent_id: agentId,
     chunk_index: i,
     content,
     embedding: embeddings ? toVectorLiteral(embeddings[i]) : null,
@@ -84,6 +86,7 @@ export async function ingestDocument(
 export async function retrieveKnowledge(
   db: SupabaseClient,
   accountId: string,
+  agentId: string,
   config: Pick<AiConfig, 'embeddingsApiKey'>,
   queryText: string,
   k = 5,
@@ -91,7 +94,7 @@ export async function retrieveKnowledge(
   const query = queryText.trim()
   if (!query || k <= 0) return []
 
-  // Skip everything when the account has no knowledge base — otherwise
+  // Skip everything when this agent has no knowledge base — otherwise
   // every draft / auto-reply would pay for a query embedding + two RPCs
   // just to get []. One cheap indexed COUNT (head, no rows) instead of a
   // paid embeddings call on the hot path.
@@ -100,6 +103,7 @@ export async function retrieveKnowledge(
       .from('ai_knowledge_chunks')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
+      .eq('agent_id', agentId)
     if (error || !count) return []
   } catch {
     return []
@@ -114,6 +118,7 @@ export async function retrieveKnowledge(
       if (queryEmbedding) {
         const { data, error } = await db.rpc('match_ai_knowledge_semantic', {
           p_account_id: accountId,
+          p_agent_id: agentId,
           p_query_embedding: toVectorLiteral(queryEmbedding),
           p_match_count: k,
         })
@@ -131,6 +136,7 @@ export async function retrieveKnowledge(
     try {
       const { data, error } = await db.rpc('match_ai_knowledge_fts', {
         p_account_id: accountId,
+        p_agent_id: agentId,
         p_query: query,
         p_match_count: k,
       })

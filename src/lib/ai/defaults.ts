@@ -22,6 +22,18 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]'
 
+/** One sibling agent this account could transfer a conversation to —
+ *  see the `availableAgents` block in `buildSystemPrompt`. `id` isn't
+ *  shown to the model (only `slug`/`name`/`description` are rendered
+ *  into the prompt) — it's carried here so the dispatcher can resolve
+ *  a matched slug back to a loadable agent without a second query. */
+export interface TransferableAgent {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+}
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
@@ -54,8 +66,13 @@ export function buildSystemPrompt(args: {
   mode: 'draft' | 'auto_reply'
   /** Knowledge-base excerpts retrieved for the current question. */
   knowledge?: string[]
+  /** Sibling agents this one may transfer to (auto-reply mode only —
+   *  see the multi-agent plan). Empty/omitted on a single-agent
+   *  account, which keeps the prompt byte-for-byte what it was before
+   *  multi-agent existed. */
+  availableAgents?: TransferableAgent[]
 }): string {
-  const { userPrompt, mode, knowledge } = args
+  const { userPrompt, mode, knowledge, availableAgents } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -69,6 +86,18 @@ export function buildSystemPrompt(args: {
   if (mode === 'auto_reply') {
     parts.push(
       `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`,
+    )
+  }
+
+  if (mode === 'auto_reply' && availableAgents && availableAgents.length > 0) {
+    parts.push(
+      'You are one of several specialized agents on this account. If the conversation is better handled by one of the other agents below, transfer it by including exactly ' +
+        `[[TRANSFER:<slug>]] (using the exact slug from the list — never invent one) in your reply. You may say a short line to the customer first (e.g. "let me get you the right person"), or just emit the marker alone — either way, do not answer the customer's actual question yourself once you've decided to transfer. ` +
+        `Only transfer when a listed agent is clearly a better fit than you; otherwise keep helping, or use ${HANDOFF_SENTINEL} if you need a human instead. ` +
+        'Available agents:\n' +
+        availableAgents
+          .map((a) => `- ${a.slug}: ${a.name}${a.description ? ` — ${a.description}` : ''}`)
+          .join('\n'),
     )
   }
 

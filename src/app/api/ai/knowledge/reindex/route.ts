@@ -8,21 +8,29 @@ import { AiError } from '@/lib/ai/types'
 /**
  * POST /api/ai/knowledge/reindex  (admin+)
  *
- * Re-chunk and re-embed every document in the account. The main use is
- * after adding an embeddings key: existing documents were stored
- * lexical-only, and this backfills their vectors so semantic search
- * turns on. Also recovers documents whose indexing failed earlier.
+ * Body: { agent_id }. Re-chunk and re-embed every document belonging
+ * to that one agent. The main use is after adding an embeddings key:
+ * existing documents were stored lexical-only, and this backfills
+ * their vectors so semantic search turns on. Also recovers documents
+ * whose indexing failed earlier.
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const { supabase, accountId, userId } = await requireWrite('admin')
     const limit = checkRateLimit(`ai-kb-reindex:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
 
+    const body = await request.json().catch(() => null)
+    const agentId = typeof body?.agent_id === 'string' ? body.agent_id : ''
+    if (!agentId) {
+      return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+    }
+
     const { data: docs, error } = await supabase
       .from('ai_knowledge_documents')
       .select('id, content')
       .eq('account_id', accountId)
+      .eq('agent_id', agentId)
     if (error) {
       console.error('[ai/knowledge/reindex] fetch error:', error)
       return NextResponse.json(
@@ -34,6 +42,7 @@ export async function POST() {
     const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
       supabase,
       accountId,
+      agentId,
     )
     // The whole point of Reindex is usually to backfill embeddings — so
     // if a key is configured but can't be decrypted, don't quietly do a
@@ -44,7 +53,7 @@ export async function POST() {
           success: false,
           reindexed: 0,
           error:
-            'Your embeddings key could not be decrypted (check ENCRYPTION_KEY, then re-enter the key in Settings → AI Assistant). Nothing was reindexed.',
+            'Your embeddings key could not be decrypted (check ENCRYPTION_KEY, then re-enter the key in Settings → AI Agents). Nothing was reindexed.',
         },
         { status: 200 },
       )
@@ -53,7 +62,7 @@ export async function POST() {
     let reindexed = 0
     for (const doc of docs ?? []) {
       try {
-        await ingestDocument(supabase, accountId, { embeddingsApiKey }, doc.id, doc.content)
+        await ingestDocument(supabase, accountId, agentId, { embeddingsApiKey }, doc.id, doc.content)
         reindexed += 1
       } catch (err) {
         // One bad document (e.g. a mid-run embeddings rate-limit) should

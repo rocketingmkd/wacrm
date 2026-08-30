@@ -5,22 +5,25 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { AiError, type AiProvider } from '@/lib/ai/types'
 
+type Params = { params: Promise<{ id: string }> }
+
 /**
- * POST /api/ai/test  (admin+)
+ * POST /api/ai/agents/[id]/test  (admin+)
  *
  * "Test key" button: validate a candidate provider/model/key against
- * the provider WITHOUT saving. When `api_key` is omitted the stored
- * key is used, so an admin can re-test an existing config (e.g. after
- * changing the model). Returns `{ ok: true }` on success, 400 with the
- * provider's message on failure.
+ * the provider WITHOUT saving. `id` is `"new"` when testing before the
+ * agent has been created yet (the create form); otherwise an existing
+ * agent id, and omitting `api_key` re-tests its stored key. Returns
+ * `{ ok: true }` on success, 400 with the provider's message on failure.
  */
-export async function POST(request: Request) {
+export async function POST(request: Request, { params }: Params) {
   try {
     const { supabase, accountId, userId } = await requireWrite('admin')
 
-    const limit = checkRateLimit(`ai-test:${userId}`, RATE_LIMITS.adminAction)
+    const limit = checkRateLimit(`ai-agents-test:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
 
+    const { id } = await params
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
@@ -41,16 +44,17 @@ export async function POST(request: Request) {
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
     let apiKeyPlain = rawKey
     if (!apiKeyPlain) {
+      if (id === 'new') {
+        return NextResponse.json({ error: 'Enter an API key to test.' }, { status: 400 })
+      }
       const { data: existing } = await supabase
-        .from('ai_configs')
+        .from('ai_agents')
         .select('api_key')
         .eq('account_id', accountId)
+        .eq('id', id)
         .maybeSingle()
       if (!existing?.api_key) {
-        return NextResponse.json(
-          { error: 'Enter an API key to test.' },
-          { status: 400 },
-        )
+        return NextResponse.json({ error: 'Enter an API key to test.' }, { status: 400 })
       }
       try {
         apiKeyPlain = decrypt(existing.api_key)
@@ -64,6 +68,11 @@ export async function POST(request: Request) {
 
     try {
       await validateAiCredentials({
+        id,
+        name: 'test',
+        slug: 'test',
+        description: null,
+        isReceptionist: false,
         provider,
         model,
         apiKey: apiKeyPlain,
@@ -76,16 +85,10 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       if (err instanceof AiError) {
-        return NextResponse.json(
-          { error: err.message, code: err.code },
-          { status: 400 },
-        )
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
       }
-      console.error('[ai/test] validation error:', err)
-      return NextResponse.json(
-        { error: 'Could not validate the API key.' },
-        { status: 400 },
-      )
+      console.error('[ai/agents/[id]/test] validation error:', err)
+      return NextResponse.json({ error: 'Could not validate the API key.' }, { status: 400 })
     }
 
     return NextResponse.json({ ok: true })

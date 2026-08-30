@@ -16,7 +16,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { loadAiConfig } from './config'
+import { loadReceptionistAgent } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { latestUserMessage } from './query'
@@ -85,8 +85,12 @@ export async function refreshConversationInsight(
     return existing
   }
 
-  // Not configured / master switch off → leave whatever's cached.
-  const config = await loadAiConfig(db, accountId).catch(() => null)
+  // Not configured / master switch off → leave whatever's cached. The
+  // copilot is a seller-facing feature independent of auto-reply
+  // routing (see multi-agent plan) — it always reads credentials off
+  // the account's receptionist agent, never a conversation's pinned
+  // active_ai_agent_id.
+  const config = await loadReceptionistAgent(db, accountId).catch(() => null)
   if (!config) return existing
 
   const messages = await buildConversationContext(db, conversationId).catch(() => [])
@@ -94,6 +98,7 @@ export async function refreshConversationInsight(
 
   const context = await buildCopilotContext(db, {
     accountId,
+    agentId: config.id,
     conversationId,
     contactId,
     businessPrompt: config.systemPrompt,
@@ -139,6 +144,7 @@ export async function refreshConversationInsight(
       mode: 'copilot',
       provider: config.provider,
       model: config.model,
+      agentId: config.id,
       usage,
     })
   } catch (logErr) {
@@ -158,6 +164,7 @@ async function buildCopilotContext(
   db: SupabaseClient,
   args: {
     accountId: string
+    agentId: string
     conversationId: string
     contactId: string | null
     businessPrompt: string | null
@@ -165,7 +172,7 @@ async function buildCopilotContext(
     embeddingsApiKey: string | null
   },
 ): Promise<CopilotContext> {
-  const { accountId, conversationId, contactId, businessPrompt, latestQuestion } = args
+  const { accountId, agentId, conversationId, contactId, businessPrompt, latestQuestion } = args
 
   const [pipelineRes, dealRes, tagsRes, knowledge] = await Promise.all([
     // Account's main (oldest) pipeline + its stages, in order. Mirrors
@@ -203,6 +210,7 @@ async function buildCopilotContext(
     retrieveKnowledge(
       db,
       accountId,
+      agentId,
       { embeddingsApiKey: args.embeddingsApiKey },
       latestQuestion,
     ).catch(() => [] as string[]),

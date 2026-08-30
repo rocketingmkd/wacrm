@@ -3,7 +3,8 @@ import type { AiConfig } from './types'
 
 // Shared, hoisted mock state so the module mocks can close over it.
 const h = vi.hoisted(() => ({
-  loadAiConfig: vi.fn(),
+  loadAiAgent: vi.fn(),
+  loadReceptionistAgent: vi.fn(),
   buildConversationContext: vi.fn(),
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
@@ -11,8 +12,9 @@ const h = vi.hoisted(() => ({
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
+    siblings: [] as { id: string; slug: string; name: string; description: string | null }[],
     claim: true as boolean,
-    updatePayload: null as Record<string, unknown> | null,
+    conversationUpdates: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
     writeLocked: false as boolean,
   },
@@ -26,7 +28,10 @@ vi.mock('@/lib/billing/write-lock', () => ({
   isAccountWriteLocked: async () => h.state.writeLocked,
 }))
 
-vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
+vi.mock('./config', () => ({
+  loadAiAgent: h.loadAiAgent,
+  loadReceptionistAgent: h.loadReceptionistAgent,
+}))
 vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
@@ -45,6 +50,15 @@ vi.mock('./admin-client', () => ({
         }
         return chain
       }
+      if (table === 'ai_agents') {
+        // loadTransferSiblings: .select().eq().eq().eq().neq()
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          neq: () => Promise.resolve({ data: h.state.siblings, error: null }),
+        }
+        return chain
+      }
       // conversations
       return {
         select: () => ({
@@ -54,7 +68,7 @@ vi.mock('./admin-client', () => ({
           }),
         }),
         update: (payload: Record<string, unknown>) => {
-          h.state.updatePayload = payload
+          h.state.conversationUpdates.push(payload)
           return { eq: () => Promise.resolve({ error: null }) }
         },
       }
@@ -77,6 +91,11 @@ const ARGS = {
 
 function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
   return {
+    id: 'agent-1',
+    name: 'Assistente',
+    slug: 'assistente',
+    description: null,
+    isReceptionist: true,
     provider: 'openai',
     model: 'gpt-test',
     apiKey: 'sk-test',
@@ -95,22 +114,28 @@ beforeEach(() => {
     assigned_agent_id: null,
     ai_autoreply_disabled: false,
     ai_reply_count: 0,
+    active_ai_agent_id: null,
   }
   h.state.autoResponders = []
+  h.state.siblings = []
   h.state.claim = true
-  h.state.updatePayload = null
+  h.state.conversationUpdates = []
   h.state.rpcCalls = []
   h.state.writeLocked = false
-  h.loadAiConfig.mockResolvedValue(aiConfig())
+  h.loadAiAgent.mockReset()
+  h.loadReceptionistAgent.mockReset()
+  h.loadReceptionistAgent.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
-  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
+  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false, transferToSlug: null })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
-  it('claims a slot and sends on the happy path', async () => {
+  it('claims a slot and sends on the happy path (receptionist, no active_ai_agent_id)', async () => {
     await dispatchInboundToAiReply(ARGS)
+    expect(h.loadReceptionistAgent).toHaveBeenCalledWith(expect.anything(), 'acct-1')
+    expect(h.loadAiAgent).not.toHaveBeenCalled()
     expect(h.state.rpcCalls).toEqual([
       {
         name: 'claim_ai_reply_slot',
@@ -122,10 +147,40 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     )
   })
 
+  it('loads the conversation-pinned agent when active_ai_agent_id is set', async () => {
+    h.state.conv = { ...h.state.conv, active_ai_agent_id: 'agent-9' }
+    h.loadAiAgent.mockResolvedValue(aiConfig({ id: 'agent-9', name: 'Suporte', slug: 'suporte' }))
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.loadAiAgent).toHaveBeenCalledWith(expect.anything(), 'acct-1', 'agent-9')
+    expect(h.loadReceptionistAgent).not.toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
+  it('falls back to the receptionist when the pinned agent no longer resolves', async () => {
+    h.state.conv = { ...h.state.conv, active_ai_agent_id: 'agent-deleted' }
+    h.loadAiAgent.mockResolvedValue(null)
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.loadReceptionistAgent).toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
+  it('skips silently when there is no receptionist and no pinned agent (AI never configured)', async () => {
+    h.loadReceptionistAgent.mockResolvedValue(null)
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
   it('grounds the reply in retrieved knowledge', async () => {
     h.retrieveKnowledge.mockResolvedValue(['Returns accepted within 30 days.'])
     await dispatchInboundToAiReply(ARGS)
-    expect(h.retrieveKnowledge).toHaveBeenCalled()
+    expect(h.retrieveKnowledge).toHaveBeenCalledWith(
+      expect.anything(),
+      'acct-1',
+      'agent-1',
+      expect.anything(),
+      'hi',
+    )
     const systemPrompt = h.generateReply.mock.calls[0][0].systemPrompt as string
     expect(systemPrompt).toContain('Returns accepted within 30 days.')
   })
@@ -146,52 +201,40 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
   })
 
   it('skips when AI is off / not configured', async () => {
-    h.loadAiConfig.mockResolvedValue(null)
+    h.loadReceptionistAgent.mockResolvedValue(null)
     await dispatchInboundToAiReply(ARGS)
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
-  it('skips when the account is billing write-locked, before even loading config', async () => {
+  it('skips when the account is billing write-locked, before even loading an agent', async () => {
     h.state.writeLocked = true
     await dispatchInboundToAiReply(ARGS)
-    expect(h.loadAiConfig).not.toHaveBeenCalled()
+    expect(h.loadReceptionistAgent).not.toHaveBeenCalled()
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
-  it('skips when auto-reply is disabled for the account', async () => {
-    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyEnabled: false }))
+  it('skips when auto-reply is disabled for the resolved agent', async () => {
+    h.loadReceptionistAgent.mockResolvedValue(aiConfig({ autoReplyEnabled: false }))
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
   it('skips when a human agent is assigned', async () => {
-    h.state.conv = {
-      assigned_agent_id: 'agent-9',
-      ai_autoreply_disabled: false,
-      ai_reply_count: 0,
-    }
+    h.state.conv = { ...h.state.conv, assigned_agent_id: 'agent-9' }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
   it('skips when auto-reply was disabled on this conversation', async () => {
-    h.state.conv = {
-      assigned_agent_id: null,
-      ai_autoreply_disabled: true,
-      ai_reply_count: 0,
-    }
+    h.state.conv = { ...h.state.conv, ai_autoreply_disabled: true }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
   it('skips when the per-conversation cap is reached', async () => {
-    h.state.conv = {
-      assigned_agent_id: null,
-      ai_autoreply_disabled: false,
-      ai_reply_count: 3,
-    }
+    h.state.conv = { ...h.state.conv, ai_reply_count: 3 }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
@@ -206,25 +249,93 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
 
 describe('dispatchInboundToAiReply — handoff', () => {
   it('disables auto-reply, writes a summary, and does not send on handoff', async () => {
-    h.generateReply.mockResolvedValue({ text: '', handoff: true })
+    h.generateReply.mockResolvedValue({ text: '', handoff: true, transferToSlug: null })
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
     expect(h.state.rpcCalls).toHaveLength(0)
-    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
-    expect(h.state.updatePayload?.ai_handoff_summary).toContain(
-      'AI agent handed off',
-    )
+    const update = h.state.conversationUpdates[0]
+    expect(update).toMatchObject({ ai_autoreply_disabled: true })
+    expect(update.ai_handoff_summary).toContain('AI agent handed off')
     // No handoff target configured → conversation left unassigned.
-    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    expect(update).not.toHaveProperty('assigned_agent_id')
   })
 
   it('routes to the configured handoff agent on handoff', async () => {
-    h.loadAiConfig.mockResolvedValue(aiConfig({ handoffAgentId: 'agent-7' }))
-    h.generateReply.mockResolvedValue({ text: '', handoff: true })
+    h.loadReceptionistAgent.mockResolvedValue(aiConfig({ handoffAgentId: 'agent-7' }))
+    h.generateReply.mockResolvedValue({ text: '', handoff: true, transferToSlug: null })
     await dispatchInboundToAiReply(ARGS)
-    expect(h.state.updatePayload).toMatchObject({
+    expect(h.state.conversationUpdates[0]).toMatchObject({
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+  })
+})
+
+describe('dispatchInboundToAiReply — transfer between agents', () => {
+  const suporte = aiConfig({
+    id: 'agent-suporte',
+    name: 'Suporte',
+    slug: 'suporte',
+    autoReplyMaxPerConversation: 3,
+  })
+
+  beforeEach(() => {
+    h.state.siblings = [
+      { id: 'agent-suporte', slug: 'suporte', name: 'Suporte', description: 'Suporte técnico' },
+    ]
+  })
+
+  it('transfers within the same dispatch and the target agent replies', async () => {
+    h.generateReply
+      .mockResolvedValueOnce({ text: '', handoff: false, transferToSlug: 'suporte' })
+      .mockResolvedValueOnce({ text: 'Claro, posso ajudar!', handoff: false, transferToSlug: null })
+    h.loadAiAgent.mockResolvedValue(suporte)
+
+    await dispatchInboundToAiReply(ARGS)
+
+    // active_ai_agent_id is repointed at the target before the second turn runs.
+    expect(h.state.conversationUpdates).toContainEqual({ active_ai_agent_id: 'agent-suporte' })
+    // Only the second (post-transfer) turn actually sends a message.
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Claro, posso ajudar!' }),
+    )
+    expect(h.generateReply).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends a lead-in message before transferring when the model leaves text', async () => {
+    h.generateReply
+      .mockResolvedValueOnce({
+        text: 'Já te encaminho para o suporte!',
+        handoff: false,
+        transferToSlug: 'suporte',
+      })
+      .mockResolvedValueOnce({ text: 'Oi, em que posso ajudar?', handoff: false, transferToSlug: null })
+    h.loadAiAgent.mockResolvedValue(suporte)
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledTimes(2)
+    expect(h.engineSendText).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ text: 'Já te encaminho para o suporte!' }),
+    )
+    // Both sends claim a slot off the same shared per-conversation counter.
+    expect(h.state.rpcCalls).toHaveLength(2)
+  })
+
+  it('degrades to a human handoff once the transfer-hop limit is exceeded', async () => {
+    // Both agents keep asking to transfer to the other, forever.
+    h.generateReply.mockResolvedValue({ text: '', handoff: false, transferToSlug: 'suporte' })
+    h.loadAiAgent.mockResolvedValue(suporte)
+
+    await dispatchInboundToAiReply(ARGS)
+
+    // Never actually sends a customer-facing message…
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    // …and ends in a human handoff instead of looping forever.
+    const handoffUpdate = h.state.conversationUpdates.find((u) => u.ai_autoreply_disabled)
+    expect(handoffUpdate).toBeTruthy()
+    expect(handoffUpdate!.ai_handoff_summary).toContain('hop limit')
   })
 })

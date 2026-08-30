@@ -27,10 +27,14 @@ type EditTarget = 'new' | string | null;
 
 export function AiKnowledgeCard({
   accountId,
+  agentId,
   canEdit,
   hasEmbeddingsKey,
 }: {
   accountId: string | null;
+  /** Documents belong to one agent (migration 046) — every request
+   *  below is scoped by this id. */
+  agentId: string;
   canEdit: boolean;
   hasEmbeddingsKey: boolean;
 }) {
@@ -41,13 +45,13 @@ export function AiKnowledgeCard({
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [reindexing, setReindexing] = useState(false);
-  const loadedAccountIdRef = useRef<string | null>(null);
+  const loadedKeyRef = useRef<string | null>(null);
   const t = useTranslations('Settings.aiKnowledge');
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/ai/knowledge');
+      const res = await fetch(`/api/ai/knowledge?agent_id=${agentId}`);
       const data = await res.json();
       if (res.ok) setDocs(data.documents ?? []);
       else toast.error(data.error ?? t('loadFailed'));
@@ -56,13 +60,16 @@ export function AiKnowledgeCard({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
-    if (!accountId || loadedAccountIdRef.current === accountId) return;
-    loadedAccountIdRef.current = accountId;
+    // Keyed on accountId+agentId so switching which agent is being
+    // edited (not just switching account) refetches.
+    const key = `${accountId ?? ''}:${agentId}`;
+    if (!accountId || loadedKeyRef.current === key) return;
+    loadedKeyRef.current = key;
     void fetchDocs();
-  }, [accountId, fetchDocs]);
+  }, [accountId, agentId, fetchDocs]);
 
   const openNew = () => {
     setEditing('new');
@@ -105,7 +112,11 @@ export function AiKnowledgeCard({
         {
           method: isNew ? 'POST' : 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: content.trim() }),
+          body: JSON.stringify(
+            isNew
+              ? { agent_id: agentId, title: title.trim(), content: content.trim() }
+              : { title: title.trim(), content: content.trim() },
+          ),
         },
       );
       const data = await res.json();
@@ -143,7 +154,11 @@ export function AiKnowledgeCard({
   const reindex = async () => {
     setReindexing(true);
     try {
-      const res = await fetch('/api/ai/knowledge/reindex', { method: 'POST' });
+      const res = await fetch('/api/ai/knowledge/reindex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId }),
+      });
       const data = await res.json();
       if (res.ok && data.success) {
         toast.success(t('reindexSuccess', { count: data.reindexed }));

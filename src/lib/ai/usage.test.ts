@@ -17,6 +17,7 @@ describe('logAiUsage', () => {
       mode: 'auto_reply',
       provider: 'anthropic',
       model: 'claude-x',
+      agentId: 'agent-1',
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     expect(from).toHaveBeenCalledWith('ai_usage_log')
@@ -26,10 +27,26 @@ describe('logAiUsage', () => {
       mode: 'auto_reply',
       provider: 'anthropic',
       model: 'claude-x',
+      agent_id: 'agent-1',
       prompt_tokens: 30,
       completion_tokens: 6,
       total_tokens: 36,
     })
+  })
+
+  it('defaults agent_id to null when the caller omits it', async () => {
+    const { db, insert } = fakeDb()
+    await logAiUsage(db, {
+      accountId: 'acct-1',
+      conversationId: 'conv-1',
+      mode: 'copilot',
+      provider: 'openai',
+      model: 'gpt-x',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    })
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ agent_id: null }),
+    )
   })
 
   it('is a no-op when the provider reported no usage', async () => {

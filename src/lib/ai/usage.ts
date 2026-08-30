@@ -9,6 +9,10 @@ export interface LogAiUsageArgs {
   mode: 'auto_reply' | 'draft' | 'copilot'
   provider: AiProvider
   model: string
+  /** Which agent generated this call — null for pre-multi-agent rows
+   *  and for any caller that hasn't been updated to pass it. Lets spend
+   *  be broken down per agent later without a backfill. */
+  agentId?: string | null
   /** Provider usage; a no-op when null (nothing worth recording). */
   usage: AiUsage | null
 }
@@ -38,6 +42,7 @@ export async function logAiUsage(
       mode: args.mode,
       provider: args.provider,
       model: args.model,
+      agent_id: args.agentId ?? null,
       prompt_tokens: args.usage.promptTokens,
       completion_tokens: args.usage.completionTokens,
       total_tokens: args.usage.totalTokens,

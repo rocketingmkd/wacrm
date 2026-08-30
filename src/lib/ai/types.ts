@@ -9,11 +9,29 @@
 export type AiProvider = 'openai' | 'anthropic'
 
 /**
- * Account AI setup, decrypted and ready to use. Produced by
- * `loadAiConfig` — `apiKey` is the plaintext BYO provider key
- * (stored AES-256-GCM-encrypted at rest).
+ * One AI agent's setup, decrypted and ready to use. Produced by
+ * `loadAiAgent` / `loadReceptionistAgent` (src/lib/ai/config.ts) —
+ * `apiKey` is the plaintext BYO provider key (stored AES-256-GCM-
+ * encrypted at rest). An account can have several of these (table
+ * `ai_agents`, migration 044 — evolved from the old singular
+ * `ai_configs`); `dispatchInboundToAiReply` resolves which one is
+ * "on duty" for a given conversation before loading it.
  */
 export interface AiConfig {
+  /** ai_agents.id — needed for transfer-target lookups and usage logging. */
+  id: string
+  /** Display name, e.g. "Suporte". */
+  name: string
+  /** Stable, LLM-facing identifier used in the `[[TRANSFER:<slug>]]`
+   *  sentinel — see src/lib/ai/generate.ts. Unique per account. */
+  slug: string
+  /** One-line description shown to OTHER agents in the transfer-menu
+   *  prompt block, and in the agents list UI. */
+  description: string | null
+  /** True for the account's single fixed entry point — every new
+   *  conversation starts here (no rule-based routing). Exactly one
+   *  per account, enforced by a partial unique index. */
+  isReceptionist: boolean
   provider: AiProvider
   model: string
   apiKey: string
@@ -21,14 +39,27 @@ export interface AiConfig {
   isActive: boolean
   autoReplyEnabled: boolean
   autoReplyMaxPerConversation: number
-  /** Where auto-reply hands a conversation off when the model bails: an
-   *  agent's `auth.users.id`, or null to leave it unassigned (drop into
-   *  the shared queue). */
+  /** Where THIS agent hands a conversation off when it bails: a
+   *  human's `auth.users.id`, or null to leave it unassigned (drop
+   *  into the shared queue). Each agent can point at a different
+   *  human queue (e.g. Suporte → support queue, Vendas → sales queue). */
   handoffAgentId: string | null
   /** Optional OpenAI-compatible key for embeddings. When set, the
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+}
+
+/** Lightweight agent info for the transfer-menu prompt block and
+ *  simple listings — deliberately excludes the API key. */
+export interface AiAgentSummary {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  isReceptionist: boolean
+  isActive: boolean
+  autoReplyEnabled: boolean
 }
 
 /** A single conversation turn in the shape both providers accept. */
@@ -56,10 +87,14 @@ export interface ProviderResult {
 
 /** Outcome of a generation call. */
 export interface GenerateResult {
-  /** The reply text, with any handoff sentinel stripped. */
+  /** The reply text, with any handoff/transfer sentinel stripped. */
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** The target agent's slug when the model asked to transfer to
+   *  another AI agent (`[[TRANSFER:<slug>]]`), else null. Auto-reply
+   *  mode only — see buildSystemPrompt's transfer-menu block. */
+  transferToSlug: string | null
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

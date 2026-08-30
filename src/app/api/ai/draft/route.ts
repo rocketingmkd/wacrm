@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { loadAiConfig } from '@/lib/ai/config'
+import { resolveAgentForConversation } from '@/lib/ai/config'
 import { buildConversationContext } from '@/lib/ai/context'
 import { retrieveKnowledge } from '@/lib/ai/knowledge'
 import { generateReply } from '@/lib/ai/generate'
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     // row means "not yours / not found" either way.
     const { data: conversation, error: convErr } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, active_ai_agent_id')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr) {
@@ -58,9 +58,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
-    const config = await loadAiConfig(supabase, accountId).catch((err) => {
+    // Uses whichever agent is "on duty" for this conversation (falling
+    // back to the receptionist) — same resolution the auto-reply bot
+    // uses, so a draft matches what the bot would actually say. There's
+    // no agent picker here by design (see the multi-agent plan's
+    // declared out-of-scope list).
+    const config = await resolveAgentForConversation(
+      supabase,
+      accountId,
+      conversation.active_ai_agent_id,
+    ).catch((err) => {
       // Decrypt failure — surface distinctly from "not configured".
-      console.error('[ai/draft] loadAiConfig error:', err)
+      console.error('[ai/draft] agent load error:', err)
       throw new AiError('Stored API key could not be decrypted.', {
         code: 'key_decrypt_failed',
         status: 400,
@@ -94,6 +103,7 @@ export async function POST(request: Request) {
     const knowledge = await retrieveKnowledge(
       supabase,
       accountId,
+      config.id,
       config,
       latestUserMessage(messages),
     )
@@ -120,6 +130,7 @@ export async function POST(request: Request) {
         mode: 'draft',
         provider: config.provider,
         model: config.model,
+        agentId: config.id,
         usage,
       })
     } catch (logErr) {

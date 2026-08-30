@@ -10,17 +10,24 @@ import { ingestDocument } from '@/lib/ai/knowledge'
 import { AiError } from '@/lib/ai/types'
 
 /**
- * GET /api/ai/knowledge
+ * GET /api/ai/knowledge?agent_id=...
  *
- * List the account's knowledge-base documents (any member).
+ * List one agent's knowledge-base documents (any member). Each agent
+ * has its own corpus (migration 046) — agent_id is required so a
+ * request can never silently list a different agent's docs.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { supabase, accountId } = await getCurrentAccount()
+    const agentId = new URL(request.url).searchParams.get('agent_id')
+    if (!agentId) {
+      return NextResponse.json({ error: 'agent_id is required' }, { status: 400 })
+    }
     const { data, error } = await supabase
       .from('ai_knowledge_documents')
       .select('id, title, updated_at')
       .eq('account_id', accountId)
+      .eq('agent_id', agentId)
       .order('updated_at', { ascending: false })
     if (error) {
       console.error('[ai/knowledge GET] error:', error)
@@ -38,8 +45,9 @@ export async function GET() {
 /**
  * POST /api/ai/knowledge  (admin+)
  *
- * Create a document, then chunk + (optionally) embed it. If indexing
- * fails the document is still saved so the admin can retry via reindex.
+ * Create a document for one agent, then chunk + (optionally) embed it.
+ * If indexing fails the document is still saved so the admin can retry
+ * via reindex.
  */
 export async function POST(request: Request) {
   try {
@@ -48,18 +56,30 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit)
 
     const body = await request.json().catch(() => null)
+    const agentId = typeof body?.agent_id === 'string' ? body.agent_id : ''
     const title = typeof body?.title === 'string' ? body.title.trim() : ''
     const content = typeof body?.content === 'string' ? body.content.trim() : ''
-    if (!title || !content) {
+    if (!agentId || !title || !content) {
       return NextResponse.json(
-        { error: 'title and content are required' },
+        { error: 'agent_id, title and content are required' },
         { status: 400 },
       )
     }
 
+    // Confirm the agent belongs to this account before attaching a
+    // document to it — RLS would reject the insert either way, but this
+    // gives a clean 400 instead of an opaque 42501.
+    const { data: agent } = await supabase
+      .from('ai_agents')
+      .select('id')
+      .eq('account_id', accountId)
+      .eq('id', agentId)
+      .maybeSingle()
+    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+
     const { data: doc, error } = await supabase
       .from('ai_knowledge_documents')
-      .insert({ account_id: accountId, created_by: userId, title, content })
+      .insert({ account_id: accountId, agent_id: agentId, created_by: userId, title, content })
       .select('id')
       .single()
     if (error || !doc) {
@@ -73,11 +93,13 @@ export async function POST(request: Request) {
     const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
       supabase,
       accountId,
+      agentId,
     )
     try {
       await ingestDocument(
         supabase,
         accountId,
+        agentId,
         { embeddingsApiKey },
         doc.id,
         content,

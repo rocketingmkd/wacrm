@@ -5,7 +5,7 @@ import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
-import { AiConfig } from '@/components/settings/ai-config';
+import { AiAgentsManager } from '@/components/settings/ai-agents-manager';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 
@@ -22,9 +22,10 @@ export default function AgentsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/ai/config');
+        const res = await fetch('/api/ai/agents');
         const data = await res.json().catch(() => ({}));
-        if (!cancelled) setTab(data?.configured ? 'playground' : 'setup');
+        const hasAgents = Array.isArray(data?.agents) && data.agents.length > 0;
+        if (!cancelled) setTab(hasAgents ? 'playground' : 'setup');
       } catch {
         if (!cancelled) setTab('setup');
       } finally {
@@ -74,7 +75,7 @@ export default function AgentsPage() {
           </TabsContent>
 
           <TabsContent value="setup" className="mt-4">
-            <AiConfig />
+            <AiAgentsManager />
           </TabsContent>
 
           {canViewUsage && (

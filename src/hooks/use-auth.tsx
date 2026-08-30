@@ -421,6 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         flows: accountHasFeature(billingForFeatures, "flows"),
         aiCopilot: accountHasFeature(billingForFeatures, "aiCopilot"),
         apiAccess: accountHasFeature(billingForFeatures, "apiAccess"),
+        aiAgents: accountHasFeature(billingForFeatures, "aiAgents"),
       },
     };
   }, [profile?.account_role, profile?.account_id, billing, plan]);
@@ -487,7 +488,7 @@ export function useAuth(): AuthContextValue {
       // Same "not a real signal, don't act on it" reasoning as
       // isReadOnly above — all-true so a bug that renders outside the
       // provider doesn't ALSO hide every Pro feature's UI.
-      planFeatures: { flows: true, aiCopilot: true, apiAccess: true },
+      planFeatures: { flows: true, aiCopilot: true, apiAccess: true, aiAgents: true },
     };
   }
   return ctx;

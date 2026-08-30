@@ -51,18 +51,36 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
   return parseGeneration(result.text, result.usage)
 }
 
+/** Matches `[[TRANSFER:<slug>]]` — see `buildSystemPrompt`'s
+ *  transfer-menu block in defaults.ts. Case-insensitive because models
+ *  aren't perfectly consistent about casing; the captured slug is
+ *  lower-cased below to match `ai_agents.slug`, which is always stored
+ *  lower-case. */
+const TRANSFER_SENTINEL_RE = /\[\[TRANSFER:([a-z0-9_-]+)\]\]/i
+
 /**
- * Split the raw model output into `{ text, handoff, usage }`. The
- * sentinel can appear alone or trailing a partial reply; either way we
- * treat the turn as a handoff and strip the marker from any remaining
- * text. `usage` is passed straight through (null when the provider
- * didn't report it).
+ * Split the raw model output into `{ text, handoff, transferToSlug,
+ * usage }`. Either sentinel can appear alone or trailing a partial
+ * reply; either way the marker is stripped from any remaining text.
+ * `usage` is passed straight through (null when the provider didn't
+ * report it).
+ *
+ * A model could in principle emit both sentinels in one turn (a
+ * malformed response, not a valid instruction — the prompt only ever
+ * asks for one or the other). Both are still parsed defensively;
+ * `dispatchInboundToAiReply` decides precedence when routing.
  */
 export function parseGeneration(
   raw: string,
   usage: AiUsage | null = null,
 ): GenerateResult {
   const handoff = raw.includes(HANDOFF_SENTINEL)
-  const text = raw.split(HANDOFF_SENTINEL).join('').trim()
-  return { text, handoff, usage }
+  const transferMatch = raw.match(TRANSFER_SENTINEL_RE)
+  const transferToSlug = transferMatch ? transferMatch[1].toLowerCase() : null
+  const text = raw
+    .split(HANDOFF_SENTINEL)
+    .join('')
+    .replace(TRANSFER_SENTINEL_RE, '')
+    .trim()
+  return { text, handoff, transferToSlug, usage }
 }
