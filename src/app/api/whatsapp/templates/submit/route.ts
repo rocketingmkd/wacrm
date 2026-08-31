@@ -126,6 +126,9 @@ export async function POST(request: Request) {
     }
 
     if (payload.category === 'Authentication') {
+      console.warn(
+        `[templates/submit] AUTHENTICATION category rejected account=${accountId} name=${payload?.name}`,
+      )
       return NextResponse.json(
         {
           error:
@@ -138,10 +141,14 @@ export async function POST(request: Request) {
     try {
       validateTemplatePayload(payload)
     } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'Validation failed.' },
-        { status: 400 },
+      const message = e instanceof Error ? e.message : 'Validation failed.'
+      // Log every rejected submission — without this a failed create
+      // leaves no server-side trace and turns into a silent "my
+      // template vanished" report.
+      console.warn(
+        `[templates/submit] validation rejected account=${accountId} name=${payload?.name} lang=${payload?.language}: ${message}`,
       )
+      return NextResponse.json({ error: message }, { status: 400 })
     }
 
     const dryRun =
@@ -205,6 +212,9 @@ export async function POST(request: Request) {
         metaStatus = meta.status
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta submit failed.'
+        console.error(
+          `[templates/submit] Meta rejected account=${accountId} waba=${config.waba_id} name=${payload?.name} lang=${payload?.language}: ${message}`,
+        )
         // Persist the failure so the user can retry; row stays DRAFT
         // until they fix and re-submit.
         await upsertTemplateRow(
@@ -240,6 +250,9 @@ export async function POST(request: Request) {
       // The submit succeeded on Meta's side but we failed to persist
       // locally. That's a data-drift state — surface the meta_template_id
       // so the user can recover via "Sync from Meta".
+      console.error(
+        `[templates/submit] Meta accepted but local upsert failed account=${accountId} name=${payload?.name} meta_id=${metaTemplateId}: ${upsertErr.message}`,
+      )
       return NextResponse.json(
         {
           error: `Submitted to Meta but failed to save locally: ${upsertErr.message}. Run "Sync from Meta" to recover.`,
@@ -249,6 +262,9 @@ export async function POST(request: Request) {
       )
     }
 
+    console.info(
+      `[templates/submit] ok account=${accountId} name=${payload?.name} lang=${payload?.language} status=${normalizeStatus(metaStatus)} dry_run=${dryRun}`,
+    )
     return NextResponse.json({
       success: true,
       template: row,

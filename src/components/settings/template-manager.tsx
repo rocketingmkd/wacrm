@@ -127,7 +127,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
   const supabase = createClient();
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading, accountId, profileLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -184,22 +184,27 @@ export function TemplateManager() {
   }, [bodyVarCount]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
+    if (authLoading || profileLoading) return;
+    if (!accountId) {
       setLoading(false);
       return;
     }
-    fetchTemplates(user.id);
+    fetchTemplates(accountId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id]);
+  }, [authLoading, profileLoading, accountId]);
 
-  async function fetchTemplates(userId: string) {
+  // Templates are account-scoped (submit / sync / broadcast all key off
+  // account_id). Filtering the list by user_id instead would silently
+  // hide any template a teammate created or synced — no error, it just
+  // wouldn't show up. Query by account so the list matches what the
+  // rest of the system can actually see and send.
+  async function fetchTemplates(acctId: string) {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('message_templates')
         .select('*')
-        .eq('user_id', userId)
+        .eq('account_id', acctId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setTemplates(data || []);
@@ -288,7 +293,12 @@ export function TemplateManager() {
   async function handleSubmit() {
     // AUTHENTICATION is blocked by the persistent banner + disabled
     // submit button; this is a defensive second line of defense.
-    if (form.category === 'Authentication') return;
+    // Surface it instead of returning silently — a no-op Save with no
+    // feedback is exactly the "silent failure" we're trying to kill.
+    if (form.category === 'Authentication') {
+      toast.error(t('toastAuthUnsupported'));
+      return;
+    }
     try {
       setSubmitting(true);
       const isEdit = editingId !== null;
@@ -300,15 +310,24 @@ export function TemplateManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildSubmitPayload()),
       });
-      const data = await res.json();
+      // Guard against a non-JSON body (gateway 502/504, empty response):
+      // res.json() would otherwise throw a cryptic SyntaxError that masks
+      // the real HTTP status.
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
           data?.error || `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
         );
       }
+      // A 200 with no template row and no dry-run flag means the server
+      // returned something unexpected — treat it as a failure rather
+      // than reporting a success that didn't happen.
+      if (!data?.template && !data?.dry_run) {
+        throw new Error(t('toastSubmitUnexpected'));
+      }
       // Refresh first, then close — re-opening the dialog
       // immediately should not show a stale list.
-      if (user) await fetchTemplates(user.id);
+      if (accountId) await fetchTemplates(accountId);
       toast.success(
         data.dry_run
           ? isEdit
@@ -330,20 +349,34 @@ export function TemplateManager() {
   }
 
   async function handleSyncFromMeta() {
-    if (!user) return;
+    if (!accountId) return;
     setSyncing(true);
     try {
       const res = await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
       }
-      toast.success(
-        t('toastSyncCount', { total: data.total }) +
-          (data.inserted || data.updated
-            ? t('toastSyncDetails', { inserted: data.inserted, updated: data.updated })
-            : ''),
-      );
+      const total = Number(data.total ?? 0);
+      const inserted = Number(data.inserted ?? 0);
+      const updated = Number(data.updated ?? 0);
+      const hadErrors = Array.isArray(data.errors) && data.errors.length > 0;
+      if (total === 0) {
+        // Meta returned an empty template list for this WABA. If the
+        // user just tried to create one, this is the signal that the
+        // submission never reached Meta — don't mask it with a green
+        // "synced" toast.
+        toast.warning(t('toastSyncEmpty'), { duration: 8000 });
+      } else if (inserted === 0 && updated === 0 && !hadErrors) {
+        toast.success(t('toastSyncNothingNew', { total }));
+      } else {
+        toast.success(
+          t('toastSyncCount', { total }) +
+            (inserted || updated
+              ? t('toastSyncDetails', { inserted, updated })
+              : ''),
+        );
+      }
       if (Array.isArray(data.errors) && data.errors.length > 0) {
         const preview = data.errors.slice(0, 3).map(
           (e: { name: string; language: string; message: string }) =>
@@ -374,7 +407,7 @@ export function TemplateManager() {
           { duration: 10000 },
         );
       }
-      await fetchTemplates(user.id);
+      await fetchTemplates(accountId);
     } catch (err) {
       console.error('Template sync error:', err);
       toast.error(err instanceof Error ? err.message : t('toastSyncError'));

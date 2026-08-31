@@ -329,6 +329,19 @@ export async function POST() {
       (row) => !seen.has(`${row.name}::${row.language}`),
     )
 
+    // One line per sync so "I clicked sync and nothing happened" stays
+    // reconstructable from the logs: how many Meta returned, what
+    // changed locally, and any per-template failures.
+    console.info(
+      `[templates/sync] account=${accountId} waba=${config.waba_id} meta_total=${metaTemplates.length} inserted=${inserted} updated=${updated} errors=${errors.length} orphaned=${orphaned.length}`,
+    )
+    if (errors.length > 0) {
+      console.warn(
+        `[templates/sync] per-template errors account=${accountId}: ` +
+          errors.map((e) => `${e.name}(${e.language}): ${e.message}`).join('; '),
+      )
+    }
+
     return NextResponse.json({
       success: errors.length === 0,
       total: metaTemplates.length,
