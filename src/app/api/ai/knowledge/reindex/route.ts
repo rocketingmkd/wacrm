@@ -42,7 +42,6 @@ export async function POST(request: Request) {
     const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
       supabase,
       accountId,
-      agentId,
     )
     // The whole point of Reindex is usually to backfill embeddings — so
     // if a key is configured but can't be decrypted, don't quietly do a

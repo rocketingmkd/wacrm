@@ -80,7 +80,6 @@ export async function PATCH(request: Request, { params }: Params) {
       const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
         supabase,
         accountId,
-        updated.agent_id,
       )
       try {
         await ingestDocument(

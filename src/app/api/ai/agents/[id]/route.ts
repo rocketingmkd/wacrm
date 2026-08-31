@@ -5,11 +5,10 @@ import {
   toErrorResponse,
 } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
-import { embedTexts } from '@/lib/ai/embeddings'
+import { loadProviderConfig } from '@/lib/ai/config'
 import { isValidAgentSlug } from '@/lib/ai/slug'
-import { AiError, type AiProvider } from '@/lib/ai/types'
+import { AiError } from '@/lib/ai/types'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -18,14 +17,15 @@ function bad(message: string, code?: string) {
 }
 
 const DETAIL_COLUMNS =
-  'id, name, slug, description, is_receptionist, provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key'
+  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
 
 /**
  * GET /api/ai/agents/[id]
  *
  * Any member may read one agent's config so settings/inbox pickers can
- * show it. The encrypted keys are NEVER returned — only `has_key` /
- * `has_embeddings_key` flags; the form shows a masked placeholder.
+ * show it. There's no per-agent credential anymore (migration 047 —
+ * every agent shares the account's one provider key, see
+ * /api/ai/provider) — only identity/behaviour fields.
  */
 export async function GET(_request: Request, { params }: Params) {
   try {
@@ -44,12 +44,7 @@ export async function GET(_request: Request, { params }: Params) {
     }
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const { api_key, embeddings_api_key, ...safe } = data
-    return NextResponse.json({
-      ...safe,
-      has_key: !!api_key,
-      has_embeddings_key: !!embeddings_api_key,
-    })
+    return NextResponse.json(data)
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -60,7 +55,8 @@ export async function GET(_request: Request, { params }: Params) {
  *
  * Partial update. Only fields present in the body are touched (so a
  * toggle flip doesn't require resending the whole form). Re-validates
- * credentials with the provider only when they actually changed.
+ * the model against the account's shared provider credential only when
+ * the model actually changed.
  *
  * Receptionist promotion: `is_receptionist: true` unsets the account's
  * current receptionist first (the partial unique index would otherwise
@@ -147,80 +143,40 @@ export async function PATCH(request: Request, { params }: Params) {
       }
     }
 
-    const provider = ('provider' in body ? body.provider : existing.provider) as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
-      return bad('provider must be "openai" or "anthropic"')
-    }
-    const model =
-      'model' in body
-        ? typeof body.model === 'string'
-          ? body.model.trim()
-          : ''
-        : existing.model
-    if (!model) return bad('model is required')
-    if ('provider' in body) update.provider = provider
-    if ('model' in body) update.model = model
-
-    const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
-    let apiKeyPlain: string
-    if (rawKey) {
-      apiKeyPlain = rawKey
-    } else {
-      try {
-        apiKeyPlain = decrypt(existing.api_key)
-      } catch {
-        return bad('Stored API key could not be decrypted — re-enter your key.')
-      }
-    }
-
-    const credentialsChanged = rawKey !== '' || provider !== existing.provider || model !== existing.model
-    if (credentialsChanged) {
-      try {
-        await validateAiCredentials({
-          id: existing.id,
-          name: (update.name as string) ?? existing.name,
-          slug: (update.slug as string) ?? existing.slug,
-          description: null,
-          isReceptionist: existing.is_receptionist,
-          provider,
-          model,
-          apiKey: apiKeyPlain,
-          systemPrompt: null,
-          isActive: true,
-          autoReplyEnabled: false,
-          autoReplyMaxPerConversation: 3,
-          handoffAgentId: null,
-          embeddingsApiKey: null,
-        })
-      } catch (err) {
-        if (err instanceof AiError) {
-          return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
+    if ('model' in body) {
+      const model = typeof body.model === 'string' ? body.model.trim() : ''
+      if (!model) return bad('model is required')
+      if (model !== existing.model) {
+        const credential = await loadProviderConfig(supabase, accountId)
+        if (!credential) {
+          return bad('Configure your provider API key first.', 'provider_not_configured')
         }
-        console.error('[ai/agents/[id] PATCH] validation error:', err)
-        return bad('Could not validate the API key with the provider.')
-      }
-      if (rawKey) update.api_key = encrypt(rawKey)
-    }
-
-    const rawEmbeddingsKey =
-      typeof body.embeddings_api_key === 'string' ? body.embeddings_api_key.trim() : ''
-    const clearEmbeddingsKey = body.embeddings_api_key === null
-    if (rawEmbeddingsKey) {
-      try {
-        await embedTexts(rawEmbeddingsKey, ['ping'])
-      } catch (err) {
-        if (err instanceof AiError) {
-          return NextResponse.json(
-            { error: `Embeddings key: ${err.message}`, code: err.code },
-            { status: 400 },
-          )
+        try {
+          await validateAiCredentials({
+            id: existing.id,
+            name: (update.name as string) ?? existing.name,
+            slug: (update.slug as string) ?? existing.slug,
+            description: null,
+            isReceptionist: existing.is_receptionist,
+            provider: credential.provider,
+            model,
+            apiKey: credential.apiKey,
+            systemPrompt: null,
+            isActive: true,
+            autoReplyEnabled: false,
+            autoReplyMaxPerConversation: 3,
+            handoffAgentId: null,
+            embeddingsApiKey: null,
+          })
+        } catch (err) {
+          if (err instanceof AiError) {
+            return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
+          }
+          console.error('[ai/agents/[id] PATCH] validation error:', err)
+          return bad('Could not validate this model with your configured API key.')
         }
-        console.error('[ai/agents/[id] PATCH] embeddings validation error:', err)
-        return bad('Could not validate the embeddings key.')
       }
-      update.embeddings_api_key = encrypt(rawEmbeddingsKey)
-    } else if (clearEmbeddingsKey) {
-      update.embeddings_api_key = null
+      update.model = model
     }
 
     // Receptionist promotion: demote the current one first so the

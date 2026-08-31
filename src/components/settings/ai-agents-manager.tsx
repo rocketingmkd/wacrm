@@ -9,9 +9,8 @@ import {
   Trash2,
   Star,
   CheckCircle2,
-  Eye,
-  EyeOff,
   Bot,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
@@ -44,18 +43,7 @@ import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 
-const MASKED_KEY = '••••••••••••••••';
 const HANDOFF_QUEUE = '__queue__';
-
-const PROVIDER_LABEL: Record<AiProvider, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic (Claude)',
-};
-
-const KEY_PLACEHOLDER: Record<AiProvider, string> = {
-  openai: 'sk-...',
-  anthropic: 'sk-ant-...',
-};
 
 interface AgentSummary {
   id: string;
@@ -67,6 +55,12 @@ interface AgentSummary {
   auto_reply_enabled: boolean;
 }
 
+interface ProviderStatus {
+  configured: boolean;
+  provider: AiProvider | null;
+  hasEmbeddingsKey: boolean;
+}
+
 interface DraftState {
   id: string | null; // null = creating
   name: string;
@@ -74,15 +68,7 @@ interface DraftState {
   slugEdited: boolean;
   description: string;
   isReceptionist: boolean;
-  provider: AiProvider;
   model: string;
-  apiKey: string;
-  keyEdited: boolean;
-  showKey: boolean;
-  hasStoredKey: boolean;
-  embeddingsKey: string;
-  embeddingsKeyEdited: boolean;
-  hasStoredEmbeddingsKey: boolean;
   systemPrompt: string;
   isActive: boolean;
   autoReplyEnabled: boolean;
@@ -90,7 +76,7 @@ interface DraftState {
   handoffAgentId: string;
 }
 
-function emptyDraft(): DraftState {
+function emptyDraft(defaultModel: string): DraftState {
   return {
     id: null,
     name: '',
@@ -98,15 +84,7 @@ function emptyDraft(): DraftState {
     slugEdited: false,
     description: '',
     isReceptionist: false,
-    provider: 'openai',
-    model: AI_PROVIDER_DEFAULT_MODEL.openai,
-    apiKey: '',
-    keyEdited: false,
-    showKey: false,
-    hasStoredKey: false,
-    embeddingsKey: '',
-    embeddingsKeyEdited: false,
-    hasStoredEmbeddingsKey: false,
+    model: defaultModel,
     systemPrompt: '',
     isActive: false,
     autoReplyEnabled: false,
@@ -115,12 +93,20 @@ function emptyDraft(): DraftState {
   };
 }
 
-export function AiAgentsManager() {
+/**
+ * Agent roster — cards that open a popup with each agent's own
+ * settings (name/slug/description/model/prompt/behaviour/knowledge
+ * base). The provider/API key is deliberately NOT here — it's a
+ * single account-wide credential configured once in
+ * `AiProviderConfig` and shared by every agent (see /api/ai/provider).
+ */
+export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig?: () => void }) {
   const { accountId, accountRole, profileLoading } = useAuth();
   const canEdit = accountRole ? canEditSettings(accountRole) : false;
 
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
   const [members, setMembers] = useState<AccountMember[]>([]);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -131,10 +117,22 @@ export function AiAgentsManager() {
   const fetchAgents = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/ai/agents');
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) setAgents((data.agents as AgentSummary[]) ?? []);
-      else toast.error(data.error ?? 'Não foi possível carregar os agentes.');
+      const [agentsRes, providerRes] = await Promise.all([
+        fetch('/api/ai/agents'),
+        fetch('/api/ai/provider'),
+      ]);
+      const agentsData = await agentsRes.json().catch(() => ({}));
+      if (agentsRes.ok) setAgents((agentsData.agents as AgentSummary[]) ?? []);
+      else toast.error(agentsData.error ?? 'Não foi possível carregar os agentes.');
+
+      const providerData = await providerRes.json().catch(() => ({}));
+      if (providerRes.ok) {
+        setProviderStatus({
+          configured: Boolean(providerData.configured),
+          provider: providerData.provider ?? null,
+          hasEmbeddingsKey: Boolean(providerData.has_embeddings_key),
+        });
+      }
     } catch {
       toast.error('Não foi possível carregar os agentes.');
     } finally {
@@ -149,7 +147,12 @@ export function AiAgentsManager() {
     void fetchAccountMembers().then(setMembers);
   }, [accountId, fetchAgents]);
 
-  const openCreate = () => setDraft(emptyDraft());
+  const openCreate = () => {
+    const defaultModel = providerStatus?.provider
+      ? AI_PROVIDER_DEFAULT_MODEL[providerStatus.provider]
+      : '';
+    setDraft(emptyDraft(defaultModel));
+  };
 
   const openEdit = async (id: string) => {
     try {
@@ -166,15 +169,7 @@ export function AiAgentsManager() {
         slugEdited: true, // editing an existing agent never auto-derives the slug
         description: data.description ?? '',
         isReceptionist: Boolean(data.is_receptionist),
-        provider: data.provider,
-        model: data.model,
-        apiKey: data.has_key ? MASKED_KEY : '',
-        keyEdited: false,
-        showKey: false,
-        hasStoredKey: Boolean(data.has_key),
-        embeddingsKey: data.has_embeddings_key ? MASKED_KEY : '',
-        embeddingsKeyEdited: false,
-        hasStoredEmbeddingsKey: Boolean(data.has_embeddings_key),
+        model: data.model ?? '',
         systemPrompt: data.system_prompt ?? '',
         isActive: Boolean(data.is_active),
         autoReplyEnabled: Boolean(data.auto_reply_enabled),
@@ -194,25 +189,6 @@ export function AiAgentsManager() {
     );
   };
 
-  const handleProviderChange = (next: AiProvider) => {
-    setDraft((d) => {
-      if (!d) return d;
-      const isDefaultModel =
-        d.model === AI_PROVIDER_DEFAULT_MODEL.openai ||
-        d.model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
-        d.model.trim() === '';
-      return {
-        ...d,
-        provider: next,
-        model: isDefaultModel ? AI_PROVIDER_DEFAULT_MODEL[next] : d.model,
-      };
-    });
-  };
-
-  const keyPayload = (d: DraftState) => (d.keyEdited ? d.apiKey.trim() : undefined);
-  const embeddingsKeyPayload = (d: DraftState) =>
-    d.embeddingsKeyEdited ? d.embeddingsKey.trim() || null : undefined;
-
   const handleTest = async () => {
     if (!draft) return;
     setTesting(true);
@@ -220,17 +196,17 @@ export function AiAgentsManager() {
       const res = await fetch(`/api/ai/agents/${draft.id ?? 'new'}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: draft.provider,
-          model: draft.model.trim(),
-          api_key: keyPayload(draft),
-        }),
+        body: JSON.stringify({ model: draft.model.trim() }),
       });
       const data = await res.json();
-      if (res.ok) toast.success('Conexão validada com sucesso.');
-      else toast.error(data.error ?? 'A chave foi rejeitada pelo provedor.');
+      if (res.ok) toast.success('Modelo validado com sucesso.');
+      else if (data.code === 'provider_not_configured') {
+        toast.error('Configure sua chave de API primeiro.');
+      } else {
+        toast.error(data.error ?? 'O modelo foi rejeitado pelo provedor.');
+      }
     } catch {
-      toast.error('Não foi possível testar a chave agora.');
+      toast.error('Não foi possível testar o modelo agora.');
     } finally {
       setTesting(false);
     }
@@ -246,42 +222,20 @@ export function AiAgentsManager() {
       toast.error('Informe o modelo.');
       return;
     }
-    if (!draft.id && !draft.keyEdited) {
-      toast.error('Informe a chave de API.');
-      return;
-    }
     setSaving(true);
     try {
       const isNew = draft.id === null;
-      const body = isNew
-        ? {
-            name: draft.name.trim(),
-            slug: draft.slug.trim(),
-            description: draft.description.trim() || null,
-            provider: draft.provider,
-            model: draft.model.trim(),
-            api_key: draft.apiKey.trim(),
-            embeddings_api_key: draft.embeddingsKey.trim() || undefined,
-            system_prompt: draft.systemPrompt.trim() || null,
-            is_active: draft.isActive,
-            auto_reply_enabled: draft.autoReplyEnabled,
-            auto_reply_max_per_conversation: draft.maxPerConversation,
-            handoff_agent_id: draft.handoffAgentId || null,
-          }
-        : {
-            name: draft.name.trim(),
-            slug: draft.slug.trim(),
-            description: draft.description.trim() || null,
-            provider: draft.provider,
-            model: draft.model.trim(),
-            api_key: keyPayload(draft),
-            embeddings_api_key: embeddingsKeyPayload(draft),
-            system_prompt: draft.systemPrompt.trim() || null,
-            is_active: draft.isActive,
-            auto_reply_enabled: draft.autoReplyEnabled,
-            auto_reply_max_per_conversation: draft.maxPerConversation,
-            handoff_agent_id: draft.handoffAgentId || null,
-          };
+      const body = {
+        name: draft.name.trim(),
+        slug: draft.slug.trim(),
+        description: draft.description.trim() || null,
+        model: draft.model.trim(),
+        system_prompt: draft.systemPrompt.trim() || null,
+        is_active: draft.isActive,
+        auto_reply_enabled: draft.autoReplyEnabled,
+        auto_reply_max_per_conversation: draft.maxPerConversation,
+        handoff_agent_id: draft.handoffAgentId || null,
+      };
 
       const res = await fetch(
         isNew ? '/api/ai/agents' : `/api/ai/agents/${draft.id}`,
@@ -299,6 +253,8 @@ export function AiAgentsManager() {
           );
         } else if (data.code === 'slug_taken') {
           toast.error('Já existe um agente com esse identificador nesta conta.');
+        } else if (data.code === 'provider_not_configured') {
+          toast.error('Configure sua chave de API primeiro.');
         } else {
           toast.error(data.error ?? 'Não foi possível salvar o agente.');
         }
@@ -361,15 +317,16 @@ export function AiAgentsManager() {
   }
 
   const disabled = !canEdit || saving;
+  const providerConfigured = Boolean(providerStatus?.configured);
 
   return (
     <div>
       <SettingsPanelHead
         title="Agentes de IA"
-        description="Cada agente tem seu próprio provedor, prompt e base de conhecimento. O recepcionista atende toda conversa nova e pode transferir para os demais, ou para um humano."
+        description="Cada agente tem seu próprio prompt, modelo e base de conhecimento — todos usam a mesma chave de API. O recepcionista atende toda conversa nova e pode transferir para os demais, ou para um humano."
         action={
           canEdit && (
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} disabled={!providerConfigured}>
               <Plus className="mr-1 h-4 w-4" /> Novo agente
             </Button>
           )
@@ -382,6 +339,25 @@ export function AiAgentsManager() {
         </p>
       )}
 
+      {canEdit && !providerConfigured && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
+          <span className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 shrink-0" /> Configure sua chave de API antes de criar um
+            agente.
+          </span>
+          {onNeedProviderConfig && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 border-amber-500/40 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+              onClick={onNeedProviderConfig}
+            >
+              Configurar
+            </Button>
+          )}
+        </div>
+      )}
+
       {agents.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
           Nenhum agente ainda. Crie o primeiro — ele vira o recepcionista automaticamente.
@@ -391,7 +367,8 @@ export function AiAgentsManager() {
           {agents.map((a) => (
             <li
               key={a.id}
-              className="flex items-start gap-3 rounded-lg border border-border bg-card p-3"
+              onClick={() => canEdit && void openEdit(a.id)}
+              className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 cursor-pointer"
             >
               <Bot className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div className="min-w-0 flex-1">
@@ -421,7 +398,7 @@ export function AiAgentsManager() {
                   {a.description || `slug: ${a.slug}`}
                 </p>
               </div>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                 {canEdit && !a.is_receptionist && (
                   <Button
                     variant="ghost"
@@ -466,8 +443,8 @@ export function AiAgentsManager() {
           <DialogHeader>
             <DialogTitle>{draft?.id ? 'Editar agente' : 'Novo agente'}</DialogTitle>
             <DialogDescription>
-              Sua chave é armazenada criptografada. Ela nunca é reexibida — só indicamos que uma
-              chave já está salva.
+              Usa a chave de API configurada na conta — escolha aqui só o modelo, o comportamento
+              e a base de conhecimento deste agente.
             </DialogDescription>
           </DialogHeader>
 
@@ -506,62 +483,20 @@ export function AiAgentsManager() {
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Provedor</Label>
-                  <Select
-                    value={draft.provider}
-                    onValueChange={(v) => handleProviderChange(v as AiProvider)}
-                    disabled={disabled}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
-                      <SelectItem value="anthropic">{PROVIDER_LABEL.anthropic}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Modelo</Label>
+              <div className="space-y-1.5">
+                <Label>Modelo</Label>
+                <div className="flex gap-2">
                   <Input
                     value={draft.model}
                     onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                    placeholder={AI_PROVIDER_DEFAULT_MODEL[draft.provider]}
+                    placeholder={
+                      providerStatus?.provider
+                        ? AI_PROVIDER_DEFAULT_MODEL[providerStatus.provider]
+                        : 'gpt-4o-mini'
+                    }
                     disabled={disabled}
+                    className="flex-1"
                   />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Chave de API</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      type={draft.showKey ? 'text' : 'password'}
-                      value={draft.apiKey}
-                      onChange={(e) =>
-                        setDraft({ ...draft, apiKey: e.target.value, keyEdited: true })
-                      }
-                      onFocus={() => {
-                        if (!draft.keyEdited && draft.hasStoredKey) {
-                          setDraft({ ...draft, apiKey: '', keyEdited: true });
-                        }
-                      }}
-                      placeholder={KEY_PLACEHOLDER[draft.provider]}
-                      disabled={disabled}
-                      autoComplete="off"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setDraft({ ...draft, showKey: !draft.showKey })}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      tabIndex={-1}
-                    >
-                      {draft.showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
                   <Button variant="outline" onClick={handleTest} disabled={disabled || testing}>
                     {testing ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -571,28 +506,12 @@ export function AiAgentsManager() {
                     Testar
                   </Button>
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>
-                  Chave de embeddings{' '}
-                  <span className="font-normal text-muted-foreground">(opcional, busca semântica)</span>
-                </Label>
-                <Input
-                  type="password"
-                  value={draft.embeddingsKey}
-                  onChange={(e) =>
-                    setDraft({ ...draft, embeddingsKey: e.target.value, embeddingsKeyEdited: true })
-                  }
-                  onFocus={() => {
-                    if (!draft.embeddingsKeyEdited && draft.hasStoredEmbeddingsKey) {
-                      setDraft({ ...draft, embeddingsKey: '', embeddingsKeyEdited: true });
-                    }
-                  }}
-                  placeholder="sk-... (OpenAI)"
-                  disabled={disabled}
-                  autoComplete="off"
-                />
+                {providerStatus?.provider && (
+                  <p className="text-xs text-muted-foreground">
+                    Usando a chave de {providerStatus.provider === 'openai' ? 'OpenAI' : 'Anthropic'}{' '}
+                    configurada na conta.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -686,11 +605,7 @@ export function AiAgentsManager() {
                   accountId={accountId}
                   agentId={draft.id}
                   canEdit={canEdit}
-                  hasEmbeddingsKey={
-                    draft.embeddingsKeyEdited
-                      ? draft.embeddingsKey.trim().length > 0
-                      : draft.hasStoredEmbeddingsKey
-                  }
+                  hasEmbeddingsKey={Boolean(providerStatus?.hasEmbeddingsKey)}
                 />
               ) : (
                 <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">

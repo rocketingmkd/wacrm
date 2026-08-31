@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import type { AiAgentSummary, AiConfig } from './types'
+import type { AiAgentSummary, AiConfig, AiProvider } from './types'
 
 interface AiAgentRow {
   id: string
@@ -8,70 +8,105 @@ interface AiAgentRow {
   slug: string
   description: string | null
   is_receptionist: boolean
-  provider: 'openai' | 'anthropic'
   model: string
-  api_key: string
   system_prompt: string | null
   is_active: boolean
   auto_reply_enabled: boolean
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
+}
+
+interface ProviderConfigRow {
+  provider: AiProvider
+  api_key: string
   embeddings_api_key: string | null
 }
 
+/** Decrypted account-level BYO credential — see `loadProviderConfig`. */
+export interface ProviderCredential {
+  provider: AiProvider
+  apiKey: string
+  embeddingsApiKey: string | null
+}
+
 const AGENT_COLUMNS =
-  'id, name, slug, description, is_receptionist, provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
 
 const SUMMARY_COLUMNS =
   'id, name, slug, description, is_receptionist, is_active, auto_reply_enabled'
 
 /**
- * Decrypt one `ai_agents` row into the shape callers use. Shared by
- * every loader below so the "requireActive" / "missing key" rules stay
- * in exactly one place.
+ * Load + decrypt the account's ONE shared BYO provider credential
+ * (migration 047 — every agent on the account uses this same
+ * provider/key; only `model` varies per agent). Returns `null` when
+ * nothing is configured yet. Throws only if the stored chat key can't
+ * be decrypted (mismatched `ENCRYPTION_KEY`) — the embeddings key
+ * degrades silently instead (see inline comment), matching the
+ * pre-existing policy for that key.
  */
-function decryptRow(accountId: string, row: AiAgentRow): AiConfig {
-  // The embeddings key is optional and independent of the chat key —
-  // a corrupt/undecryptable one should downgrade to lexical KB, not
-  // take down draft/auto-reply, so decrypt failures are swallowed here.
+export async function loadProviderConfig(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<ProviderCredential | null> {
+  const { data, error } = await db
+    .from('ai_provider_config')
+    .select('provider, api_key, embeddings_api_key')
+    .eq('account_id', accountId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+
+  const row = data as ProviderConfigRow
+  if (!row.api_key) return null
+
   let embeddingsApiKey: string | null = null
   if (row.embeddings_api_key) {
     try {
       embeddingsApiKey = decrypt(row.embeddings_api_key)
     } catch {
       console.error(
-        `[ai config] embeddings key for agent ${row.id} (account ${accountId}) could not be decrypted — check ENCRYPTION_KEY; semantic search is disabled until it is re-entered.`,
+        `[ai config] embeddings key for account ${accountId} could not be decrypted — check ENCRYPTION_KEY; semantic search is disabled until it is re-entered.`,
       )
       embeddingsApiKey = null
     }
   }
 
+  return { provider: row.provider, apiKey: decrypt(row.api_key), embeddingsApiKey }
+}
+
+/** Merge one `ai_agents` row with the account's shared credential into
+ *  the `AiConfig` shape every generation/knowledge/copilot helper
+ *  consumes — keeping that whole surface unaware that credentials and
+ *  agent identity now live in two tables. */
+function mergeAgent(row: AiAgentRow, credential: ProviderCredential): AiConfig {
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
     description: row.description,
     isReceptionist: row.is_receptionist,
-    provider: row.provider,
+    provider: credential.provider,
     model: row.model,
-    apiKey: decrypt(row.api_key),
+    apiKey: credential.apiKey,
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
-    embeddingsApiKey,
+    embeddingsApiKey: credential.embeddingsApiKey,
   }
 }
 
 /**
- * Load and decrypt one agent by id, scoped to the account (so a
- * cross-account id never resolves). Returns `null` when there's no
- * matching row or the master switch (`is_active`) is off — both mean
- * "this agent is not available", which callers treat identically.
- * Throws only if the stored key can't be decrypted (mismatched
- * `ENCRYPTION_KEY`), so that distinct failure surfaces rather than
- * looking like "not configured".
+ * Load one agent by id, scoped to the account (so a cross-account id
+ * never resolves), merged with the account's shared provider
+ * credential. Returns `null` when there's no matching row, the master
+ * switch (`is_active`) is off, or the account has no provider
+ * credential configured yet — all three mean "this agent is not
+ * available", which callers treat identically. Throws only if the
+ * stored key can't be decrypted, so that distinct failure surfaces
+ * rather than looking like "not configured".
  *
  * Works with any client: pass the RLS-scoped SSR client from a
  * dashboard route, or the service-role admin client from the webhook.
@@ -97,12 +132,11 @@ export async function loadAiAgent(
   // The Playground passes requireActive:false so an admin can test the
   // agent before flipping the master switch on.
   if (requireActive && !row.is_active) return null
-  // Defensive: the column is NOT NULL, but a partial write / manual DB
-  // edit could leave it empty. Treat a missing key as "not configured"
-  // rather than letting decrypt() throw on null.
-  if (!row.api_key) return null
 
-  return decryptRow(accountId, row)
+  const credential = await loadProviderConfig(db, accountId)
+  if (!credential) return null
+
+  return mergeAgent(row, credential)
 }
 
 /**
@@ -128,9 +162,11 @@ export async function loadReceptionistAgent(
 
   const row = data as AiAgentRow
   if (requireActive && !row.is_active) return null
-  if (!row.api_key) return null
 
-  return decryptRow(accountId, row)
+  const credential = await loadProviderConfig(db, accountId)
+  if (!credential) return null
+
+  return mergeAgent(row, credential)
 }
 
 /**
@@ -154,9 +190,10 @@ export async function resolveAgentForConversation(
 }
 
 /**
- * List every agent on the account (lightweight — no API key), for the
- * settings roster, the transfer-menu prompt block, and the playground
- * / inbox agent pickers. Receptionist first, then alphabetical.
+ * List every agent on the account (lightweight — no credential), for
+ * the settings roster, the transfer-menu prompt block, and the
+ * playground / inbox agent pickers. Receptionist first, then
+ * alphabetical.
  */
 export async function listAiAgents(
   db: SupabaseClient,
@@ -190,10 +227,10 @@ export async function listAiAgents(
 }
 
 /**
- * Load + decrypt just one agent's embeddings key, independent of
- * `is_active`. Used by the knowledge-base ingest routes so the KB gets
- * embedded (and semantic search works) whenever an embeddings key is
- * present, even if the agent's master switch is currently off.
+ * Load + decrypt just the account's embeddings key, independent of any
+ * agent's `is_active`. Used by the knowledge-base ingest routes so the
+ * KB gets embedded (and semantic search works) whenever an embeddings
+ * key is present, even if every agent's master switch is currently off.
  *
  * Returns `{ key, corrupt }`: `key` is null when there's no key OR it
  * can't be decrypted; `corrupt` distinguishes those cases so callers can
@@ -203,20 +240,18 @@ export async function listAiAgents(
 export async function loadEmbeddingsKey(
   db: SupabaseClient,
   accountId: string,
-  agentId: string,
 ): Promise<{ key: string | null; corrupt: boolean }> {
   const { data, error } = await db
-    .from('ai_agents')
+    .from('ai_provider_config')
     .select('embeddings_api_key')
     .eq('account_id', accountId)
-    .eq('id', agentId)
     .maybeSingle()
   if (error || !data?.embeddings_api_key) return { key: null, corrupt: false }
   try {
     return { key: decrypt(data.embeddings_api_key), corrupt: false }
   } catch {
     console.error(
-      `[ai config] embeddings key for agent ${agentId} (account ${accountId}) could not be decrypted — check ENCRYPTION_KEY.`,
+      `[ai config] embeddings key for account ${accountId} could not be decrypted — check ENCRYPTION_KEY.`,
     )
     return { key: null, corrupt: true }
   }

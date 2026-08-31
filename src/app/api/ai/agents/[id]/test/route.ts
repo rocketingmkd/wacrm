@@ -1,20 +1,23 @@
 import { NextResponse } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
-import { AiError, type AiProvider } from '@/lib/ai/types'
+import { loadProviderConfig } from '@/lib/ai/config'
+import { AiError } from '@/lib/ai/types'
 
 type Params = { params: Promise<{ id: string }> }
 
 /**
  * POST /api/ai/agents/[id]/test  (admin+)
  *
- * "Test key" button: validate a candidate provider/model/key against
- * the provider WITHOUT saving. `id` is `"new"` when testing before the
- * agent has been created yet (the create form); otherwise an existing
- * agent id, and omitting `api_key` re-tests its stored key. Returns
- * `{ ok: true }` on success, 400 with the provider's message on failure.
+ * "Test model" button: validate a candidate MODEL against the
+ * account's shared provider credential (see /api/ai/provider) WITHOUT
+ * saving. `id` is `"new"` when testing before the agent has been
+ * created yet (the create form) — it's only used for the error
+ * message context, since the credential is account-level either way.
+ * Returns `{ ok: true }` on success, 400 with the provider's message
+ * on failure (including `code: "provider_not_configured"` when the
+ * account hasn't set up an API key yet).
  */
 export async function POST(request: Request, { params }: Params) {
   try {
@@ -29,41 +32,20 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
-    const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
-      return NextResponse.json(
-        { error: 'provider must be "openai" or "anthropic"' },
-        { status: 400 },
-      )
-    }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) {
       return NextResponse.json({ error: 'model is required' }, { status: 400 })
     }
 
-    const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
-    let apiKeyPlain = rawKey
-    if (!apiKeyPlain) {
-      if (id === 'new') {
-        return NextResponse.json({ error: 'Enter an API key to test.' }, { status: 400 })
-      }
-      const { data: existing } = await supabase
-        .from('ai_agents')
-        .select('api_key')
-        .eq('account_id', accountId)
-        .eq('id', id)
-        .maybeSingle()
-      if (!existing?.api_key) {
-        return NextResponse.json({ error: 'Enter an API key to test.' }, { status: 400 })
-      }
-      try {
-        apiKeyPlain = decrypt(existing.api_key)
-      } catch {
-        return NextResponse.json(
-          { error: 'Stored API key could not be decrypted — re-enter your key.' },
-          { status: 400 },
-        )
-      }
+    const credential = await loadProviderConfig(supabase, accountId)
+    if (!credential) {
+      return NextResponse.json(
+        {
+          error: 'Configure your provider API key first.',
+          code: 'provider_not_configured',
+        },
+        { status: 400 },
+      )
     }
 
     try {
@@ -73,9 +55,9 @@ export async function POST(request: Request, { params }: Params) {
         slug: 'test',
         description: null,
         isReceptionist: false,
-        provider,
+        provider: credential.provider,
         model,
-        apiKey: apiKeyPlain,
+        apiKey: credential.apiKey,
         systemPrompt: null,
         isActive: true,
         autoReplyEnabled: false,
@@ -88,7 +70,7 @@ export async function POST(request: Request, { params }: Params) {
         return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
       }
       console.error('[ai/agents/[id]/test] validation error:', err)
-      return NextResponse.json({ error: 'Could not validate the API key.' }, { status: 400 })
+      return NextResponse.json({ error: 'Could not validate this model.' }, { status: 400 })
     }
 
     return NextResponse.json({ ok: true })

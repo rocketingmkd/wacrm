@@ -6,12 +6,10 @@ import {
 } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { checkAccountFeature } from '@/lib/billing/feature-gate'
-import { encrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
-import { listAiAgents } from '@/lib/ai/config'
-import { embedTexts } from '@/lib/ai/embeddings'
+import { listAiAgents, loadProviderConfig } from '@/lib/ai/config'
 import { isValidAgentSlug, slugifyAgentName } from '@/lib/ai/slug'
-import { AiError, type AiProvider } from '@/lib/ai/types'
+import { AiError } from '@/lib/ai/types'
 
 function bad(message: string, code?: string) {
   return NextResponse.json({ error: message, ...(code ? { code } : {}) }, { status: 400 })
@@ -20,7 +18,7 @@ function bad(message: string, code?: string) {
 /**
  * GET /api/ai/agents
  *
- * List the account's agents (any member) — lightweight roster, no keys.
+ * List the account's agents (any member) — lightweight roster.
  */
 export async function GET() {
   try {
@@ -35,9 +33,13 @@ export async function GET() {
 /**
  * POST /api/ai/agents  (admin+)
  *
- * Create a new agent. Validates the key with the provider before
- * persisting (mirrors the old single-config route), then stores it
- * AES-256-GCM-encrypted.
+ * Create a new agent. Every agent on the account shares the ONE
+ * provider credential configured at `/api/ai/provider` (migration 047
+ * — re-entering a key per agent was pure friction, not a real need);
+ * this route requires that credential to already exist and validates
+ * the chosen MODEL against it before persisting (an agent can still
+ * pick its own model — a cheaper one for FAQs, a stronger one for
+ * sales — just not its own key).
  *
  * Plan gate: a Starter account may still create its FIRST agent (kept
  * as the receptionist) — behaviour identical to the pre-multi-agent
@@ -51,6 +53,17 @@ export async function POST(request: Request) {
 
     const limit = checkRateLimit(`ai-agents:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
+
+    const credential = await loadProviderConfig(supabase, accountId)
+    if (!credential) {
+      return NextResponse.json(
+        {
+          error: 'Configure your provider API key first.',
+          code: 'provider_not_configured',
+        },
+        { status: 400 },
+      )
+    }
 
     const { count: existingCount, error: countErr } = await supabase
       .from('ai_agents')
@@ -92,15 +105,8 @@ export async function POST(request: Request) {
         ? body.description.trim()
         : null
 
-    const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
-      return bad('provider must be "openai" or "anthropic"')
-    }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) return bad('model is required')
-
-    const apiKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
-    if (!apiKey) return bad('api_key is required')
 
     const systemPrompt =
       typeof body.system_prompt === 'string' && body.system_prompt.trim()
@@ -127,9 +133,6 @@ export async function POST(request: Request) {
       handoffAgentId = rawHandoff
     }
 
-    const rawEmbeddingsKey =
-      typeof body.embeddings_api_key === 'string' ? body.embeddings_api_key.trim() : ''
-
     try {
       await validateAiCredentials({
         id: 'pending',
@@ -137,9 +140,9 @@ export async function POST(request: Request) {
         slug,
         description,
         isReceptionist: isFirstAgent,
-        provider,
+        provider: credential.provider,
         model,
-        apiKey,
+        apiKey: credential.apiKey,
         systemPrompt,
         isActive,
         autoReplyEnabled,
@@ -152,22 +155,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
       }
       console.error('[ai/agents POST] validation error:', err)
-      return bad('Could not validate the API key with the provider.')
-    }
-
-    if (rawEmbeddingsKey) {
-      try {
-        await embedTexts(rawEmbeddingsKey, ['ping'])
-      } catch (err) {
-        if (err instanceof AiError) {
-          return NextResponse.json(
-            { error: `Embeddings key: ${err.message}`, code: err.code },
-            { status: 400 },
-          )
-        }
-        console.error('[ai/agents POST] embeddings validation error:', err)
-        return bad('Could not validate the embeddings key.')
-      }
+      return bad('Could not validate this model with your configured API key.')
     }
 
     const { data: inserted, error: insErr } = await supabase
@@ -182,15 +170,12 @@ export async function POST(request: Request) {
         // there are no siblings yet to conflict with, and every
         // account must have exactly one (partial unique index).
         is_receptionist: isFirstAgent,
-        provider,
         model,
-        api_key: encrypt(apiKey),
         system_prompt: systemPrompt,
         is_active: isActive,
         auto_reply_enabled: autoReplyEnabled,
         auto_reply_max_per_conversation: maxPer,
         handoff_agent_id: handoffAgentId,
-        embeddings_api_key: rawEmbeddingsKey ? encrypt(rawEmbeddingsKey) : null,
       })
       .select('id')
       .single()
