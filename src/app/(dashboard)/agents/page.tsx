@@ -70,9 +70,6 @@ export default function AgentsPage() {
             <TabsTrigger value="playground">
               <Sparkles className="mr-1.5 h-4 w-4" /> Playground
             </TabsTrigger>
-            <TabsTrigger value="key">
-              <KeyRound className="mr-1.5 h-4 w-4" /> Chave de API
-            </TabsTrigger>
             <TabsTrigger value="agents">
               <Users className="mr-1.5 h-4 w-4" /> Agentes
             </TabsTrigger>
@@ -81,14 +78,13 @@ export default function AgentsPage() {
                 <BarChart3 className="mr-1.5 h-4 w-4" /> Uso
               </TabsTrigger>
             )}
+            <TabsTrigger value="key">
+              <KeyRound className="mr-1.5 h-4 w-4" /> Chave de API
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="playground" className="mt-4">
             <AiPlayground onGoToSetup={() => setTab('agents')} />
-          </TabsContent>
-
-          <TabsContent value="key" className="mt-4">
-            <AiProviderConfig onSaved={() => setTab('agents')} />
           </TabsContent>
 
           <TabsContent value="agents" className="mt-4">
@@ -100,6 +96,10 @@ export default function AgentsPage() {
               <AiUsageCard />
             </TabsContent>
           )}
+
+          <TabsContent value="key" className="mt-4">
+            <AiProviderConfig onSaved={() => setTab('agents')} />
+          </TabsContent>
         </Tabs>
       )}
     </div>

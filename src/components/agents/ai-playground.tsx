@@ -137,7 +137,11 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           {agents.length > 1 && (
             <Select value={agentId} onValueChange={changeAgent} disabled={sending}>
               <SelectTrigger className="h-7 w-auto min-w-[9rem] gap-1 px-2 text-xs">
-                <SelectValue placeholder="Agente" />
+                {/* Base UI's Select.Value renders the raw value (an id) unless
+                    we map it to a label here — the picker must show the name. */}
+                <SelectValue placeholder="Agente">
+                  {(id) => agents.find((a) => a.id === id)?.name ?? 'Agente'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {agents.map((a) => (
