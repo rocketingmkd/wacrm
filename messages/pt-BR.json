@@ -1116,13 +1116,13 @@
     "builder": {
       "triggerTitle": "Gatilho",
       "whenLabel": "Quando…",
-      "triggerKeywordTitle": "Uma mensagem contém uma palavra-chave",
-      "triggerNewContactTitle": "Primeira mensagem de um contato novo",
-      "triggerFirstInboundTitle": "Primeira mensagem já enviada pelo cliente",
+      "triggerKeywordTitle": "Mensagem contém palavra-chave",
+      "triggerNewContactTitle": "Primeira mensagem de contato novo",
+      "triggerFirstInboundTitle": "Primeira mensagem do cliente",
       "triggerNewMessageTitle": "Qualquer mensagem recebida",
-      "triggerTagAddedTitle": "Uma etiqueta é adicionada ao contato",
-      "triggerDealStageTitle": "Um card entra em uma etapa do funil",
-      "triggerManualTitle": "Somente manual (sem gatilho automático)",
+      "triggerTagAddedTitle": "Etiqueta adicionada ao contato",
+      "triggerDealStageTitle": "Card entra em etapa do funil",
+      "triggerManualTitle": "Manual (sem gatilho automático)",
       "triggerHint": {
         "keyword": "Sempre verificado antes de qualquer outro gatilho — nunca fica escondido atrás de um fluxo genérico.",
         "new_contact_created": "Só quando esta mensagem criou o contato agora. Pra contatos importados mandando mensagem pela primeira vez, use \"Primeira mensagem já enviada pelo cliente\".",
@@ -1236,7 +1236,7 @@
       "nodes": {
         "start": {
           "label": "Início",
-          "blurb": "Ponto de entrada do fluxo"
+          "blurb": "Ponto de entrada do fluxo — também define o gatilho"
         },
         "send_message": {
           "label": "Enviar mensagem",

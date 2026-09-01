@@ -31,13 +31,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -61,9 +54,8 @@ import {
 import { NodeConfigForm } from './forms/node-config-form';
 import { NodeKeySelect } from './forms/fields';
 import { IssueLine } from './validation-panel';
-import { useFlowEditor, DEFAULT_TRIGGER_CONFIG, type BuilderState } from './flow-editor-state';
-import { useUserTags, usePipelinesAndStages } from './use-picker-data';
-import type { FlowTriggerType } from '@/lib/flows/types';
+import { useFlowEditor, type BuilderState } from './flow-editor-state';
+import { TriggerFields } from './trigger-fields';
 
 // ============================================================
 // Local state shape — mirrors the DB but the configs are typed
@@ -158,13 +150,6 @@ export function FlowBuilder() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-7">
-      <TriggerPanel
-        state={state}
-        setState={setState}
-        triggerIssues={issues.filter((i) => i.scope === 'trigger')}
-        t={t}
-      />
-
       <EntryPicker state={state} setState={setState} t={t} />
 
       <section className="flex flex-col gap-3">
@@ -199,316 +184,15 @@ export function FlowBuilder() {
               onSetEntry={() =>
                 setState((s) => ({ ...s, entry_node_id: node.node_key }))
               }
+              triggerState={state}
+              setTriggerState={setState}
+              triggerIssues={issues.filter((i) => i.scope === 'trigger')}
               t={t}
             />
           ))
         )}
       </section>
     </div>
-  );
-}
-
-// ============================================================
-// Keyword trigger input
-// ============================================================
-
-/**
- * Comma-separated keyword entry. Keeps a local draft string so the
- * comma (and trailing space) the user types survive until they're done
- * — parsing into the keywords array on every keystroke stripped the
- * trailing comma the instant it was typed, making it impossible to
- * start a second keyword (issue #234). We commit on blur / Enter, then
- * re-display the cleaned, rejoined form. Seeded once on mount; the
- * component unmounts/remounts when the trigger type changes, so the
- * seed stays in sync. Mirrors the automations builder's KeywordMatchConfig.
- */
-function KeywordsInput({
-  keywords,
-  onChange,
-  t,
-}: {
-  keywords: string[];
-  onChange: (keywords: string[]) => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const [draft, setDraft] = useState(keywords.join(', '));
-
-  function commit() {
-    const parsed = draft
-      .split(',')
-      .map((k) => k.trim())
-      .filter(Boolean);
-    setDraft(parsed.join(', '));
-    onChange(parsed);
-  }
-
-  return (
-    <Input
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          commit();
-        }
-      }}
-      placeholder={t('keywordsPlaceholder')}
-      className="bg-muted"
-    />
-  );
-}
-
-// ============================================================
-// tag_added / deal_stage_changed trigger config
-// ============================================================
-
-/** Tag picker for the `tag_added` trigger. Same visual shape as
- *  SetTagForm's tag block (node-config-form.tsx) — copied rather than
- *  shared, since the two live in different panels with different
- *  labels/layout. */
-function TagTriggerFields({
-  tagId,
-  onChange,
-  t,
-}: {
-  tagId: string;
-  onChange: (tagId: string) => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const tags = useUserTags();
-  if (tags.length === 0) {
-    return (
-      <Input
-        value={tagId}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={t('form.tagUuidPlaceholder')}
-        className="bg-muted font-mono text-xs"
-      />
-    );
-  }
-  return (
-    <Select value={tagId} onValueChange={(v) => onChange(v ?? '')}>
-      <SelectTrigger className="bg-muted w-full">
-        <SelectValue placeholder={t('form.pickTag')} />
-      </SelectTrigger>
-      <SelectContent>
-        {tags.map((tag) => (
-          <SelectItem key={tag.id} value={tag.id}>
-            {tag.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-/** Pipeline + stage picker for the `deal_stage_changed` trigger.
- *  Mirrors DealPipelineFields in the Automations builder — pipeline
- *  select, dependent stage select, auto-picks the first stage on
- *  pipeline change — but uses SelectValue's placeholder instead of an
- *  `<option value="">`, since shadcn's Select (used here, unlike
- *  Automations' native <select>) can't have an empty-string item. */
-function DealStageTriggerFields({
-  pipelineId,
-  stageId,
-  onChange,
-  t,
-}: {
-  pipelineId: string;
-  stageId: string;
-  onChange: (patch: { pipeline_id: string; stage_id: string }) => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const { pipelines, stages } = usePipelinesAndStages();
-  const stageOptions = stages.filter((s) => s.pipeline_id === pipelineId);
-
-  if (pipelines.length === 0) {
-    return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input
-          value={pipelineId}
-          onChange={(e) => onChange({ pipeline_id: e.target.value, stage_id: stageId })}
-          placeholder={t('triggerPipelineIdPlaceholder')}
-          className="bg-muted font-mono text-xs"
-        />
-        <Input
-          value={stageId}
-          onChange={(e) => onChange({ pipeline_id: pipelineId, stage_id: e.target.value })}
-          placeholder={t('triggerStageIdPlaceholder')}
-          className="bg-muted font-mono text-xs"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <Select
-        value={pipelineId}
-        onValueChange={(v) => {
-          const nextPipelineId = v ?? '';
-          const firstStage = stages.find((s) => s.pipeline_id === nextPipelineId);
-          onChange({ pipeline_id: nextPipelineId, stage_id: firstStage?.id ?? '' });
-        }}
-      >
-        <SelectTrigger className="bg-muted w-full">
-          <SelectValue placeholder={t('triggerPipelinePlaceholder')} />
-        </SelectTrigger>
-        <SelectContent>
-          {pipelines.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        value={stageId}
-        onValueChange={(v) => onChange({ pipeline_id: pipelineId, stage_id: v ?? '' })}
-        disabled={!pipelineId}
-      >
-        <SelectTrigger className="bg-muted w-full">
-          <SelectValue
-            placeholder={
-              pipelineId ? t('triggerStagePlaceholder') : t('triggerStagePickPipelineFirst')
-            }
-          />
-        </SelectTrigger>
-        <SelectContent>
-          {stageOptions.map((s) => (
-            <SelectItem key={s.id} value={s.id}>
-              {s.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-// ============================================================
-// Trigger panel
-// ============================================================
-
-function TriggerPanel({
-  state,
-  setState,
-  triggerIssues,
-  t,
-}: {
-  state: BuilderState;
-  setState: React.Dispatch<React.SetStateAction<BuilderState>>;
-  triggerIssues: ValidationIssue[];
-  t: ReturnType<typeof useTranslations>;
-}) {
-  return (
-    <section className="border-border bg-card rounded-lg border p-4">
-      <h2 className="text-foreground mb-3 text-sm font-semibold">{t('triggerTitle')}</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div>
-          <label className="text-muted-foreground mb-1 block text-xs">
-            {t('whenLabel')}
-          </label>
-          <Select
-            value={state.trigger_type}
-            onValueChange={(v) =>
-              setState((s) => ({
-                ...s,
-                trigger_type: v as FlowTriggerType,
-                trigger_config: DEFAULT_TRIGGER_CONFIG[v as FlowTriggerType],
-              }))
-            }
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue />
-            </SelectTrigger>
-            {/* Options ordered to match the entry-match priority
-                (selectEntryFlow in src/lib/flows/engine.ts): most
-                specific first, catch-all near the end. The order
-                itself is free documentation of the resolution rule
-                for a non-technical author. */}
-            <SelectContent>
-              <SelectItem value="keyword">{t('triggerKeywordTitle')}</SelectItem>
-              <SelectItem value="new_contact_created">
-                {t('triggerNewContactTitle')}
-              </SelectItem>
-              <SelectItem value="first_inbound_message">
-                {t('triggerFirstInboundTitle')}
-              </SelectItem>
-              <SelectItem value="new_message_received">
-                {t('triggerNewMessageTitle')}
-              </SelectItem>
-              <SelectItem value="tag_added">{t('triggerTagAddedTitle')}</SelectItem>
-              <SelectItem value="deal_stage_changed">
-                {t('triggerDealStageTitle')}
-              </SelectItem>
-              <SelectItem value="manual">{t('triggerManualTitle')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-muted-foreground mt-1 text-[11px]">
-            {t(`triggerHint.${state.trigger_type}`)}
-          </p>
-        </div>
-        {state.trigger_type === 'keyword' && (
-          <div>
-            <label className="text-muted-foreground mb-1 block text-xs">
-              {t('keywordsLabel')}
-            </label>
-            <KeywordsInput
-              keywords={
-                Array.isArray(state.trigger_config.keywords)
-                  ? (state.trigger_config.keywords as string[])
-                  : []
-              }
-              onChange={(keywords) =>
-                setState((s) => ({
-                  ...s,
-                  trigger_config: { ...s.trigger_config, keywords },
-                }))
-              }
-              t={t}
-            />
-          </div>
-        )}
-        {state.trigger_type === 'tag_added' && (
-          <div>
-            <label className="text-muted-foreground mb-1 block text-xs">
-              {t('triggerTagLabel')}
-            </label>
-            <TagTriggerFields
-              tagId={(state.trigger_config.tag_id as string) ?? ''}
-              onChange={(tag_id) =>
-                setState((s) => ({ ...s, trigger_config: { tag_id } }))
-              }
-              t={t}
-            />
-          </div>
-        )}
-        {state.trigger_type === 'deal_stage_changed' && (
-          <div>
-            <label className="text-muted-foreground mb-1 block text-xs">
-              {t('triggerPipelineLabel')} / {t('triggerStageLabel')}
-            </label>
-            <DealStageTriggerFields
-              pipelineId={(state.trigger_config.pipeline_id as string) ?? ''}
-              stageId={(state.trigger_config.stage_id as string) ?? ''}
-              onChange={(patch) =>
-                setState((s) => ({ ...s, trigger_config: patch }))
-              }
-              t={t}
-            />
-          </div>
-        )}
-      </div>
-      {triggerIssues.length > 0 && (
-        <div className="mt-3 flex flex-col gap-1">
-          {triggerIssues.map((i, ix) => (
-            <IssueLine key={ix} issue={i} />
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -558,6 +242,9 @@ function NodeCard({
   onUpdateConfig,
   onRemove,
   onSetEntry,
+  triggerState,
+  setTriggerState,
+  triggerIssues,
   t,
 }: {
   node: BuilderNode;
@@ -572,6 +259,12 @@ function NodeCard({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onRemove: () => void;
   onSetEntry: () => void;
+  /** Flow-level trigger state — only rendered (as a block inside this
+   *  card) when node.node_type === 'start'. See trigger-fields.tsx for
+   *  why this lives at the flow level, not on the node's own config. */
+  triggerState: BuilderState;
+  setTriggerState: React.Dispatch<React.SetStateAction<BuilderState>>;
+  triggerIssues: ValidationIssue[];
   t: ReturnType<typeof useTranslations>;
 }) {
   const meta = NODE_META[node.node_type];
@@ -640,6 +333,16 @@ function NodeCard({
       </button>
       {expanded && (
         <div className="border-border border-t px-4 py-4">
+          {node.node_type === 'start' && (
+            <div className="border-border mb-4 border-b pb-4">
+              <TriggerFields
+                state={triggerState}
+                setState={setTriggerState}
+                triggerIssues={triggerIssues}
+                t={t}
+              />
+            </div>
+          )}
           <NodeConfigWithAdvanced
             node={node}
             allNodes={allNodes}

@@ -1116,13 +1116,13 @@
     "builder": {
       "triggerTitle": "Trigger",
       "whenLabel": "When…",
-      "triggerKeywordTitle": "A message contains a keyword",
-      "triggerNewContactTitle": "A brand-new contact's first message",
-      "triggerFirstInboundTitle": "Customer's first ever inbound message",
+      "triggerKeywordTitle": "Message contains a keyword",
+      "triggerNewContactTitle": "New contact's first message",
+      "triggerFirstInboundTitle": "Customer's first message",
       "triggerNewMessageTitle": "Any incoming message",
-      "triggerTagAddedTitle": "A tag is added to the contact",
-      "triggerDealStageTitle": "A deal card enters a pipeline stage",
-      "triggerManualTitle": "Manual only (no auto-trigger)",
+      "triggerTagAddedTitle": "Tag added to contact",
+      "triggerDealStageTitle": "Deal enters a pipeline stage",
+      "triggerManualTitle": "Manual (no auto-trigger)",
       "triggerHint": {
         "keyword": "Always checked before any other trigger — never hidden behind a generic flow.",
         "new_contact_created": "Only when this message just created the contact. For imported contacts messaging for the first time, use \"Customer's first ever inbound message\" instead.",
@@ -1236,7 +1236,7 @@
       "nodes": {
         "start": {
           "label": "Start",
-          "blurb": "Entry point of the flow"
+          "blurb": "Entry point of the flow — also sets the trigger"
         },
         "send_message": {
           "label": "Send message",

@@ -2,9 +2,9 @@
 
 /**
  * Canvas / mind-map view of a flow. Editable, in parity with the
- * list view for everything except the trigger / header / fallback
- * panels (those are list-only — they don't fit visually inside a
- * node graph and the user can switch to List for them).
+ * list view for everything except the header / fallback panels
+ * (those are list-only — they don't fit visually inside a node graph
+ * and the user can switch to List for them).
  *
  * What this view does:
  *   - Renders every flow_node as a draggable tile, pan + zoom +
@@ -14,7 +14,14 @@
  *     "true" / "false", list row title) so a branching flow reads
  *     as a real decision tree.
  *   - Click a node → side-sheet opens with the same per-node form
- *     the list view uses, plus "Set as entry" / "Delete".
+ *     the list view uses, plus "Set as entry" / "Delete". For the
+ *     `start` node specifically, the sheet also has the flow-level
+ *     trigger fields (trigger-fields.tsx) — trigger config lives on
+ *     `flows.trigger_type`/`trigger_config`, not on the start node's
+ *     own `config`, but editing it from the node that IS the entry
+ *     point reads more naturally than a separate top-level panel, and
+ *     it's the only way this view can configure the trigger at all
+ *     (it has no top-level panel of its own).
  *   - Drag from a source handle on one node to a target handle on
  *     another → wires that slot's `next_node_key`. Per-slot handles
  *     for multi-outgoing types (condition, send_buttons, send_list)
@@ -95,8 +102,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useFlowEditor } from './flow-editor-state';
+import { useFlowEditor, type BuilderState } from './flow-editor-state';
 import { NodeConfigForm } from './forms/node-config-form';
+import { TriggerFields } from './trigger-fields';
+import type { ValidationIssue } from '@/lib/flows/validate';
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
 interface NodeData extends Record<string, unknown> {
@@ -278,6 +287,7 @@ function FlowCanvasInner() {
   const {
     state,
     setState,
+    issues,
     updateNodeConfig,
     updateNodePosition,
     updateNodePositions,
@@ -583,6 +593,9 @@ function FlowCanvasInner() {
         onUpdateConfig={onSelectedUpdateConfig}
         onDelete={handleDeleteSelected}
         onSetEntry={handleSetEntry}
+        triggerState={state}
+        setTriggerState={setState}
+        triggerIssues={issues.filter((i) => i.scope === 'trigger')}
         t={t}
       />
     </>
@@ -603,6 +616,9 @@ function NodeEditSheet({
   onUpdateConfig,
   onDelete,
   onSetEntry,
+  triggerState,
+  setTriggerState,
+  triggerIssues,
   t,
 }: {
   node: BuilderNode | null;
@@ -612,6 +628,11 @@ function NodeEditSheet({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
   onSetEntry: () => void;
+  /** Flow-level trigger state — only rendered when node.node_type ===
+   *  'start'. See trigger-fields.tsx for why. */
+  triggerState: BuilderState;
+  setTriggerState: React.Dispatch<React.SetStateAction<BuilderState>>;
+  triggerIssues: ValidationIssue[];
   t: ReturnType<typeof useTranslations>;
 }) {
   // Sheet is controlled — opens when a node is selected, closes via
@@ -653,6 +674,16 @@ function NodeEditSheet({
         </SheetHeader>
 
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+          {node.node_type === 'start' && (
+            <div className="border-border border-b pb-4">
+              <TriggerFields
+                state={triggerState}
+                setState={setTriggerState}
+                triggerIssues={triggerIssues}
+                t={t}
+              />
+            </div>
+          )}
           <NodeConfigForm
             node={node}
             allNodes={allNodes}

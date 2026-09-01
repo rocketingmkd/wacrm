@@ -1115,13 +1115,13 @@
     "builder": {
       "triggerTitle": "트리거",
       "whenLabel": "조건…",
-      "triggerKeywordTitle": "메시지에 키워드가 포함될 때",
-      "triggerNewContactTitle": "완전히 새로운 연락처의 첫 메시지",
-      "triggerFirstInboundTitle": "고객의 첫 수신 메시지",
+      "triggerKeywordTitle": "메시지에 키워드 포함",
+      "triggerNewContactTitle": "새 연락처의 첫 메시지",
+      "triggerFirstInboundTitle": "고객의 첫 메시지",
       "triggerNewMessageTitle": "모든 수신 메시지",
-      "triggerTagAddedTitle": "연락처에 태그가 추가될 때",
-      "triggerDealStageTitle": "거래 카드가 파이프라인 단계에 들어갈 때",
-      "triggerManualTitle": "수동 전용 (자동 트리거 없음)",
+      "triggerTagAddedTitle": "연락처에 태그 추가",
+      "triggerDealStageTitle": "거래가 파이프라인 단계 진입",
+      "triggerManualTitle": "수동 (자동 트리거 없음)",
       "triggerHint": {
         "keyword": "다른 모든 트리거보다 항상 먼저 확인됩니다 — 일반 플로우 뒤에 가려지지 않습니다.",
         "new_contact_created": "이 메시지가 방금 연락처를 생성한 경우에만 해당합니다. 처음 메시지를 보내는 가져온 연락처의 경우 \"고객의 첫 수신 메시지\"를 사용하세요.",
@@ -1235,7 +1235,7 @@
       "nodes": {
         "start": {
           "label": "시작",
-          "blurb": "플로우의 진입점"
+          "blurb": "플로우의 진입점 — 트리거도 여기서 설정합니다"
         },
         "send_message": {
           "label": "메시지 보내기",
