@@ -48,6 +48,14 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  /* WhatsApp chat-bubble colors — fixed, not accent-themed. See the
+   * WHATSAPP BUBBLE COLORS block below for why these stay outside the
+   * MODE/ACCENT system. */
+  --color-wa-out: var(--wa-out);
+  --color-wa-out-foreground: var(--wa-out-foreground);
+  --color-wa-in: var(--wa-in);
+  --color-wa-in-foreground: var(--wa-in-foreground);
+  --color-wa-meta: var(--wa-meta);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -143,6 +151,31 @@ html[data-mode="light"] {
   --sidebar-accent: oklch(0.96 0.004 260);
   --sidebar-accent-foreground: oklch(0.25 0.01 260);
   --sidebar-border: oklch(0.922 0.004 260);
+}
+
+/* ---- WHATSAPP BUBBLE COLORS: fixed, independent of the ACCENT theme ----
+ * The inbox chat is meant to read as the actual WhatsApp channel, not as
+ * a themed CRM surface — so the sent/received bubble colors always match
+ * the real WhatsApp app's green/white (light) or green/slate (dark),
+ * regardless of which of the five accent themes the account picked. The
+ * account's accent color still drives every other primary-colored control
+ * (buttons, links, sidebar, badges) — this is the one deliberate carve-out. */
+
+:root,
+html[data-mode="dark"] {
+  --wa-out: #005c4b;
+  --wa-out-foreground: #e9edef;
+  --wa-in: #202c33;
+  --wa-in-foreground: #e9edef;
+  --wa-meta: #8696a0;
+}
+
+html[data-mode="light"] {
+  --wa-out: #d9fdd3;
+  --wa-out-foreground: #111b21;
+  --wa-in: #ffffff;
+  --wa-in-foreground: #111b21;
+  --wa-meta: #667781;
 }
 
 /* ---- ACCENT: primary color ---- */

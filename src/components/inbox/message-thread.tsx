@@ -1125,8 +1125,20 @@ export function MessageThread({
                   </span>
                 </div>
                 {/* Messages */}
-                <div className="space-y-2">
-                  {group.messages.map((msg) => {
+                <div>
+                  {group.messages.map((msg, idx) => {
+                    const isAgentMsg =
+                      msg.sender_type === "agent" || msg.sender_type === "bot";
+                    const prevMsg = idx > 0 ? group.messages[idx - 1] : null;
+                    const prevIsAgentMsg = prevMsg
+                      ? prevMsg.sender_type === "agent" || prevMsg.sender_type === "bot"
+                      : null;
+                    // First bubble of a same-sender run gets the tail (see
+                    // MessageBubble); consecutive bubbles from the same
+                    // sender sit closer together, same as WhatsApp's own
+                    // grouping — a wider gap only appears when the sender
+                    // switches or a new day starts.
+                    const isFirstInGroup = prevIsAgentMsg === null || prevIsAgentMsg !== isAgentMsg;
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;
@@ -1152,22 +1164,27 @@ export function MessageThread({
                       void postReaction(msg.id, next);
                     };
                     return (
-                      <MessageActions
+                      <div
                         key={msg.id}
-                        message={msg}
-                        onReply={() => handleStartReply(msg)}
-                        onReact={(emoji) => {
-                          if (emoji) void postReaction(msg.id, emoji);
-                        }}
+                        className={idx > 0 ? (isFirstInGroup ? "mt-2" : "mt-0.5") : undefined}
                       >
-                        <MessageBubble
+                        <MessageActions
                           message={msg}
-                          reply={reply}
-                          reactions={msgReactions}
-                          currentUserId={user?.id}
-                          onToggleReaction={handlePillToggle}
-                        />
-                      </MessageActions>
+                          onReply={() => handleStartReply(msg)}
+                          onReact={(emoji) => {
+                            if (emoji) void postReaction(msg.id, emoji);
+                          }}
+                        >
+                          <MessageBubble
+                            message={msg}
+                            reply={reply}
+                            reactions={msgReactions}
+                            currentUserId={user?.id}
+                            onToggleReaction={handlePillToggle}
+                            isFirstInGroup={isFirstInGroup}
+                          />
+                        </MessageActions>
+                      </div>
                     );
                   })}
                 </div>

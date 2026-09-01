@@ -28,16 +28,24 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /**
+   * True when this is the first message of a consecutive run from the
+   * same sender (agent/bot vs. customer). Only the first bubble in a run
+   * gets the flattened corner + tail — WhatsApp's own grouping rule.
+   * Defaults to true so any caller that doesn't compute grouping still
+   * renders a normal (tailed) bubble instead of a silently-wrong one.
+   */
+  isFirstInGroup?: boolean;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
   switch (status) {
     case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
+      return <Clock className="h-3 w-3 text-wa-meta" />;
     case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
+      return <Check className="h-3 w-3 text-wa-meta" />;
     case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
+      return <CheckCheck className="h-3 w-3 text-wa-meta" />;
     case "read":
       return <CheckCheck className="h-3 w-3 text-blue-400" />;
     case "failed":
@@ -264,6 +272,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  isFirstInGroup = true,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -281,12 +290,26 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative rounded-lg px-3 py-2",
           isAgent
-            ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            ? "bg-wa-out text-wa-out-foreground"
+            : "bg-wa-in text-wa-in-foreground",
+          // Only the first bubble in a same-sender run gets the flattened
+          // corner + tail (below) — matches WhatsApp's own grouping rule.
+          isFirstInGroup && (isAgent ? "rounded-tr-none" : "rounded-tl-none"),
         )}
       >
+        {isFirstInGroup && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute top-0 h-[13px] w-2",
+              isAgent
+                ? "-right-2 bg-wa-out [clip-path:polygon(0_0,100%_0,0_100%)]"
+                : "-left-2 bg-wa-in [clip-path:polygon(100%_0,0_0,100%_100%)]",
+            )}
+          />
+        )}
         {reply && (
           <ReplyQuote
             authorLabel={reply.authorLabel}
@@ -302,30 +325,23 @@ export function MessageBubble({
           )}
         >
           {/* AI badge — only on replies the auto-reply bot generated
-              (always outbound, so it sits on the primary fill). Lets
+              (always outbound, so it sits on the wa-out fill). Lets
               agents tell an AI reply from their own / a Flow's at a
               glance. */}
           {message.ai_generated && (
             <span
-              className="inline-flex items-center gap-0.5 rounded-full bg-primary-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-primary-foreground"
+              className="inline-flex items-center gap-0.5 rounded-full bg-wa-out-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-wa-out-foreground"
               title={t("aiBadgeTitle")}
             >
               <Sparkles className="h-2.5 w-2.5" />
               {t("aiBadge")}
             </span>
           )}
-          <span
-            className={cn(
-              "text-[10px]",
-              // Outbound bubbles sit on the primary fill, so the
-              // timestamp must read against that (not the neutral
-              // foreground) — otherwise it goes low-contrast in light
-              // mode. Inbound bubbles use the muted surface.
-              isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
-            )}
-          >
-            {time}
-          </span>
+          {/* Fixed WhatsApp metadata gray — reads fine against both the
+              green outbound and white/slate inbound bubble, so it doesn't
+              need to branch on isAgent the way the old primary-tinted
+              version did. */}
+          <span className="text-[10px] text-wa-meta">{time}</span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
       </div>

@@ -15,9 +15,9 @@ interface ReplyQuoteProps {
   /** Present → renders the composer-chip variant with an X button. Absent →
    *  renders the embedded-in-bubble variant. */
   onDismiss?: () => void;
-  /** True when embedded inside an outbound (primary-filled) bubble, so the
-   *  quote must read against the primary surface rather than the neutral
-   *  foreground — otherwise it goes low-contrast in light mode. */
+  /** True when embedded inside an outbound (wa-out-filled) bubble, so the
+   *  quote must read against that fixed WhatsApp surface rather than the
+   *  neutral foreground — otherwise it goes low-contrast in light mode. */
   onPrimary?: boolean;
 }
 
@@ -33,11 +33,11 @@ export function ReplyQuote({
     <div
       className={cn(
         "flex items-start gap-2 border-l-2 px-2 py-1",
-        onPrimary ? "border-primary-foreground/50" : "border-primary",
+        onPrimary ? "border-wa-out-foreground/50" : "border-primary",
         isChip
           ? "rounded-md bg-muted/80"
           : onPrimary
-            ? "mb-1.5 rounded-md bg-primary-foreground/15"
+            ? "mb-1.5 rounded-md bg-wa-out-foreground/15"
             : "mb-1.5 rounded-md bg-background/20",
       )}
     >
@@ -45,7 +45,7 @@ export function ReplyQuote({
         <div
           className={cn(
             "truncate text-[11px] font-medium",
-            onPrimary ? "text-primary-foreground" : "text-primary",
+            onPrimary ? "text-wa-out-foreground" : "text-primary",
           )}
         >
           {authorLabel}
