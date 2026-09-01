@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  Check,
   Loader2,
   Paperclip,
   Plus,
@@ -907,15 +908,20 @@ function useAiAgents(): AiAgentOption[] {
 }
 
 /**
- * Never shows a raw id input or a bare uuid — an account owner with no
- * technical background has no way to know what to type there.
+ * AI agent picker rendered as a plain vertical list (not a dropdown) —
+ * every option is visible at once, which reads far more clearly than
+ * a `<select>` when most of the items are disabled. Never shows a raw
+ * id input or a bare uuid — an account owner with no technical
+ * background has no way to know what to type there.
  *
  * Lists every agent (not just usable ones): an agent that's inactive
- * or has auto-reply turned off appears greyed out, disabled, with the
- * reason spelled out in the label, so the mistake is impossible to
- * make instead of surfacing later as a failed run. Zero agents on the
- * account → an inline empty state pointing at where to create one,
- * instead of an unusable text box.
+ * or has auto-reply turned off appears greyed out and unclickable,
+ * with the reason spelled out next to its name, so the mistake is
+ * impossible to make instead of surfacing later as a failed run. If
+ * NONE of the account's agents are usable yet, a banner above the
+ * list explains exactly what to flip in Settings. Zero agents on the
+ * account at all → an inline empty state pointing at where to create
+ * one, instead of an unusable text box.
  */
 function ActivateAiAgentForm({
   cfg,
@@ -934,6 +940,7 @@ function ActivateAiAgentForm({
       : !a.autoReplyEnabled
         ? t("aiAgentReasonAutoReplyOff")
         : null;
+  const noneUsable = agents.length > 0 && agents.every((a) => unusableReason(a));
 
   return (
     <>
@@ -941,31 +948,7 @@ function ActivateAiAgentForm({
         <label className="mb-1 block text-xs text-muted-foreground">
           {t("aiAgentLabel")}
         </label>
-        {agents.length > 0 ? (
-          <Select
-            value={cfg.agent_id ?? ""}
-            onValueChange={(v) => onUpdateConfig({ agent_id: v })}
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue placeholder={t("pickAiAgent")} />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((a) => {
-                const reason = unusableReason(a);
-                return (
-                  <SelectItem key={a.id} value={a.id} disabled={!!reason}>
-                    {reason ? `${a.name} (${reason})` : a.name}
-                  </SelectItem>
-                );
-              })}
-              {cfg.agent_id && !selected && (
-                <SelectItem value={cfg.agent_id}>
-                  {t("unknownAiAgent", { id: cfg.agent_id.slice(0, 8) })}
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        ) : (
+        {agents.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
             <p>{t("noAiAgents")}</p>
             <Link
@@ -975,6 +958,66 @@ function ActivateAiAgentForm({
             >
               {t("createAiAgent")}
             </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {noneUsable && (
+              <div className="rounded-md border border-dashed border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-600 dark:text-amber-400">
+                <p>{t("aiAgentsNoneUsable")}</p>
+                <Link
+                  href="/agents"
+                  target="_blank"
+                  className="mt-1.5 inline-flex items-center font-medium underline underline-offset-2"
+                >
+                  {t("openAiAgents")}
+                </Link>
+              </div>
+            )}
+            {cfg.agent_id && !selected && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                <span>{t("unknownAiAgent", { id: cfg.agent_id.slice(0, 8) })}</span>
+                <button
+                  type="button"
+                  onClick={() => onUpdateConfig({ agent_id: "" })}
+                  className="shrink-0 font-medium text-primary hover:underline"
+                >
+                  {t("clearAiAgent")}
+                </button>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              {agents.map((a) => {
+                const reason = unusableReason(a);
+                if (reason) {
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground opacity-60"
+                    >
+                      <span className="truncate">{a.name}</span>
+                      <span className="shrink-0 text-[11px]">{reason}</span>
+                    </div>
+                  );
+                }
+                const isSelected = a.id === cfg.agent_id;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => onUpdateConfig({ agent_id: a.id })}
+                    className={cn(
+                      "flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-background text-foreground hover:border-primary/40 hover:bg-muted",
+                    )}
+                  >
+                    <span className="truncate">{a.name}</span>
+                    {isSelected && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

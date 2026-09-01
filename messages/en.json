@@ -969,11 +969,14 @@
       },
       "aiAgents": {
         "select": "Select an AI agent…",
-        "unknown": "Removed agent ({id}…) — pick another",
+        "unknown": "Removed agent ({id}…)",
+        "clear": "Clear",
         "empty": "You haven't created any AI agents yet.",
         "createOne": "Create an AI agent →",
         "reasonInactive": "inactive",
-        "reasonAutoReplyOff": "auto-reply off"
+        "reasonAutoReplyOff": "auto-reply off",
+        "noneUsable": "None of your agents have \"Auto-reply\" turned on yet — without it, none can be used here.",
+        "openAgents": "Open AI Agents →"
       },
       "pipelines": {
         "pipelineLabel": "Pipeline",
@@ -1141,12 +1144,14 @@
         "advanceAfterCapture": "After capturing, advance to",
         "internalNote": "Internal note (for the agent picking up)",
         "aiAgentLabel": "AI agent",
-        "pickAiAgent": "Choose an agent…",
-        "unknownAiAgent": "Removed agent ({id}…) — pick another",
+        "unknownAiAgent": "Removed agent ({id}…)",
+        "clearAiAgent": "Clear",
         "noAiAgents": "You haven't created any AI agents yet.",
         "createAiAgent": "Create an AI agent →",
         "aiAgentReasonInactive": "inactive",
         "aiAgentReasonAutoReplyOff": "auto-reply off",
+        "aiAgentsNoneUsable": "None of your agents have \"Auto-reply\" turned on yet — without it, none can be used here.",
+        "openAiAgents": "Open AI Agents →",
         "aiAgentHint": "When execution reaches here, this agent takes over the conversation and replies to the customer right away.",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",
         "bodyText": "Body text",
