@@ -1237,7 +1237,11 @@
       "fixIssues": "Corrija os problemas abaixo antes de ativar.",
       "statusActivated": "Fluxo ativado.",
       "statusArchived": "Arquivado.",
-      "statusDraft": "Salvo como rascunho."
+      "statusDraft": "Salvo como rascunho.",
+      "deleteConfirm": "Excluir \"{name}\"? Todas as execuções ativas terminam imediatamente. Isso não pode ser desfeito.",
+      "saveFailed": "Falha ao salvar",
+      "statusUpdateFailed": "Falha ao atualizar status",
+      "deleteFailed": "Falha ao excluir"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {opção} other {opções}}",

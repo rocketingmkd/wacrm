@@ -1236,7 +1236,11 @@
       "fixIssues": "활성화하기 전에 아래 문제를 해결하세요.",
       "statusActivated": "플로우가 활성화되었습니다.",
       "statusArchived": "보관되었습니다.",
-      "statusDraft": "초안으로 저장되었습니다."
+      "statusDraft": "초안으로 저장되었습니다.",
+      "deleteConfirm": "\"{name}\"을(를) 삭제하시겠습니까? 진행 중인 모든 실행이 즉시 종료됩니다. 이 작업은 되돌릴 수 없습니다.",
+      "saveFailed": "저장 실패",
+      "statusUpdateFailed": "상태 업데이트 실패",
+      "deleteFailed": "삭제 실패"
     },
     "summary": {
       "options": "옵션 {count}개",
