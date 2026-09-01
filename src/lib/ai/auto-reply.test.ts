@@ -156,6 +156,20 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).toHaveBeenCalled()
   })
 
+  it('replies via the pinned agent even when its own auto-reply flag is off', async () => {
+    // A conversation explicitly pinned (transfer, or the activate_ai_agent
+    // step) must keep talking to that agent regardless of the account's
+    // blanket "pick up any new conversation" toggle on that agent — the
+    // two are meant to be independent (see the doc comment on
+    // dispatchInboundToAiReply).
+    h.state.conv = { ...h.state.conv, active_ai_agent_id: 'agent-9' }
+    h.loadAiAgent.mockResolvedValue(
+      aiConfig({ id: 'agent-9', name: 'Suporte', slug: 'suporte', autoReplyEnabled: false }),
+    )
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
   it('falls back to the receptionist when the pinned agent no longer resolves', async () => {
     h.state.conv = { ...h.state.conv, active_ai_agent_id: 'agent-deleted' }
     h.loadAiAgent.mockResolvedValue(null)

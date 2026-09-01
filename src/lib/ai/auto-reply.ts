@@ -48,7 +48,8 @@ interface ConversationRow {
  *   - the account is billing write-locked (trial lapsed, expired, canceled)
  *   - a human agent is assigned (they own the thread)
  *   - auto-reply was disabled for this conversation (prior handoff)
- *   - no agent is on duty (no active/receptionist agent, or it's off)
+ *   - no agent is on duty — no receptionist configured/active/on, and
+ *     this conversation isn't explicitly pinned to a live agent
  *   - the per-conversation reply cap is reached
  *   - there's nothing to reply to
  *
@@ -64,6 +65,14 @@ interface ConversationRow {
  * the right agent's answer in one interaction rather than waiting for
  * their next message. Exceeding the hop limit degrades to a human
  * handoff instead of silently dropping the message.
+ *
+ * `autoReplyEnabled` gates the RECEPTIONIST's blanket "pick up any new
+ * conversation" mode only. Once a conversation is explicitly pinned to
+ * an agent — via a transfer, or via the `activate_ai_agent`
+ * automation/flow step — that pin wins regardless of the pinned
+ * agent's own `autoReplyEnabled` value: an agent can be scoped to
+ * "only talks when explicitly handed a conversation" without ever
+ * fielding cold inbounds account-wide.
  */
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
@@ -88,11 +97,24 @@ export async function dispatchInboundToAiReply(
     if (conversation.assigned_agent_id) return // a human owns this thread
     if (conversation.ai_autoreply_disabled) return // handed off / turned off here
 
-    const agent = conversation.active_ai_agent_id
-      ? (await loadAiAgent(db, accountId, conversation.active_ai_agent_id)) ??
-        (await loadReceptionistAgent(db, accountId))
-      : await loadReceptionistAgent(db, accountId)
-    if (!agent || !agent.autoReplyEnabled) return
+    // A live pin (active_ai_agent_id resolving to a real, active agent)
+    // bypasses the autoReplyEnabled check below — see the doc comment
+    // above. It only falls back to "unpinned" behaviour when there's
+    // no pin, or the pinned agent no longer resolves (deleted/deactivated).
+    let agent: AiConfig | null
+    let pinned = false
+    if (conversation.active_ai_agent_id) {
+      agent = await loadAiAgent(db, accountId, conversation.active_ai_agent_id)
+      if (agent) {
+        pinned = true
+      } else {
+        agent = await loadReceptionistAgent(db, accountId)
+      }
+    } else {
+      agent = await loadReceptionistAgent(db, accountId)
+    }
+    if (!agent) return
+    if (!pinned && !agent.autoReplyEnabled) return
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -179,11 +201,16 @@ export async function activateAgentAndReply(args: ActivateAgentArgs): Promise<st
     throw new Error('account is billing-locked')
   }
 
+  // Deliberately does NOT require agent.autoReplyEnabled — that flag
+  // governs the RECEPTIONIST's blanket "answer every new conversation"
+  // mode (see dispatchInboundToAiReply below), a separate concern from
+  // "this one conversation is explicitly routed to this agent". An
+  // account may well want an agent that never picks up cold inbounds
+  // on its own but should take over the instant an automation/flow
+  // hands it a specific customer. Only isActive (enforced inside
+  // loadAiAgent) gates whether an agent can be activated this way.
   const agent = await loadAiAgent(db, accountId, agentId)
   if (!agent) throw new Error('AI agent not found, inactive, or provider not configured')
-  if (!agent.autoReplyEnabled) {
-    throw new Error(`agent "${agent.name}" has auto-reply disabled`)
-  }
 
   const { data: conv, error: convErr } = await db
     .from('conversations')

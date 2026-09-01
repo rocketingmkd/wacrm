@@ -914,14 +914,19 @@ function useAiAgents(): AiAgentOption[] {
  * id input or a bare uuid — an account owner with no technical
  * background has no way to know what to type there.
  *
- * Lists every agent (not just usable ones): an agent that's inactive
- * or has auto-reply turned off appears greyed out and unclickable,
- * with the reason spelled out next to its name, so the mistake is
- * impossible to make instead of surfacing later as a failed run. If
- * NONE of the account's agents are usable yet, a banner above the
- * list explains exactly what to flip in Settings. Zero agents on the
- * account at all → an inline empty state pointing at where to create
- * one, instead of an unusable text box.
+ * Lists every agent (not just active ones): an inactive agent appears
+ * greyed out and unclickable, with the reason spelled out next to its
+ * name, so the mistake is impossible to make instead of surfacing
+ * later as a failed run. Deliberately does NOT require the agent's
+ * own "Resposta automática" toggle — that flag is about the RECEPTIONIST
+ * picking up every new conversation account-wide, a separate concern
+ * from explicitly routing one conversation to a named agent here (an
+ * agent can be scoped to "only talks when handed a conversation" and
+ * still work perfectly with this node). If NONE of the account's
+ * agents are active yet, a banner above the list explains exactly
+ * what to flip in Settings. Zero agents on the account at all → an
+ * inline empty state pointing at where to create one, instead of an
+ * unusable text box.
  */
 function ActivateAiAgentForm({
   cfg,
@@ -934,12 +939,7 @@ function ActivateAiAgentForm({
 }) {
   const agents = useAiAgents();
   const selected = agents.find((a) => a.id === cfg.agent_id);
-  const unusableReason = (a: AiAgentOption) =>
-    !a.isActive
-      ? t("aiAgentReasonInactive")
-      : !a.autoReplyEnabled
-        ? t("aiAgentReasonAutoReplyOff")
-        : null;
+  const unusableReason = (a: AiAgentOption) => (!a.isActive ? t("aiAgentReasonInactive") : null);
   const noneUsable = agents.length > 0 && agents.every((a) => unusableReason(a));
 
   return (
