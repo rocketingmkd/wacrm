@@ -869,6 +869,7 @@
         "assign_conversation": "Assign Conversation",
         "update_contact_field": "Update Contact Field",
         "create_deal": "Create Deal",
+        "move_deal": "Move Card",
         "wait": "Wait",
         "condition": "Condition (If/Else)",
         "send_webhook": "Send Webhook",
@@ -902,6 +903,10 @@
         "tag_added": {
           "label": "Tag Added",
           "hint": "When a tag is added to a contact"
+        },
+        "deal_stage_changed": {
+          "label": "Card Moved to Stage",
+          "hint": "When a deal enters the chosen pipeline stage (drag on the board, edit the deal, or move via the AI Manager). The cadence stops if the card leaves the stage or the customer replies"
         },
         "time_based": {
           "label": "Time-Based",
@@ -1014,7 +1019,8 @@
         "matchType": "Match type",
         "matchContains": "Contains",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
+        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
+        "moveDealHint": "Moves this cadence's card to another stage. Use it as the last step to pull the lead out of the column and end the cadence."
       }
     }
   },

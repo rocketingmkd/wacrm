@@ -163,13 +163,17 @@ export function DealForm({
     }
     setSaving(true);
 
+    // `stage_id` is deliberately NOT in this shared payload. On edit it
+    // goes through PATCH /api/deals/[id]/stage so a stage change can fire
+    // the deal_stage_changed automation trigger (a direct Supabase write
+    // never reaches the server-side engine). On create it's added to the
+    // insert below — a brand-new deal landing in a stage is not a "move".
     const payload = {
       title: title.trim(),
       value: parseFloat(value) || 0,
       currency,
       contact_id: contactId,
       pipeline_id: pipelineId,
-      stage_id: stageId,
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
       expected_close_date: expectedCloseDate || null,
@@ -184,6 +188,18 @@ export function DealForm({
         toast.error(t("toastFailedSave"));
         setSaving(false);
         return;
+      }
+      if (stageId !== deal.stage_id) {
+        const res = await fetch(`/api/deals/${deal.id}/stage`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage_id: stageId }),
+        });
+        if (!res.ok) {
+          toast.error(t("toastFailedSave"));
+          setSaving(false);
+          return;
+        }
       }
     } else {
       const {
@@ -202,7 +218,13 @@ export function DealForm({
       }
       const { error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+        .insert({
+          ...payload,
+          stage_id: stageId,
+          user_id: user.id,
+          account_id: accountId,
+          status: "open",
+        });
       if (error) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);

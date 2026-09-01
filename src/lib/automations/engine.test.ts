@@ -370,6 +370,60 @@ describe("triggerMatches — tag_added", () => {
   });
 });
 
+describe("triggerMatches — deal_stage_changed", () => {
+  function automation(cfg: Record<string, unknown>): Automation {
+    return {
+      id: "a1",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      name: "follow-up cadence",
+      trigger_type: "deal_stage_changed",
+      trigger_config: cfg,
+      is_active: true,
+      execution_count: 0,
+      created_at: "",
+      updated_at: "",
+    };
+  }
+
+  it("matches when the card entered the configured stage", () => {
+    expect(
+      triggerMatches(automation({ stage_id: "stage-followup" }), {
+        stage_id: "stage-followup",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not match a different stage", () => {
+    expect(
+      triggerMatches(automation({ stage_id: "stage-followup" }), {
+        stage_id: "stage-won",
+      }),
+    ).toBe(false);
+  });
+
+  it("fails closed when the config or event stage is missing", () => {
+    expect(triggerMatches(automation({}), { stage_id: "stage-followup" })).toBe(
+      false,
+    );
+    expect(triggerMatches(automation({ stage_id: "stage-followup" }), {})).toBe(
+      false,
+    );
+  });
+
+  it("enforces pipeline_id only when both sides provide it", () => {
+    const cfg = { stage_id: "s1", pipeline_id: "p1" };
+    expect(triggerMatches(automation(cfg), { stage_id: "s1", pipeline_id: "p1" })).toBe(
+      true,
+    );
+    expect(triggerMatches(automation(cfg), { stage_id: "s1", pipeline_id: "p2" })).toBe(
+      false,
+    );
+    // Event carries no pipeline_id — the guard is skipped, stage still matches.
+    expect(triggerMatches(automation(cfg), { stage_id: "s1" })).toBe(true);
+  });
+});
+
 describe("tag_added — conversation policy", () => {
   it("records a clear failed step when the contact has no conversation", async () => {
     h.state.owned = { id: "c1" };

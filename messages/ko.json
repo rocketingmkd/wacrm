@@ -868,6 +868,7 @@
         "assign_conversation": "대화 담당자 지정",
         "update_contact_field": "연락처 필드 업데이트",
         "create_deal": "딜 생성",
+        "move_deal": "카드 이동",
         "wait": "대기",
         "condition": "조건 (If/Else)",
         "send_webhook": "웹훅 보내기",
@@ -901,6 +902,10 @@
         "tag_added": {
           "label": "태그 추가됨",
           "hint": "연락처에 태그가 추가되었을 때"
+        },
+        "deal_stage_changed": {
+          "label": "카드가 단계로 이동됨",
+          "hint": "딜이 선택한 파이프라인 단계로 들어왔을 때 (보드에서 드래그, 딜 편집, 또는 AI 매니저로 이동). 카드가 단계를 벗어나거나 고객이 응답하면 케이던스가 중지됩니다"
         },
         "time_based": {
           "label": "시간 기반",
@@ -1013,7 +1018,8 @@
         "matchType": "일치 유형",
         "matchContains": "포함",
         "matchExact": "정확히 일치",
-        "closeConversationHint": "대화 상태를 \"닫힘\"으로 설정합니다. 추가 설정이 필요 없습니다."
+        "closeConversationHint": "대화 상태를 \"닫힘\"으로 설정합니다. 추가 설정이 필요 없습니다.",
+        "moveDealHint": "이 케이던스의 카드를 다른 단계로 이동합니다. 마지막 단계로 사용해 리드를 컬럼에서 빼내고 케이던스를 종료하세요."
       }
     }
   },

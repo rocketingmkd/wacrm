@@ -120,6 +120,19 @@ describe("validateStepsForActivation", () => {
     ]);
   });
 
+  it("flags move_deal with no stage, but allows a blank pipeline_id", () => {
+    expect(
+      validateStepsForActivation([{ step_type: "move_deal", step_config: {} }]).map(
+        (i) => i.path,
+      ),
+    ).toEqual(["steps[0].stage_id"]);
+    expect(
+      validateStepsForActivation([
+        { step_type: "move_deal", step_config: { stage_id: "stage-lost" } },
+      ]),
+    ).toEqual([]);
+  });
+
   it("validates send_buttons / send_list interactive payloads", () => {
     const good = validateStepsForActivation([
       {
@@ -280,6 +293,15 @@ describe("validateTriggerForActivation", () => {
     expect(empties.map((i) => i.message)).toContain(
       "reply ids cannot be empty strings",
     );
+  });
+
+  it("requires stage_id on deal_stage_changed triggers", () => {
+    expect(validateTriggerForActivation("deal_stage_changed", {})).toEqual([
+      { path: "trigger.stage_id", message: "stage is required" },
+    ]);
+    expect(
+      validateTriggerForActivation("deal_stage_changed", { stage_id: "stage-followup" }),
+    ).toEqual([]);
   });
 
   it("does not flag unknown trigger types (handled elsewhere)", () => {

@@ -207,11 +207,14 @@ export function AiCopilotPanel({
     if (!suggestedStage || !activeDeal) return;
     setBusyAction("move");
     try {
-      const { error } = await createClient()
-        .from("deals")
-        .update({ stage_id: suggestedStage.id })
-        .eq("id", activeDeal.id);
-      if (error) {
+      // Via the API (not a direct write) so moving the card can fire the
+      // deal_stage_changed automation trigger.
+      const res = await fetch(`/api/deals/${activeDeal.id}/stage`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage_id: suggestedStage.id }),
+      });
+      if (!res.ok) {
         toast.error("Não foi possível mover o card.");
         return;
       }

@@ -461,7 +461,12 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /** A deal card entered the configured pipeline stage. Powers follow-up
+   *  cadences: the run parks on `wait` steps and auto-cancels if the card
+   *  leaves that stage or the customer replies. Dispatched server-side by
+   *  `PATCH /api/deals/[id]/stage`. */
+  | 'deal_stage_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -473,6 +478,7 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  | 'move_deal'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -501,12 +507,21 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface DealStageChangedTriggerConfig {
+  /** Optional extra guard — only fire for cards in this pipeline. When
+   *  omitted, any pipeline whose stage id matches `stage_id` triggers. */
+  pipeline_id?: string;
+  /** The stage the card must have entered for the automation to run. */
+  stage_id: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | DealStageChangedTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
@@ -556,6 +571,15 @@ export interface CreateDealStepConfig {
   value?: number;
 }
 
+export interface MoveDealStepConfig {
+  /** Optional — set it to also move the deal across pipelines. Usually
+   *  left blank so the card just changes stage within its own pipeline. */
+  pipeline_id?: string;
+  /** Destination stage. The engine moves the deal carried in the run
+   *  context (`context.deal_id`, set by the deal_stage_changed trigger). */
+  stage_id: string;
+}
+
 export interface WaitStepConfig {
   amount: number;
   unit: 'minutes' | 'hours' | 'days';
@@ -590,6 +614,7 @@ export type AutomationStepConfig =
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
+  | MoveDealStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig

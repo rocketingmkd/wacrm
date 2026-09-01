@@ -16,6 +16,8 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
   CreateDealStepConfig,
+  MoveDealStepConfig,
+  DealStageChangedTriggerConfig,
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -43,6 +45,18 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  // --- deal_stage_changed trigger ---
+  /** The deal whose card just moved. `move_deal` steps act on this id. */
+  deal_id?: string
+  /** Pipeline the moved card belongs to. */
+  pipeline_id?: string
+  /** Stage the card entered — matched against the trigger config. */
+  stage_id?: string
+  /** Stage the card came from (audit / conditions only). */
+  from_stage_id?: string
+  /** ISO timestamp the cadence started. A parked `wait` cancels the run
+   *  if the customer sent a message after this instant. */
+  cadence_started_at?: string
 }
 
 export interface DispatchInput {
@@ -174,6 +188,27 @@ export async function resumePendingExecution(pending: {
   if (error || !automation) {
     console.error('[automations] resume: missing automation', pending.automation_id, error)
     await markPending(pending.id, 'failed')
+    return
+  }
+
+  // Follow-up cadences (deal_stage_changed trigger) must stop mid-wait
+  // when they no longer apply: the card was moved out of the trigger
+  // stage, or the customer replied. Checked here, at resume, so the
+  // remaining Send/Wait steps in the parked scope never run.
+  const stopReason = await cadenceStopReason(
+    db,
+    automation as Automation,
+    pending.contact_id,
+    pending.context ?? {},
+  )
+  if (stopReason) {
+    await appendResults(
+      pending.log_id,
+      [{ step_id: 'cadence-stop', step_type: 'wait', status: 'success', detail: stopReason }],
+      'partial',
+      null,
+    )
+    await markPending(pending.id, 'cancelled')
     return
   }
 
@@ -602,6 +637,25 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return 'deal created'
     }
 
+    case 'move_deal': {
+      const cfg = step.step_config as MoveDealStepConfig
+      if (!cfg.stage_id) throw new Error('move_deal needs a stage')
+      const dealId = args.context.deal_id
+      if (!dealId) throw new Error('move_deal needs deal_id in context')
+      const patch: Record<string, unknown> = { stage_id: cfg.stage_id }
+      if (cfg.pipeline_id) patch.pipeline_id = cfg.pipeline_id
+      const { error } = await db
+        .from('deals')
+        .update(patch)
+        .eq('id', dealId)
+        .eq('account_id', args.automation.account_id)
+      if (error) throw new Error(`move_deal failed: ${error.message}`)
+      // Deliberately does NOT re-dispatch deal_stage_changed: a cadence's
+      // own final "move card" step must not retrigger another cadence (or
+      // itself). UI-driven moves are the only dispatch source.
+      return `deal moved to stage ${cfg.stage_id}`
+    }
+
     case 'send_webhook': {
       const cfg = step.step_config as SendWebhookStepConfig
       if (!cfg.url) throw new Error('send_webhook needs url')
@@ -702,6 +756,18 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = automation.trigger_config as DealStageChangedTriggerConfig
+    if (!cfg?.stage_id || !ctx?.stage_id) return false
+    if (cfg.stage_id !== ctx.stage_id) return false
+    // pipeline_id is an optional narrowing guard — only enforced when the
+    // author set it AND the event carried one.
+    if (cfg.pipeline_id && ctx.pipeline_id && cfg.pipeline_id !== ctx.pipeline_id) {
+      return false
+    }
+    return true
   }
 
   return true
@@ -811,9 +877,67 @@ async function finalizeLog(
     .eq('id', logId)
 }
 
-async function markPending(id: string, status: 'done' | 'failed') {
+async function markPending(id: string, status: 'done' | 'failed' | 'cancelled') {
   await supabaseAdmin()
     .from('automation_pending_executions')
     .update({ status })
     .eq('id', id)
+}
+
+/**
+ * For a parked `deal_stage_changed` run, decide whether the cadence is
+ * still valid. Returns a human-readable reason string when it should be
+ * cancelled, or null to let it continue. No-op (null) for every other
+ * trigger type.
+ */
+async function cadenceStopReason(
+  db: ReturnType<typeof supabaseAdmin>,
+  automation: Automation,
+  contactId: string | null,
+  context: AutomationContext,
+): Promise<string | null> {
+  if (automation.trigger_type !== 'deal_stage_changed') return null
+  const cfg = automation.trigger_config as DealStageChangedTriggerConfig
+
+  // 1. Card left the trigger stage (moved by a human, or by this
+  //    cadence's own final move_deal step).
+  if (context.deal_id) {
+    const { data: deal, error } = await db
+      .from('deals')
+      .select('stage_id')
+      .eq('id', context.deal_id)
+      .eq('account_id', automation.account_id)
+      .maybeSingle()
+    if (error) {
+      // Don't cancel on a transient read error — let it resume and retry.
+      console.error('[automations] cadence stop check: deal read failed', error)
+    } else if (!deal) {
+      return 'cadência interrompida: negócio não existe mais'
+    } else if (cfg?.stage_id && deal.stage_id !== cfg.stage_id) {
+      return 'cadência interrompida: card saiu da etapa'
+    }
+  }
+
+  // 2. Customer replied after the cadence started.
+  if (contactId && context.cadence_started_at) {
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id')
+      .eq('account_id', automation.account_id)
+      .eq('contact_id', contactId)
+    const convIds = (convs ?? []).map((c) => c.id as string)
+    if (convIds.length > 0) {
+      const { count } = await db
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .in('conversation_id', convIds)
+        .eq('sender_type', 'customer')
+        .gt('created_at', context.cadence_started_at)
+      if ((count ?? 0) > 0) {
+        return 'cadência interrompida: cliente respondeu'
+      }
+    }
+  }
+
+  return null
 }
