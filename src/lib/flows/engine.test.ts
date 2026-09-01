@@ -2,11 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   matchReplyId,
   matchesKeywordTrigger,
+  matchesEventTrigger,
+  selectEntryFlow,
+  selectEntryFlowForEvent,
   isAutoAdvancing,
   isSuspending,
   isTerminal,
   evaluateConditionPredicate,
 } from "./engine";
+import type { FlowEvent, FlowTriggerType } from "./types";
 
 describe("matchReplyId", () => {
   it("returns null for nodes without options", () => {
@@ -297,5 +301,225 @@ describe("evaluateConditionPredicate", () => {
         configValue: "anything",
       }),
     ).toBe(false);
+  });
+});
+
+// ============================================================
+// selectEntryFlow / matchesEventTrigger / selectEntryFlowForEvent
+//
+// These back the 4 new Flow trigger types (new_message_received,
+// new_contact_created, tag_added, deal_stage_changed). Fixtures are
+// plain { trigger_type, trigger_config } objects in the same order
+// findEntryFlow/dispatchEventToFlows pass them (created_at asc).
+// ============================================================
+
+interface Fixture {
+  trigger_type: FlowTriggerType;
+  trigger_config: Record<string, unknown>;
+}
+
+describe("selectEntryFlow", () => {
+  it("a keyword match wins even when listed after a new_message_received catch-all (anti-shadowing guarantee)", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "new_message_received", trigger_config: {} },
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "oi tudo bem",
+      isFirstInbound: false,
+      wasContactCreated: false,
+    });
+    expect(result).toBe(flows[1]);
+  });
+
+  it("a keyword match wins even when listed after a first_inbound_message flow (deliberate behavior change vs the old flat created_at scan)", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "first_inbound_message", trigger_config: {} },
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "oi",
+      isFirstInbound: true,
+      wasContactCreated: false,
+    });
+    expect(result).toBe(flows[1]);
+  });
+
+  it("new_contact_created beats first_inbound_message when both would match", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "first_inbound_message", trigger_config: {} },
+      { trigger_type: "new_contact_created", trigger_config: {} },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "hello",
+      isFirstInbound: true,
+      wasContactCreated: true,
+    });
+    expect(result).toBe(flows[1]);
+  });
+
+  it("first_inbound_message wins when wasContactCreated is false but isFirstInbound is true", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "new_contact_created", trigger_config: {} },
+      { trigger_type: "first_inbound_message", trigger_config: {} },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "hello",
+      isFirstInbound: true,
+      wasContactCreated: false,
+    });
+    expect(result).toBe(flows[1]);
+  });
+
+  it("new_message_received only wins when nothing more specific matched", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+      { trigger_type: "new_message_received", trigger_config: {} },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "boa tarde",
+      isFirstInbound: false,
+      wasContactCreated: false,
+    });
+    expect(result).toBe(flows[1]);
+  });
+
+  it("within one tier, the earlier array position wins", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "oi",
+      isFirstInbound: false,
+      wasContactCreated: false,
+    });
+    expect(result).toBe(flows[0]);
+  });
+
+  it("never returns a manual-trigger flow, even when it's the only one", () => {
+    const flows: Fixture[] = [{ trigger_type: "manual", trigger_config: {} }];
+    const result = selectEntryFlow(flows, {
+      text: "anything",
+      isFirstInbound: true,
+      wasContactCreated: true,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when nothing matches", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } },
+    ];
+    const result = selectEntryFlow(flows, {
+      text: "boa tarde",
+      isFirstInbound: false,
+      wasContactCreated: false,
+    });
+    expect(result).toBeNull();
+  });
+});
+
+describe("matchesEventTrigger", () => {
+  it("tag_added: matches on exact tag id", () => {
+    const flow: Fixture = { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } };
+    const event: FlowEvent = { type: "tag_added", tag_id: "t1" };
+    expect(matchesEventTrigger(flow, event)).toBe(true);
+  });
+
+  it("tag_added: false on a different tag id", () => {
+    const flow: Fixture = { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } };
+    const event: FlowEvent = { type: "tag_added", tag_id: "t2" };
+    expect(matchesEventTrigger(flow, event)).toBe(false);
+  });
+
+  it("tag_added: false when the flow's tag_id is missing", () => {
+    const flow: Fixture = { trigger_type: "tag_added", trigger_config: {} };
+    const event: FlowEvent = { type: "tag_added", tag_id: "t1" };
+    expect(matchesEventTrigger(flow, event)).toBe(false);
+  });
+
+  it("deal_stage_changed: matches on stage_id", () => {
+    const flow: Fixture = {
+      trigger_type: "deal_stage_changed",
+      trigger_config: { stage_id: "s1" },
+    };
+    const event: FlowEvent = {
+      type: "deal_stage_changed",
+      deal_id: "d1",
+      stage_id: "s1",
+    };
+    expect(matchesEventTrigger(flow, event)).toBe(true);
+  });
+
+  it("deal_stage_changed: false when both sides carry a differing pipeline_id", () => {
+    const flow: Fixture = {
+      trigger_type: "deal_stage_changed",
+      trigger_config: { stage_id: "s1", pipeline_id: "p1" },
+    };
+    const event: FlowEvent = {
+      type: "deal_stage_changed",
+      deal_id: "d1",
+      stage_id: "s1",
+      pipeline_id: "p2",
+    };
+    expect(matchesEventTrigger(flow, event)).toBe(false);
+  });
+
+  it("deal_stage_changed: still matches when the flow has a pipeline_id but the event doesn't carry one (double-truthiness guard)", () => {
+    const flow: Fixture = {
+      trigger_type: "deal_stage_changed",
+      trigger_config: { stage_id: "s1", pipeline_id: "p1" },
+    };
+    const event: FlowEvent = {
+      type: "deal_stage_changed",
+      deal_id: "d1",
+      stage_id: "s1",
+    };
+    expect(matchesEventTrigger(flow, event)).toBe(true);
+  });
+
+  it("deal_stage_changed: false when the flow has no stage_id configured", () => {
+    const flow: Fixture = { trigger_type: "deal_stage_changed", trigger_config: {} };
+    const event: FlowEvent = {
+      type: "deal_stage_changed",
+      deal_id: "d1",
+      stage_id: "s1",
+    };
+    expect(matchesEventTrigger(flow, event)).toBe(false);
+  });
+
+  it("false when the flow's trigger_type isn't the event's type", () => {
+    const flow: Fixture = { trigger_type: "keyword", trigger_config: { keywords: ["oi"] } };
+    const event: FlowEvent = { type: "tag_added", tag_id: "t1" };
+    expect(matchesEventTrigger(flow, event)).toBe(false);
+  });
+});
+
+describe("selectEntryFlowForEvent", () => {
+  it("returns the earliest matching flow", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } },
+      { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } },
+    ];
+    const event: FlowEvent = { type: "tag_added", tag_id: "t1" };
+    expect(selectEntryFlowForEvent(flows, event)).toBe(flows[0]);
+  });
+
+  it("ignores flows of a different trigger_type even if their config happens to hold a matching id", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "deal_stage_changed", trigger_config: { stage_id: "t1" } },
+      { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } },
+    ];
+    const event: FlowEvent = { type: "tag_added", tag_id: "t1" };
+    expect(selectEntryFlowForEvent(flows, event)).toBe(flows[1]);
+  });
+
+  it("returns null when nothing matches", () => {
+    const flows: Fixture[] = [
+      { trigger_type: "tag_added", trigger_config: { tag_id: "t1" } },
+    ];
+    const event: FlowEvent = { type: "tag_added", tag_id: "t2" };
+    expect(selectEntryFlowForEvent(flows, event)).toBeNull();
   });
 });

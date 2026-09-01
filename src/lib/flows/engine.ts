@@ -1,12 +1,16 @@
 /**
  * Flow runner.
  *
- * The single entry point `dispatchInboundToFlows` is called by the
- * WhatsApp webhook on every inbound message *for an account that has
- * opted into the Flows beta*. It decides whether the message belongs
- * to an active conversation flow (advance it) or matches the entry
- * trigger of an active flow (start a new run) — and reports back to
- * the webhook so the webhook knows whether to also fire automations.
+ * `dispatchInboundToFlows` is called by the WhatsApp webhook on every
+ * inbound message. It decides whether the message belongs to an
+ * active conversation flow (advance it) or matches the entry trigger
+ * of an active flow (start a new run) — and reports back to the
+ * webhook so the webhook knows whether to also fire automations.
+ *
+ * `dispatchEventToFlows` is the non-message counterpart — it starts a
+ * run in reaction to a `tag_added` / `deal_stage_changed` CRM event
+ * instead of an inbound message. See the "Public entry points"
+ * section below.
  *
  * Architecture in a sentence: the runner walks the customer through
  * a DB-stored node graph, suspending only at nodes that need
@@ -47,8 +51,11 @@ import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
+  type DealStageChangedTriggerConfig,
+  type DispatchEventInput,
   type DispatchInboundInput,
   type DispatchInboundResult,
+  type FlowEvent,
   type FlowNodeRow,
   type FlowRow,
   type FlowRunRow,
@@ -59,6 +66,7 @@ import {
   type SendMessageNodeConfig,
   type SetTagNodeConfig,
   type StartNodeConfig,
+  type TagAddedTriggerConfig,
   type KeywordTriggerConfig,
 } from "./types";
 
@@ -111,6 +119,107 @@ export function matchesKeywordTrigger(
     }
   }
   return false;
+}
+
+/** Minimal shape selectEntryFlow/selectEntryFlowForEvent need — lets
+ *  tests build fixtures without a full FlowRow. */
+type TriggerCandidate = Pick<FlowRow, "trigger_type" | "trigger_config">;
+
+export interface EntryMessageContext {
+  /** Caller guarantees this came from a message.kind === 'text' inbound. */
+  text: string;
+  isFirstInbound: boolean;
+  wasContactCreated: boolean;
+}
+
+/**
+ * Picks which active flow (if any) a fresh inbound text message
+ * should start. Three passes, most specific first, so a broad
+ * catch-all flow can never silently make a narrower one unreachable
+ * just by having an earlier `created_at`:
+ *
+ *   1. `keyword` — an explicit word match always wins.
+ *   2. Relationship-level — `new_contact_created` (narrower: only
+ *      when this exact message created the contact) before
+ *      `first_inbound_message` (broader: also covers imported
+ *      contacts messaging for the first time).
+ *   3. `new_message_received` — catch-all, last resort.
+ *
+ * `manual` and the two event-driven trigger types never start from an
+ * inbound message — no branch matches them here, which is correct.
+ *
+ * Exported pure so engine.test.ts can pin both the anti-shadowing
+ * guarantee and the (deliberate) behavior change versus the old flat
+ * created_at scan: a keyword flow now always wins over a
+ * first_inbound_message flow, even one created earlier.
+ */
+export function selectEntryFlow<T extends TriggerCandidate>(
+  flows: T[],
+  ctx: EntryMessageContext,
+): T | null {
+  for (const flow of flows) {
+    if (
+      flow.trigger_type === "keyword" &&
+      matchesKeywordTrigger(ctx.text, flow.trigger_config as KeywordTriggerConfig)
+    ) {
+      return flow;
+    }
+  }
+  for (const flow of flows) {
+    if (flow.trigger_type === "new_contact_created" && ctx.wasContactCreated) {
+      return flow;
+    }
+  }
+  for (const flow of flows) {
+    if (flow.trigger_type === "first_inbound_message" && ctx.isFirstInbound) {
+      return flow;
+    }
+  }
+  for (const flow of flows) {
+    if (flow.trigger_type === "new_message_received") return flow;
+  }
+  return null;
+}
+
+/**
+ * Does this flow's trigger config match a fired CRM event? Mirrors
+ * src/lib/automations/engine.ts's triggerMatches() literally,
+ * including the double-truthiness pipeline_id guard, so an account
+ * configuring "the same thing" in both features gets identical
+ * firing.
+ */
+export function matchesEventTrigger(
+  flow: TriggerCandidate,
+  event: FlowEvent,
+): boolean {
+  if (flow.trigger_type !== event.type) return false;
+  if (event.type === "tag_added") {
+    const cfg = flow.trigger_config as TagAddedTriggerConfig;
+    return Boolean(event.tag_id && cfg?.tag_id && cfg.tag_id === event.tag_id);
+  }
+  // event.type === "deal_stage_changed"
+  const cfg = flow.trigger_config as DealStageChangedTriggerConfig;
+  if (!cfg?.stage_id || !event.stage_id) return false;
+  if (cfg.stage_id !== event.stage_id) return false;
+  // pipeline_id is an optional narrowing guard — only enforced when
+  // the author set it AND the event carried one.
+  if (cfg.pipeline_id && event.pipeline_id && cfg.pipeline_id !== event.pipeline_id) {
+    return false;
+  }
+  return true;
+}
+
+/** Single pass, first match wins — both event trigger types are
+ *  already exact-id matches, so there's no specificity tier to apply
+ *  (unlike selectEntryFlow's message-driven catch-all problem). */
+export function selectEntryFlowForEvent<T extends TriggerCandidate>(
+  flows: T[],
+  event: FlowEvent,
+): T | null {
+  for (const flow of flows) {
+    if (matchesEventTrigger(flow, event)) return flow;
+  }
+  return null;
 }
 
 /** Nodes that advance to a next_node_key without waiting for input. */
@@ -312,42 +421,73 @@ async function isDuplicateInbound(
   return (count ?? 0) > 0;
 }
 
-async function findEntryFlow(
+/**
+ * Every active flow for this account, oldest first. Shared by both
+ * entry points (message-driven and event-driven) — the active set is
+ * bounded (the builder discourages double-trigger overlap; partial
+ * index makes the lookup index-supported).
+ */
+async function loadActiveFlows(
   db: AdminClient,
   accountId: string,
-  message: ParsedInbound,
-  isFirstInbound: boolean,
-): Promise<FlowRow | null> {
-  // Only text messages can match an entry trigger. Interactive replies
-  // are responses to existing prompts; they never start a new flow.
-  if (message.kind !== "text") return null;
-
-  // Pull all active flows for this account. Active set is bounded
-  // (the builder discourages double-trigger overlap; partial index
-  // makes the lookup index-supported).
+): Promise<FlowRow[]> {
   const { data: flows, error } = await db
     .from("flows")
     .select("*")
     .eq("account_id", accountId)
     .eq("status", "active")
     .order("created_at", { ascending: true });
-  if (error || !flows) return null;
+  if (error || !flows) return [];
+  return flows as FlowRow[];
+}
 
-  const typed = flows as FlowRow[];
-  for (const flow of typed) {
-    if (flow.trigger_type === "keyword") {
-      if (matchesKeywordTrigger(
-        message.text,
-        flow.trigger_config as KeywordTriggerConfig,
-      )) {
-        return flow;
-      }
-    } else if (flow.trigger_type === "first_inbound_message" && isFirstInbound) {
-      return flow;
-    }
-    // 'manual' triggers do not auto-start from inbound messages.
+async function findEntryFlow(
+  db: AdminClient,
+  accountId: string,
+  message: ParsedInbound,
+  isFirstInbound: boolean,
+  wasContactCreated: boolean,
+): Promise<FlowRow | null> {
+  // Only text messages can match an entry trigger. Interactive replies
+  // are responses to existing prompts; they never start a new flow.
+  // Kept here (not inside the pure selector) so a stray tap on a
+  // months-old button can never start the new_message_received
+  // catch-all trigger.
+  if (message.kind !== "text") return null;
+
+  const flows = await loadActiveFlows(db, accountId);
+  return selectEntryFlow(flows, {
+    text: message.text,
+    isFirstInbound,
+    wasContactCreated,
+  });
+}
+
+/**
+ * Resolve an existing conversation for a contact — used by the
+ * event-driven entry point (tag_added / deal_stage_changed), which
+ * never creates one. `.limit(1)` rather than `.maybeSingle()` for the
+ * same defensive reason as loadActiveRunForContact above: a >1-row
+ * result must degrade, not throw and kill dispatch.
+ */
+async function findConversationForContact(
+  db: AdminClient,
+  accountId: string,
+  contactId: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("conversations")
+    .select("id")
+    .eq("account_id", accountId)
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.error("[flows] findConversationForContact error:", error.message);
+    return null;
   }
-  return null;
+  const rows = (data as { id: string }[] | null) ?? [];
+  return rows[0]?.id ?? null;
 }
 
 // ============================================================
@@ -881,11 +1021,23 @@ async function advanceCurrentNodeKey(
 }
 
 // ============================================================
-// Public entry point — the webhook calls this on every inbound.
+// Public entry points:
+//   - dispatchInboundToFlows — the webhook calls this on every inbound
+//     WhatsApp message.
+//   - dispatchEventToFlows — src/lib/contacts/tag-events.ts and
+//     src/app/api/deals/[id]/stage/route.ts call this on tag_added /
+//     deal_stage_changed CRM events.
 // ============================================================
 
 export async function dispatchInboundToFlows(
-  input: DispatchInboundInput & { isFirstInboundMessage: boolean },
+  input: DispatchInboundInput & {
+    isFirstInboundMessage: boolean;
+    /** True iff the webhook just auto-created the contact FROM this
+     *  exact inbound message — drives the new_contact_created trigger
+     *  (narrower than isFirstInboundMessage, which also covers
+     *  manually-imported contacts messaging for the first time). */
+    wasContactCreated: boolean;
+  },
 ): Promise<DispatchInboundResult> {
   const db = supabaseAdmin();
   try {
@@ -934,15 +1086,112 @@ export async function dispatchInboundToFlows(
       input.accountId,
       input.message,
       input.isFirstInboundMessage,
+      input.wasContactCreated,
     );
     if (!flow || !flow.entry_node_id) {
       return { consumed: false, outcome: "no_match" };
     }
     const nodes = await loadAllNodes(db, flow.id);
-    return startNewRun(db, flow, input, nodes);
+    return startNewRun(
+      db,
+      flow,
+      {
+        contactId: input.contactId,
+        conversationId: input.conversationId,
+        metaMessageId: input.message.meta_message_id,
+      },
+      nodes,
+    );
   } catch (err) {
     console.error(
       "[flows] dispatchInboundToFlows threw:",
+      err instanceof Error ? err.message : err,
+    );
+    return { consumed: false, outcome: "no_match" };
+  }
+}
+
+/**
+ * Non-message entry point — starts a flow run in reaction to a CRM
+ * event (a tag was added, a deal entered a pipeline stage) rather
+ * than an inbound WhatsApp message. The event-driven counterpart to
+ * `dispatchInboundToFlows` above; called from
+ * `src/lib/contacts/tag-events.ts` and
+ * `src/app/api/deals/[id]/stage/route.ts`, the same two places
+ * automations' `runAutomationsForTrigger` already gets called from
+ * for these trigger types.
+ *
+ * Never throws — same contract as `dispatchInboundToFlows`, callers
+ * are fire-and-forget.
+ *
+ * Deliberately does NOT create a conversation when the contact
+ * doesn't have one yet (returns `outcome: "no_conversation"`) — same
+ * rule automations already follows for these trigger types via
+ * `resolveConversationId`.
+ *
+ * Deliberately does NOT re-verify that `contactId` belongs to
+ * `accountId` (unlike automations' `runAutomationsForTrigger`, which
+ * has to — it has an HTTP entry point with a caller-supplied
+ * contactId). Both callers here derive `contactId` from a row already
+ * scoped to the account, so that check would just be a wasted SELECT
+ * on every tag write.
+ */
+export async function dispatchEventToFlows(
+  input: DispatchEventInput,
+): Promise<DispatchInboundResult> {
+  const db = supabaseAdmin();
+  try {
+    if (await isAccountWriteLocked(db, input.accountId)) {
+      return { consumed: false, outcome: "no_match" };
+    }
+
+    // An event must never preempt or advance a run already in
+    // flight — this is also what makes the flows-internal recursion
+    // safe: when a flow's own set_tag node fires tag_added, the run
+    // is still 'active', so the re-entrant dispatch is a cheap
+    // indexed no-op.
+    const activeRun = await loadActiveRunForContact(
+      db,
+      input.accountId,
+      input.contactId,
+    );
+    if (activeRun) {
+      return { consumed: false, flow_run_id: activeRun.id, outcome: "no_match" };
+    }
+
+    const flows = await loadActiveFlows(db, input.accountId);
+    const flow = selectEntryFlowForEvent(flows, input.event);
+    if (!flow || !flow.entry_node_id) {
+      return { consumed: false, outcome: "no_match" };
+    }
+
+    const conversationId = await findConversationForContact(
+      db,
+      input.accountId,
+      input.contactId,
+    );
+    if (!conversationId) {
+      console.warn(
+        `[flows] dispatchEventToFlows: no conversation for contact ${input.contactId}, skipping flow ${flow.id}`,
+      );
+      return { consumed: false, outcome: "no_conversation" };
+    }
+
+    const nodes = await loadAllNodes(db, flow.id);
+    return startNewRun(
+      db,
+      flow,
+      {
+        contactId: input.contactId,
+        conversationId,
+        metaMessageId: null,
+        triggerPayload: { ...input.event },
+      },
+      nodes,
+    );
+  } catch (err) {
+    console.error(
+      "[flows] dispatchEventToFlows threw:",
       err instanceof Error ? err.message : err,
     );
     return { consumed: false, outcome: "no_match" };
@@ -1116,10 +1365,23 @@ async function handleReplyForActiveRun(
   return { consumed: true, flow_run_id: run.id, outcome: "completed" };
 }
 
+interface StartRunInput {
+  contactId: string;
+  conversationId: string;
+  /** Meta message id of the inbound that started the run — recorded
+   *  on the 'started' event for the runs viewer. `null` for
+   *  event-driven starts (tag_added / deal_stage_changed), which have
+   *  no inbound message. */
+  metaMessageId: string | null;
+  /** Merged into the 'started' event payload. Event-driven starts use
+   *  this to record which tag / deal fired them. */
+  triggerPayload?: Record<string, unknown>;
+}
+
 async function startNewRun(
   db: AdminClient,
   flow: FlowRow,
-  input: DispatchInboundInput,
+  input: StartRunInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
   // INSERT — partial unique index `idx_one_active_run_per_contact`
@@ -1157,7 +1419,8 @@ async function startNewRun(
   await logEvent(db, run.id, "started", flow.entry_node_id, {
     flow_id: flow.id,
     trigger_type: flow.trigger_type,
-    meta_message_id: input.message.meta_message_id,
+    meta_message_id: input.metaMessageId,
+    ...input.triggerPayload,
   });
   // Bump the flow's execution counter — used by the builder UI to
   // surface "X runs since activation" on the flow card.
@@ -1175,8 +1438,27 @@ async function startNewRun(
     console.error("[flows] execution_count rpc error:", incErr.message);
   }
 
-  // Run the advance loop starting from the entry node.
-  const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes);
+  // Run the advance loop starting from the entry node. Wrapped here
+  // (not just relying on advanceFromNodeKey's own per-node try/catch)
+  // because an event-driven start (tag_added / deal_stage_changed)
+  // routinely fires OUTSIDE the WhatsApp 24h customer-service window —
+  // unlike a message-driven start, which is always reacting to a
+  // message that just re-opened the window. A rejected free-form send
+  // out of window throws; without this catch the flow_runs row is
+  // left status='active' at the entry node, permanently blocking any
+  // future run for this contact via idx_one_active_run_per_contact
+  // until the stale-run cron sweep.
+  let outcome: { outcome: "advanced" | "completed" | "handed_off" };
+  try {
+    outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes);
+  } catch (err) {
+    await logEvent(db, run.id, "error", flow.entry_node_id, {
+      reason: "entry_advance_failed",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    await endRun(db, run.id, "failed", "entry_advance_failed");
+    return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
+  }
   return {
     consumed: true,
     flow_run_id: run.id,

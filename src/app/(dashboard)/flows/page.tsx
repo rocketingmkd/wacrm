@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { FlowTriggerType } from "@/lib/flows/types";
 
 /**
  * Flows list page.
@@ -47,7 +48,7 @@ interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: FlowTriggerType;
   trigger_config: { keywords?: string[] } | Record<string, unknown>;
   execution_count: number;
   last_executed_at: string | null;
@@ -435,6 +436,20 @@ function describeTrigger(flow: FlowRow, t: ReturnType<typeof useTranslations>): 
   }
   if (flow.trigger_type === "first_inbound_message") {
     return t("triggerFirstInbound");
+  }
+  if (flow.trigger_type === "new_message_received") {
+    return t("triggerNewMessage");
+  }
+  if (flow.trigger_type === "new_contact_created") {
+    return t("triggerNewContact");
+  }
+  if (flow.trigger_type === "tag_added") {
+    const tagId = (flow.trigger_config as { tag_id?: string }).tag_id;
+    return tagId ? t("triggerTagAdded") : t("triggerTagAddedNone");
+  }
+  if (flow.trigger_type === "deal_stage_changed") {
+    const stageId = (flow.trigger_config as { stage_id?: string }).stage_id;
+    return stageId ? t("triggerDealStage") : t("triggerDealStageNone");
   }
   return t("triggerManual");
 }

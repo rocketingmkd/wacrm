@@ -51,7 +51,7 @@ import {
 } from "@/lib/flows/validate";
 import { useTranslations } from "next-intl";
 import { unlinkNodeReferences } from "@/lib/flows/edges";
-import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
+import type { FlowNodeRow, FlowRow, FlowTriggerType } from "@/lib/flows/types";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 
 // ============================================================
@@ -61,12 +61,29 @@ import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 export interface BuilderState {
   name: string;
   description: string;
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: FlowTriggerType;
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
   status: FlowRow["status"];
   nodes: BuilderNode[];
 }
+
+/**
+ * Default trigger_config per trigger_type — used both when the
+ * TriggerPanel Select changes type (flow-builder.tsx) and when
+ * seeding a brand-new flow (flows/page.tsx). Typed as a Record over
+ * the full FlowTriggerType union so adding a future trigger type
+ * without a default here is a compile error, not a silent runtime gap.
+ */
+export const DEFAULT_TRIGGER_CONFIG: Record<FlowTriggerType, Record<string, unknown>> = {
+  keyword: { keywords: [] },
+  new_message_received: {},
+  new_contact_created: {},
+  first_inbound_message: {},
+  tag_added: { tag_id: "" },
+  deal_stage_changed: { pipeline_id: "", stage_id: "" },
+  manual: {},
+};
 
 export interface FlowEditorContextValue {
   /** Immutable post-load envelope: id, created_at, fallback_policy, etc. */

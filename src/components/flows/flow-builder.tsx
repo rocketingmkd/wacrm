@@ -61,7 +61,9 @@ import {
 import { NodeConfigForm } from './forms/node-config-form';
 import { NodeKeySelect } from './forms/fields';
 import { IssueLine } from './validation-panel';
-import { useFlowEditor, type BuilderState } from './flow-editor-state';
+import { useFlowEditor, DEFAULT_TRIGGER_CONFIG, type BuilderState } from './flow-editor-state';
+import { useUserTags, usePipelinesAndStages } from './use-picker-data';
+import type { FlowTriggerType } from '@/lib/flows/types';
 
 // ============================================================
 // Local state shape — mirrors the DB but the configs are typed
@@ -258,6 +260,134 @@ function KeywordsInput({
 }
 
 // ============================================================
+// tag_added / deal_stage_changed trigger config
+// ============================================================
+
+/** Tag picker for the `tag_added` trigger. Same visual shape as
+ *  SetTagForm's tag block (node-config-form.tsx) — copied rather than
+ *  shared, since the two live in different panels with different
+ *  labels/layout. */
+function TagTriggerFields({
+  tagId,
+  onChange,
+  t,
+}: {
+  tagId: string;
+  onChange: (tagId: string) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const tags = useUserTags();
+  if (tags.length === 0) {
+    return (
+      <Input
+        value={tagId}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={t('form.tagUuidPlaceholder')}
+        className="bg-muted font-mono text-xs"
+      />
+    );
+  }
+  return (
+    <Select value={tagId} onValueChange={(v) => onChange(v ?? '')}>
+      <SelectTrigger className="bg-muted w-full">
+        <SelectValue placeholder={t('form.pickTag')} />
+      </SelectTrigger>
+      <SelectContent>
+        {tags.map((tag) => (
+          <SelectItem key={tag.id} value={tag.id}>
+            {tag.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Pipeline + stage picker for the `deal_stage_changed` trigger.
+ *  Mirrors DealPipelineFields in the Automations builder — pipeline
+ *  select, dependent stage select, auto-picks the first stage on
+ *  pipeline change — but uses SelectValue's placeholder instead of an
+ *  `<option value="">`, since shadcn's Select (used here, unlike
+ *  Automations' native <select>) can't have an empty-string item. */
+function DealStageTriggerFields({
+  pipelineId,
+  stageId,
+  onChange,
+  t,
+}: {
+  pipelineId: string;
+  stageId: string;
+  onChange: (patch: { pipeline_id: string; stage_id: string }) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { pipelines, stages } = usePipelinesAndStages();
+  const stageOptions = stages.filter((s) => s.pipeline_id === pipelineId);
+
+  if (pipelines.length === 0) {
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Input
+          value={pipelineId}
+          onChange={(e) => onChange({ pipeline_id: e.target.value, stage_id: stageId })}
+          placeholder={t('triggerPipelineIdPlaceholder')}
+          className="bg-muted font-mono text-xs"
+        />
+        <Input
+          value={stageId}
+          onChange={(e) => onChange({ pipeline_id: pipelineId, stage_id: e.target.value })}
+          placeholder={t('triggerStageIdPlaceholder')}
+          className="bg-muted font-mono text-xs"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <Select
+        value={pipelineId}
+        onValueChange={(v) => {
+          const nextPipelineId = v ?? '';
+          const firstStage = stages.find((s) => s.pipeline_id === nextPipelineId);
+          onChange({ pipeline_id: nextPipelineId, stage_id: firstStage?.id ?? '' });
+        }}
+      >
+        <SelectTrigger className="bg-muted w-full">
+          <SelectValue placeholder={t('triggerPipelinePlaceholder')} />
+        </SelectTrigger>
+        <SelectContent>
+          {pipelines.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={stageId}
+        onValueChange={(v) => onChange({ pipeline_id: pipelineId, stage_id: v ?? '' })}
+        disabled={!pipelineId}
+      >
+        <SelectTrigger className="bg-muted w-full">
+          <SelectValue
+            placeholder={
+              pipelineId ? t('triggerStagePlaceholder') : t('triggerStagePickPipelineFirst')
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {stageOptions.map((s) => (
+            <SelectItem key={s.id} value={s.id}>
+              {s.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// ============================================================
 // Trigger panel
 // ============================================================
 
@@ -285,27 +415,40 @@ function TriggerPanel({
             onValueChange={(v) =>
               setState((s) => ({
                 ...s,
-                trigger_type: v as BuilderState['trigger_type'],
-                trigger_config:
-                  v === 'keyword' ? { keywords: [] } : v === 'manual' ? {} : {},
+                trigger_type: v as FlowTriggerType,
+                trigger_config: DEFAULT_TRIGGER_CONFIG[v as FlowTriggerType],
               }))
             }
           >
             <SelectTrigger className="bg-muted">
               <SelectValue />
             </SelectTrigger>
+            {/* Options ordered to match the entry-match priority
+                (selectEntryFlow in src/lib/flows/engine.ts): most
+                specific first, catch-all near the end. The order
+                itself is free documentation of the resolution rule
+                for a non-technical author. */}
             <SelectContent>
-              <SelectItem value="keyword">
-                {t('triggerKeywordTitle')}
+              <SelectItem value="keyword">{t('triggerKeywordTitle')}</SelectItem>
+              <SelectItem value="new_contact_created">
+                {t('triggerNewContactTitle')}
               </SelectItem>
               <SelectItem value="first_inbound_message">
                 {t('triggerFirstInboundTitle')}
               </SelectItem>
-              <SelectItem value="manual">
-                {t('triggerManualTitle')}
+              <SelectItem value="new_message_received">
+                {t('triggerNewMessageTitle')}
               </SelectItem>
+              <SelectItem value="tag_added">{t('triggerTagAddedTitle')}</SelectItem>
+              <SelectItem value="deal_stage_changed">
+                {t('triggerDealStageTitle')}
+              </SelectItem>
+              <SelectItem value="manual">{t('triggerManualTitle')}</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            {t(`triggerHint.${state.trigger_type}`)}
+          </p>
         </div>
         {state.trigger_type === 'keyword' && (
           <div>
@@ -323,6 +466,35 @@ function TriggerPanel({
                   ...s,
                   trigger_config: { ...s.trigger_config, keywords },
                 }))
+              }
+              t={t}
+            />
+          </div>
+        )}
+        {state.trigger_type === 'tag_added' && (
+          <div>
+            <label className="text-muted-foreground mb-1 block text-xs">
+              {t('triggerTagLabel')}
+            </label>
+            <TagTriggerFields
+              tagId={(state.trigger_config.tag_id as string) ?? ''}
+              onChange={(tag_id) =>
+                setState((s) => ({ ...s, trigger_config: { tag_id } }))
+              }
+              t={t}
+            />
+          </div>
+        )}
+        {state.trigger_type === 'deal_stage_changed' && (
+          <div>
+            <label className="text-muted-foreground mb-1 block text-xs">
+              {t('triggerPipelineLabel')} / {t('triggerStageLabel')}
+            </label>
+            <DealStageTriggerFields
+              pipelineId={(state.trigger_config.pipeline_id as string) ?? ''}
+              stageId={(state.trigger_config.stage_id as string) ?? ''}
+              onChange={(patch) =>
+                setState((s) => ({ ...s, trigger_config: patch }))
               }
               t={t}
             />

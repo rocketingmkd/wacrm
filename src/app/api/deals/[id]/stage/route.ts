@@ -1,6 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { dispatchEventToFlows } from '@/lib/flows/engine'
 
 /**
  * Move one deal to another pipeline stage, server-side, and fire the
@@ -81,6 +82,22 @@ export async function PATCH(
       },
     }).catch((err) =>
       console.error('[deals/stage] automation dispatch failed:', err),
+    )
+    // No forced exclusivity with the automation dispatch above — see
+    // the same note at the tag_added dispatch site in
+    // src/lib/contacts/tag-events.ts.
+    await dispatchEventToFlows({
+      accountId: deal.account_id as string,
+      contactId: deal.contact_id as string,
+      event: {
+        type: 'deal_stage_changed',
+        deal_id: id,
+        pipeline_id: deal.pipeline_id as string,
+        stage_id: stageId,
+        from_stage_id: fromStageId,
+      },
+    }).catch((err) =>
+      console.error('[deals/stage] flow dispatch failed:', err),
     )
   })
 

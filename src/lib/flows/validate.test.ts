@@ -156,6 +156,70 @@ describe("validateFlowForActivation — trigger", () => {
     );
     expect(issues.filter((i) => i.scope === "trigger")).toEqual([]);
   });
+
+  it("new_message_received trigger needs no config", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, trigger_type: "new_message_received", trigger_config: {} },
+      validNodes,
+    );
+    expect(issues.filter((i) => i.scope === "trigger")).toEqual([]);
+  });
+
+  it("new_contact_created trigger needs no config", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, trigger_type: "new_contact_created", trigger_config: {} },
+      validNodes,
+    );
+    expect(issues.filter((i) => i.scope === "trigger")).toEqual([]);
+  });
+
+  it("flags tag_added trigger with no tag_id", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, trigger_type: "tag_added", trigger_config: {} },
+      validNodes,
+    );
+    expect(
+      issues.some(
+        (i) => i.scope === "trigger" && i.field === "trigger_config.tag_id",
+      ),
+    ).toBe(true);
+  });
+
+  it("tag_added trigger with a tag_id needs no issues", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        trigger_type: "tag_added",
+        trigger_config: { tag_id: "tag-uuid" },
+      },
+      validNodes,
+    );
+    expect(issues.filter((i) => i.scope === "trigger")).toEqual([]);
+  });
+
+  it("flags deal_stage_changed trigger with no stage_id", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, trigger_type: "deal_stage_changed", trigger_config: {} },
+      validNodes,
+    );
+    expect(
+      issues.some(
+        (i) => i.scope === "trigger" && i.field === "trigger_config.stage_id",
+      ),
+    ).toBe(true);
+  });
+
+  it("deal_stage_changed trigger with a stage_id and no pipeline_id needs no issues (pipeline_id stays optional)", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        trigger_type: "deal_stage_changed",
+        trigger_config: { stage_id: "stage-uuid" },
+      },
+      validNodes,
+    );
+    expect(issues.filter((i) => i.scope === "trigger")).toEqual([]);
+  });
 });
 
 describe("validateFlowForActivation — nodes", () => {

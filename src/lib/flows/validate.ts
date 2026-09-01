@@ -24,6 +24,7 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import type { FlowTriggerType } from "./types";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -37,7 +38,7 @@ export interface ValidationIssue {
 
 interface FlowInput {
   name: string;
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: FlowTriggerType;
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
 }
@@ -173,7 +174,37 @@ function validateTrigger(
       }
     }
   }
-  // first_inbound_message / manual have no config; nothing to validate.
+
+  if (trigger_type === "tag_added") {
+    const tagId = trigger_config.tag_id;
+    if (typeof tagId !== "string" || !tagId.trim()) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.tag_id",
+        message: "Tag triggers need a tag to watch for.",
+      });
+    }
+  }
+
+  if (trigger_type === "deal_stage_changed") {
+    const stageId = trigger_config.stage_id;
+    if (typeof stageId !== "string" || !stageId.trim()) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.stage_id",
+        message: "Pick the pipeline stage a card must enter.",
+      });
+    }
+    // pipeline_id is an optional narrowing guard (see
+    // DealStageChangedTriggerConfig / matchesEventTrigger) — flagging
+    // its absence here would contradict the engine, which treats an
+    // unset pipeline_id as "any pipeline".
+  }
+
+  // new_message_received / new_contact_created / first_inbound_message
+  // / manual have no config; nothing to validate.
 
   return issues;
 }

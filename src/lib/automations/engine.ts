@@ -26,6 +26,7 @@ import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { activateAgentAndReply } from '@/lib/ai/auto-reply'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
+import { dispatchEventToFlows } from '@/lib/flows/engine'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
@@ -519,6 +520,16 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           },
         },
       })
+      // This step bypasses src/lib/contacts/tag-events.ts (it needs
+      // its own inline depth guard against the automation's own
+      // context, not tag-events.ts's), so it also needs its own
+      // Flows dispatch — otherwise "an Automation tags the lead → a
+      // Flow starts the onboarding conversation" silently never fires.
+      await dispatchEventToFlows({
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        event: { type: 'tag_added', tag_id: cfg.tag_id },
+      }).catch((err) => console.error('[flows] tag_added dispatch failed:', err))
       return `tag ${cfg.tag_id} added and tag_added dispatched`
     }
 

@@ -1326,7 +1326,11 @@ async function processMessage(
   //
   // The relationship-level triggers (`new_contact_created`,
   // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
+  // are about WHO is messaging, not what they said. (That's true of
+  // AUTOMATIONS' triggers of those names, dispatched below. Flows now
+  // has trigger types with the same names too — a Flow that consumed
+  // this message already started its own run; those don't re-fire
+  // here.)
   //
   // Awaited (not fire-and-forget) because we need the `consumed`
   // result before deciding whether to dispatch automations. The
@@ -1353,6 +1357,7 @@ async function processMessage(
             meta_message_id: message.id,
           },
     isFirstInboundMessage,
+    wasContactCreated: contactOutcome.wasCreated,
   })
   const flowConsumed = flowResult.consumed
 

@@ -226,10 +226,44 @@ export interface KeywordTriggerConfig {
 // the no-empty-object-type lint rule.
 export type FirstInboundTriggerConfig = Record<string, never>;
 
+// Same "no knobs" shape as FirstInboundTriggerConfig — kept as
+// separate named aliases (rather than reusing one type for both) so
+// each trigger_type's config has its own name to grep for, matching
+// the rest of this file's one-interface-per-variant convention.
+export type NewMessageTriggerConfig = Record<string, never>;
+export type NewContactCreatedTriggerConfig = Record<string, never>;
+
+export interface TagAddedTriggerConfig {
+  /** Tag UUID. Strict equality against the tag that was just added —
+   *  see matchesEventTrigger in engine.ts. */
+  tag_id: string;
+}
+
+export interface DealStageChangedTriggerConfig {
+  /** Stage UUID the card must have entered. Required. */
+  stage_id: string;
+  /** Optional narrowing guard — only enforced when the author set it
+   *  AND the firing event carried one. Mirrors
+   *  automations/engine.ts's triggerMatches exactly. */
+  pipeline_id?: string;
+}
+
 export type FlowTriggerConfig =
   | { trigger_type: "keyword"; config: KeywordTriggerConfig }
+  | { trigger_type: "new_message_received"; config: NewMessageTriggerConfig }
+  | { trigger_type: "new_contact_created"; config: NewContactCreatedTriggerConfig }
   | { trigger_type: "first_inbound_message"; config: FirstInboundTriggerConfig }
+  | { trigger_type: "tag_added"; config: TagAddedTriggerConfig }
+  | { trigger_type: "deal_stage_changed"; config: DealStageChangedTriggerConfig }
   | { trigger_type: "manual"; config: Record<string, never> };
+
+/**
+ * Single source of truth for the trigger_type literal union — every
+ * place that used to duplicate `"keyword" | "first_inbound_message" |
+ * "manual"` by hand imports this instead. Mirrors how FlowNodeType is
+ * derived from FlowNodeConfig above.
+ */
+export type FlowTriggerType = FlowTriggerConfig["trigger_type"];
 
 // ============================================================
 // DB-row shapes (read by the engine via supabaseAdmin)
@@ -246,8 +280,13 @@ export interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
-  trigger_config: KeywordTriggerConfig | FirstInboundTriggerConfig | Record<string, unknown>;
+  trigger_type: FlowTriggerType;
+  trigger_config:
+    | KeywordTriggerConfig
+    | FirstInboundTriggerConfig
+    | TagAddedTriggerConfig
+    | DealStageChangedTriggerConfig
+    | Record<string, unknown>;
   entry_node_id: string | null;
   fallback_policy: FlowFallbackPolicy;
   execution_count: number;
@@ -370,7 +409,36 @@ export interface DispatchInboundResult {
     | "handed_off"
     | "fallback_fired"
     | "duplicate_inbound_ignored"
-    | "no_match";
+    | "no_match"
+    /** dispatchEventToFlows only — a matching tag_added/deal_stage_changed
+     *  flow was found, but the contact has no existing conversation to
+     *  send into (event triggers never create one). */
+    | "no_conversation";
+}
+
+// ============================================================
+// Event input — what `dispatchEventToFlows` accepts. The
+// non-message-driven counterpart to DispatchInboundInput above: fired
+// from src/lib/contacts/tag-events.ts (tag_added) and
+// src/app/api/deals/[id]/stage/route.ts (deal_stage_changed), the
+// same two call sites automations' runAutomationsForTrigger already
+// uses for these trigger types.
+// ============================================================
+
+export type FlowEvent =
+  | { type: "tag_added"; tag_id: string }
+  | {
+      type: "deal_stage_changed";
+      deal_id: string;
+      stage_id: string;
+      pipeline_id?: string | null;
+      from_stage_id?: string | null;
+    };
+
+export interface DispatchEventInput {
+  accountId: string;
+  contactId: string;
+  event: FlowEvent;
 }
 
 // ============================================================

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   add: vi.fn(),
   dispatch: vi.fn(),
+  flowDispatch: vi.fn(),
 }));
 
 vi.mock('./tag-write', () => ({
@@ -11,6 +12,15 @@ vi.mock('./tag-write', () => ({
 
 vi.mock('@/lib/automations/engine', () => ({
   runAutomationsForTrigger: mocks.dispatch,
+}));
+
+// Required, not just nice-to-have: tag-events.ts now imports
+// dispatchEventToFlows from flows/engine.ts (a deliberate cycle, see
+// the comment at that import site). Without this mock the REAL
+// flows/engine module loads, dragging in supabaseAdmin, meta-send,
+// and lib/ai/auto-reply — none of which are set up in this test file.
+vi.mock('@/lib/flows/engine', () => ({
+  dispatchEventToFlows: mocks.flowDispatch,
 }));
 
 import {
@@ -30,6 +40,8 @@ beforeEach(() => {
   mocks.add.mockReset();
   mocks.dispatch.mockReset();
   mocks.dispatch.mockResolvedValue(undefined);
+  mocks.flowDispatch.mockReset();
+  mocks.flowDispatch.mockResolvedValue(undefined);
 });
 
 describe('addContactTagAndDispatch', () => {
@@ -51,6 +63,11 @@ describe('addContactTagAndDispatch', () => {
         vars: { source: 'flow', _tag_chain_depth: 2 },
       },
     });
+    expect(mocks.flowDispatch).toHaveBeenCalledWith({
+      accountId: 'account-1',
+      contactId: 'contact-1',
+      event: { type: 'tag_added', tag_id: 'tag-1' },
+    });
   });
 
   it('does not dispatch when the tag already exists', async () => {
@@ -62,6 +79,7 @@ describe('addContactTagAndDispatch', () => {
       reason: 'duplicate',
     });
     expect(mocks.dispatch).not.toHaveBeenCalled();
+    expect(mocks.flowDispatch).not.toHaveBeenCalled();
   });
 
   it('adds the tag but cuts a chain at the configured depth limit', async () => {
@@ -78,6 +96,7 @@ describe('addContactTagAndDispatch', () => {
       reason: 'max_depth',
     });
     expect(mocks.dispatch).not.toHaveBeenCalled();
+    expect(mocks.flowDispatch).not.toHaveBeenCalled();
   });
 
   it('cuts an A-to-B-to-A tag chain before it can loop forever', async () => {

@@ -4,6 +4,17 @@ import {
   runAutomationsForTrigger,
   type AutomationContext,
 } from '@/lib/automations/engine';
+// Deliberate cycle: src/lib/flows/engine.ts already imports
+// addContactTagAndDispatch (below) from this file, for its own
+// set_tag node. This import closes that loop. Verified safe — no
+// import/no-cycle lint rule in this repo, both functions are hoisted
+// `export async function` declarations, and neither module calls the
+// other at module-evaluation time (supabaseAdmin() only runs inside
+// function bodies). Don't "fix" this by inlining the tag-write logic
+// into flows/engine.ts — see the deal_stage_changed dispatch site in
+// automations/engine.ts's add_tag step for why keeping this file as
+// the single tag-add choke point matters.
+import { dispatchEventToFlows } from '@/lib/flows/engine';
 import { addContactTagIfAbsent } from './tag-write';
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from './tag-chain';
 
@@ -62,6 +73,19 @@ export async function addContactTagAndDispatch(
       },
     },
   });
+
+  // No forced exclusivity with the automations dispatch above — an
+  // account may legitimately want both an automation (e.g. tag the
+  // contact VIP) AND a flow (e.g. start the VIP welcome conversation)
+  // to fire off the same tag. dispatchEventToFlows never throws, but
+  // wears a .catch() anyway to match every other dispatch site here.
+  await dispatchEventToFlows({
+    accountId: input.accountId,
+    contactId: input.contactId,
+    event: { type: 'tag_added', tag_id: input.tagId },
+  }).catch((err) =>
+    console.error('[flows] tag_added dispatch failed:', err),
+  );
 
   return { added: true, dispatched: true };
 }
