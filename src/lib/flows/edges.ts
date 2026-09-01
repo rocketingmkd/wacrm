@@ -139,6 +139,7 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
       }
 
       case "handoff":
+      case "activate_ai_agent":
       case "end":
         // Terminal nodes — no outgoing edges.
         break;
@@ -227,6 +228,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     }
 
     case "handoff":
+    case "activate_ai_agent":
     case "end":
       return [];
   }
@@ -311,6 +313,7 @@ export function applyEdgeConnection(
     }
 
     case "handoff":
+    case "activate_ai_agent":
     case "end":
       return null;
   }
@@ -405,6 +408,7 @@ function patchedConfigWithoutKey(
     }
 
     case "handoff":
+    case "activate_ai_agent":
     case "end":
       return null;
   }

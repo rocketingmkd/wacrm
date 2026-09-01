@@ -88,6 +88,11 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         })
       }
       break
+    case 'activate_ai_agent':
+      if (!nonEmpty(c.agent_id)) {
+        issues.push({ path: `${path}.agent_id`, message: 'AI agent is required' })
+      }
+      break
     case 'update_contact_field':
       if (!nonEmpty(c.field)) {
         issues.push({ path: `${path}.field`, message: 'field name is required' })

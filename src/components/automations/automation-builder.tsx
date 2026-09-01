@@ -37,6 +37,7 @@ import {
   Tag,
   TagIcon,
   UserCheck,
+  Bot,
   PencilLine,
   Briefcase,
   ArrowRightLeft,
@@ -122,6 +123,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   add_tag: { label: "add_tag", icon: Tag, border: "border-l-primary" },
   remove_tag: { label: "remove_tag", icon: TagIcon, border: "border-l-primary" },
   assign_conversation: { label: "assign_conversation", icon: UserCheck, border: "border-l-primary" },
+  activate_ai_agent: { label: "activate_ai_agent", icon: Bot, border: "border-l-primary" },
   update_contact_field: { label: "update_contact_field", icon: PencilLine, border: "border-l-primary" },
   create_deal: { label: "create_deal", icon: Briefcase, border: "border-l-primary" },
   move_deal: { label: "move_deal", icon: ArrowRightLeft, border: "border-l-primary" },
@@ -139,6 +141,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "add_tag",
   "remove_tag",
   "assign_conversation",
+  "activate_ai_agent",
   "update_contact_field",
   "create_deal",
   "move_deal",
@@ -196,6 +199,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { tag_id: "" }
     case "assign_conversation":
       return { mode: "round_robin" }
+    case "activate_ai_agent":
+      return { agent_id: "" }
     case "update_contact_field":
       return { field: "name", value: "" }
     case "create_deal":
@@ -232,6 +237,14 @@ interface AutomationResources {
   customFields: CustomField[]
   pipelines: PipelineOption[]
   stages: PipelineStageOption[]
+  aiAgents: AiAgentOption[]
+}
+
+interface AiAgentOption {
+  id: string
+  name: string
+  isActive: boolean
+  autoReplyEnabled: boolean
 }
 
 interface PipelineOption {
@@ -253,6 +266,7 @@ const ResourcesContext = createContext<AutomationResources>({
   customFields: [],
   pipelines: [],
   stages: [],
+  aiAgents: [],
 })
 
 function useResources(): AutomationResources {
@@ -266,6 +280,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  const [aiAgents, setAiAgents] = useState<AiAgentOption[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -313,6 +328,19 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
       }
     })()
 
+    // AI agents (multi-agent, migration 044+) — same fallback contract
+    // as members: absent endpoint → picker falls back to a raw id input.
+    void (async () => {
+      try {
+        const res = await fetch("/api/ai/agents", { cache: "no-store" })
+        if (!res.ok) return
+        const json = (await res.json()) as { agents?: AiAgentOption[] }
+        if (!cancelled) setAiAgents(json.agents ?? [])
+      } catch {
+        // Agents endpoint absent — caller falls back to raw input.
+      }
+    })()
+
     return () => {
       cancelled = true
     }
@@ -320,7 +348,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages }}
+      value={{ tags, members, templates, customFields, pipelines, stages, aiAgents }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -460,6 +488,52 @@ function AgentSelect({
       ))}
       {value && !selected && (
         <option value={value}>{t("agents.unknown", { id: value })}</option>
+      )}
+    </select>
+  )
+}
+
+/** AI agent dropdown by name, storing the agent's id. Only offers
+ *  agents that can actually reply (active + auto-reply enabled);
+ *  preserves a saved id that no longer qualifies as an "unknown"
+ *  option so editing an existing automation doesn't silently drop it.
+ *  Falls back to a raw id input when the account has no agents yet. */
+function AiAgentSelect({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { aiAgents } = useResources()
+  const usable = aiAgents.filter((a) => a.isActive && a.autoReplyEnabled)
+  if (usable.length === 0) {
+    return (
+      <Input
+        placeholder={t("aiAgents.placeholder")}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-muted text-foreground"
+      />
+    )
+  }
+  const selected = usable.find((a) => a.id === value)
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={SELECT_CLASS}
+    >
+      <option value="">{t("aiAgents.select")}</option>
+      {usable.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name}
+        </option>
+      ))}
+      {value && !selected && (
+        <option value={value}>{t("aiAgents.unknown", { id: value })}</option>
       )}
     </select>
   )
@@ -1459,6 +1533,21 @@ function StepEditor({
               />
             </FieldBlock>
           )}
+        </>
+      )
+    case "activate_ai_agent":
+      return (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {t("config.aiAgentHint")}
+          </p>
+          <FieldBlock label={t("config.aiAgentLabel")}>
+            <AiAgentSelect
+              value={(cfg.agent_id as string) ?? ""}
+              onChange={(v) => set({ agent_id: v })}
+              t={t}
+            />
+          </FieldBlock>
         </>
       )
     case "update_contact_field":

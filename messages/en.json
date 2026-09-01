@@ -878,6 +878,7 @@
         "add_tag": "Add Tag",
         "remove_tag": "Remove Tag",
         "assign_conversation": "Assign Conversation",
+        "activate_ai_agent": "Activate AI Agent",
         "update_contact_field": "Update Contact Field",
         "create_deal": "Create Deal",
         "move_deal": "Move Card",
@@ -966,6 +967,11 @@
         "placeholder": "Agent id",
         "unknown": "{id} (unknown agent)"
       },
+      "aiAgents": {
+        "select": "Select an AI agent…",
+        "placeholder": "AI agent id",
+        "unknown": "{id} (unknown AI agent)"
+      },
       "pipelines": {
         "pipelineLabel": "Pipeline",
         "pipelineIdLabel": "Pipeline id",
@@ -1000,6 +1006,8 @@
           "specific": "Specific agent"
         },
         "agentLabel": "Agent",
+        "aiAgentLabel": "AI agent",
+        "aiAgentHint": "When execution reaches here, this agent takes over the conversation and replies to the customer right away.",
         "fieldLabel": "Field",
         "valueLabel": "Value",
         "placeholderValue": "Text or {{ vars.x }} / {{ message.text }}",
@@ -1129,6 +1137,11 @@
         "varKeyHelp": "Interpolate in downstream prompts and handoff notes with",
         "advanceAfterCapture": "After capturing, advance to",
         "internalNote": "Internal note (for the agent picking up)",
+        "aiAgentLabel": "AI agent",
+        "pickAiAgent": "Choose an agent…",
+        "unknownAiAgent": "{id} (unknown agent)",
+        "aiAgentUuidPlaceholder": "Agent id",
+        "aiAgentHint": "When execution reaches here, this agent takes over the conversation and replies to the customer right away.",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",
         "bodyText": "Body text",
         "footerText": "Footer (optional, 60 chars)",
@@ -1220,6 +1233,10 @@
         "handoff": {
           "label": "Handoff to agent",
           "blurb": "Hands the conversation to a human"
+        },
+        "activate_ai_agent": {
+          "label": "Activate AI agent",
+          "blurb": "Hands the conversation to an AI agent, which replies right away"
         },
         "end": {
           "label": "End",

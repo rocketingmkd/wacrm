@@ -476,6 +476,7 @@ export type AutomationStepType =
   | 'add_tag'
   | 'remove_tag'
   | 'assign_conversation'
+  | 'activate_ai_agent'
   | 'update_contact_field'
   | 'create_deal'
   | 'move_deal'
@@ -551,6 +552,16 @@ export interface AssignConversationStepConfig {
   agent_id?: string;
 }
 
+/**
+ * Hands the conversation to an AI agent (`ai_agents.id`) and has it
+ * send its opening reply immediately — the AI equivalent of
+ * `assign_conversation`. See `activateAgentAndReply` (src/lib/ai/
+ * auto-reply.ts) for the runtime behaviour.
+ */
+export interface ActivateAiAgentStepConfig {
+  agent_id: string;
+}
+
 export interface UpdateContactFieldStepConfig {
   /**
    * Either a built-in contact column (`name` | `email` | `company`) or a
@@ -613,6 +624,7 @@ export type AutomationStepConfig =
   | SendTemplateStepConfig
   | TagStepConfig
   | AssignConversationStepConfig
+  | ActivateAiAgentStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
   | MoveDealStepConfig

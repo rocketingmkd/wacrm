@@ -149,6 +149,81 @@ export async function dispatchInboundToAiReply(
   }
 }
 
+interface ActivateAgentArgs {
+  accountId: string
+  conversationId: string
+  contactId: string
+  /** Sender-of-record for the outbound send's audit columns. */
+  configOwnerUserId: string
+  /** The `ai_agents.id` to hand the conversation to. */
+  agentId: string
+}
+
+/**
+ * Explicit "activate this AI agent now" entry point — the Automations
+ * `activate_ai_agent` step and the Flows `activate_ai_agent` node both
+ * call this. Unlike `dispatchInboundToAiReply` (which reacts silently
+ * to an inbound message), this is a deliberate action the account
+ * owner configured: it takes the conversation away from whoever holds
+ * it (a human, or no one) and has the named agent send its opening
+ * reply immediately — there being an unanswered customer message is
+ * the whole point of the step, so this throws (rather than silently
+ * no-opping) on every failure mode, and the automation/flow engine's
+ * own step-failure handling surfaces it.
+ */
+export async function activateAgentAndReply(args: ActivateAgentArgs): Promise<string> {
+  const { accountId, conversationId, contactId, configOwnerUserId, agentId } = args
+  const db = supabaseAdmin()
+
+  if (await isAccountWriteLocked(db, accountId)) {
+    throw new Error('account is billing-locked')
+  }
+
+  const agent = await loadAiAgent(db, accountId, agentId)
+  if (!agent) throw new Error('AI agent not found, inactive, or provider not configured')
+  if (!agent.autoReplyEnabled) {
+    throw new Error(`agent "${agent.name}" has auto-reply disabled`)
+  }
+
+  const { data: conv, error: convErr } = await db
+    .from('conversations')
+    .select('ai_reply_count')
+    .eq('id', conversationId)
+    .maybeSingle()
+  if (convErr || !conv) throw new Error('conversation not found')
+
+  const messages = await buildConversationContext(db, conversationId)
+  if (messages.length === 0) {
+    throw new Error('no messages in this conversation to reply to yet')
+  }
+
+  // Hand the thread to this agent before generating: takes it away
+  // from a human (if any) and re-enables auto-reply (in case a prior
+  // handoff had disabled it) so the send below — and any future
+  // inbound — actually goes through the bot.
+  await db
+    .from('conversations')
+    .update({
+      active_ai_agent_id: agent.id,
+      ai_autoreply_disabled: false,
+      assigned_agent_id: null,
+    })
+    .eq('id', conversationId)
+
+  await runAgentTurn(db, {
+    accountId,
+    conversationId,
+    contactId,
+    configOwnerUserId,
+    agent,
+    messages,
+    replyCount: (conv as { ai_reply_count: number | null }).ai_reply_count ?? 0,
+    hopsRemaining: MAX_TRANSFER_HOPS,
+  })
+
+  return `agent "${agent.name}" activated`
+}
+
 interface TurnState {
   accountId: string
   conversationId: string
@@ -167,9 +242,11 @@ interface TurnState {
 /**
  * Run one agent's turn, following transfers (if any) up to
  * `hopsRemaining` before returning. Never throws — same contract as
- * `dispatchInboundToAiReply`, which is its only caller.
+ * `dispatchInboundToAiReply`. Also called directly by
+ * `activateAgentAndReply` (Automations/Flows "activate AI agent"
+ * step/node), which is why it's exported.
  */
-async function runAgentTurn(db: SupabaseClient, state: TurnState): Promise<void> {
+export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promise<void> {
   const { accountId, conversationId, contactId, configOwnerUserId, agent, messages, replyCount } =
     state
 

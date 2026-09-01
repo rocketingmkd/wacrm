@@ -17,6 +17,7 @@
  */
 
 import {
+  Bot,
   Flag,
   GitFork,
   Inbox,
@@ -50,6 +51,7 @@ export type NodeType =
   | 'condition'
   | 'set_tag'
   | 'handoff'
+  | 'activate_ai_agent'
   | 'end';
 
 export interface BuilderNode {
@@ -159,6 +161,13 @@ export const NODE_META: Record<
     blurb: 'Hands the conversation to a human',
     category: 'flow',
   },
+  activate_ai_agent: {
+    label: 'Activate AI agent',
+    icon: Bot,
+    color: 'text-violet-400',
+    blurb: 'Hands the conversation to an AI agent, which replies right away',
+    category: 'flow',
+  },
   end: {
     label: 'End',
     icon: Flag,
@@ -206,6 +215,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   condition: { l: 0.72, c: 0.15, h: 65 }, // amber — a fork in the road
   set_tag: { l: 0.65, c: 0.15, h: 350 }, // pink
   handoff: { l: 0.65, c: 0.17, h: 16 }, // rose — hands off
+  activate_ai_agent: { l: 0.65, c: 0.16, h: 300 }, // violet — hands off to the bot
   end: { l: 0.55, c: 0.01, h: 260 }, // neutral grey — terminal
 };
 
@@ -424,5 +434,10 @@ export function summarizeNode(
       const note = typeof cfg.note === 'string' ? cfg.note : '';
       return note.length > 0 ? truncate(note) : null;
     }
+    case 'activate_ai_agent':
+      // No agent name available without an async lookup here (config
+      // only carries the id) — the node card shows nothing extra; the
+      // inspector form resolves and displays the picked agent's name.
+      return null;
   }
 }

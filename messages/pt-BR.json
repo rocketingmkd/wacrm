@@ -878,6 +878,7 @@
         "add_tag": "Adicionar etiqueta",
         "remove_tag": "Remover etiqueta",
         "assign_conversation": "Atribuir conversa",
+        "activate_ai_agent": "Encaminhar pra agente de IA",
         "update_contact_field": "Atualizar campo do contato",
         "create_deal": "Criar negócio",
         "move_deal": "Mover card",
@@ -966,6 +967,11 @@
         "placeholder": "ID do atendente",
         "unknown": "{id} (atendente desconhecido)"
       },
+      "aiAgents": {
+        "select": "Selecione um agente…",
+        "placeholder": "ID do agente",
+        "unknown": "{id} (agente desconhecido)"
+      },
       "pipelines": {
         "pipelineLabel": "Funil",
         "pipelineIdLabel": "ID do funil",
@@ -1000,6 +1006,8 @@
           "specific": "Atendente específico"
         },
         "agentLabel": "Atendente",
+        "aiAgentLabel": "Agente de IA",
+        "aiAgentHint": "Ao chegar aqui, esse agente assume a conversa e responde ao cliente na hora.",
         "fieldLabel": "Campo",
         "valueLabel": "Valor",
         "placeholderValue": "Texto ou {{ vars.x }} / {{ message.text }}",
@@ -1129,6 +1137,11 @@
         "varKeyHelp": "Interpole em prompts posteriores e notas de transferência com",
         "advanceAfterCapture": "Após capturar, avançar para",
         "internalNote": "Nota interna (para o atendente que assumir)",
+        "aiAgentLabel": "Agente de IA",
+        "pickAiAgent": "Escolha um agente…",
+        "unknownAiAgent": "{id} (agente desconhecido)",
+        "aiAgentUuidPlaceholder": "ID do agente",
+        "aiAgentHint": "Ao chegar aqui, esse agente assume a conversa e responde ao cliente na hora.",
         "endNodeHelp": "Nó terminal. Quando o motor chega a este nó, a execução é marcada como concluída. Não requer configuração.",
         "bodyText": "Texto do corpo",
         "footerText": "Rodapé (opcional, 60 caracteres)",
@@ -1220,6 +1233,10 @@
         "handoff": {
           "label": "Transferir para atendente",
           "blurb": "Passa a conversa para um humano"
+        },
+        "activate_ai_agent": {
+          "label": "Encaminhar pra agente de IA",
+          "blurb": "Passa a conversa pra um agente de IA, que responde na hora"
         },
         "end": {
           "label": "Fim",

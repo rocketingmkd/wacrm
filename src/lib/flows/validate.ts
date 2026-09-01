@@ -701,6 +701,20 @@ function validateNode(
       break;
     }
 
+    case "activate_ai_agent": {
+      const cfg = node.config as { agent_id?: string };
+      if (!cfg.agent_id) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "agent_id",
+          message: "Activate-AI-agent needs an agent to activate.",
+        });
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate
@@ -786,6 +800,7 @@ function outgoingEdges(node: NodeInput): string[] {
       return out;
     }
     case "handoff":
+    case "activate_ai_agent":
     case "end":
     default:
       return [];

@@ -108,6 +108,17 @@ export interface HandoffNodeConfig {
 }
 
 /**
+ * Hands the conversation to an AI agent (`ai_agents.id`) and has it
+ * send its opening reply immediately — the AI counterpart of
+ * `handoff`. Terminal: ends the run (status `handed_off`), same as
+ * `handoff`. See `activateAgentAndReply` (src/lib/ai/auto-reply.ts)
+ * for the runtime behaviour.
+ */
+export interface ActivateAiAgentNodeConfig {
+  agent_id: string;
+}
+
+/**
  * Captures the customer's next free-text reply into
  * `flow_runs.vars[var_key]`, then advances.
  *
@@ -194,6 +205,7 @@ export type FlowNodeConfig =
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
+  | { node_type: "activate_ai_agent"; config: ActivateAiAgentNodeConfig }
   | { node_type: "end"; config: EndNodeConfig };
 
 export type FlowNodeType = FlowNodeConfig["node_type"];

@@ -590,6 +590,7 @@ function AddNodeButton({ onAdd, t }: { onAdd: (type: NodeType) => void; t: Retur
     'condition',
     'set_tag',
     'handoff',
+    'activate_ai_agent',
     'end',
   ];
   return (

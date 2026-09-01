@@ -19,9 +19,11 @@ import type {
   MoveDealStepConfig,
   DealStageChangedTriggerConfig,
   AssignConversationStepConfig,
+  ActivateAiAgentStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
+import { activateAgentAndReply } from '@/lib/ai/auto-reply'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -555,6 +557,20 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
       return `assigned to ${agentId}`
+    }
+
+    case 'activate_ai_agent': {
+      const cfg = step.step_config as ActivateAiAgentStepConfig
+      if (!args.contactId) throw new Error('activate_ai_agent needs a contact')
+      if (!cfg.agent_id) throw new Error('activate_ai_agent needs agent_id')
+      const conversationId = await resolveConversationId(args)
+      return activateAgentAndReply({
+        accountId: args.automation.account_id,
+        conversationId,
+        contactId: args.contactId,
+        configOwnerUserId: args.automation.user_id,
+        agentId: cfg.agent_id,
+      })
     }
 
     case 'update_contact_field': {

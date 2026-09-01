@@ -34,6 +34,7 @@
 
 import { supabaseAdmin } from "./admin-client";
 import { isAccountWriteLocked } from "@/lib/billing/write-lock";
+import { activateAgentAndReply } from "@/lib/ai/auto-reply";
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
@@ -134,7 +135,7 @@ export function isSuspending(node_type: string): boolean {
 
 /** Nodes that end the run. */
 export function isTerminal(node_type: string): boolean {
-  return node_type === "handoff" || node_type === "end";
+  return node_type === "handoff" || node_type === "activate_ai_agent" || node_type === "end";
 }
 
 /**
@@ -458,6 +459,53 @@ async function executeHandoff(
 }
 
 /**
+ * The AI counterpart of `executeHandoff`: instead of routing to a
+ * human, activates the configured AI agent on the conversation and
+ * has it reply right away. Terminal — same as handoff, the flow's job
+ * is done once the bot takes over.
+ */
+async function executeActivateAiAgent(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+): Promise<{ outcome: "handed_off" | "completed" }> {
+  const cfg = node.config as { agent_id?: string };
+  if (!run.conversation_id || !run.contact_id || !cfg.agent_id) {
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "activate_ai_agent_missing_config",
+    });
+    await endRun(db, run.id, "failed", "activate_ai_agent_missing_config");
+    return { outcome: "completed" };
+  }
+  try {
+    const detail = await activateAgentAndReply({
+      accountId: run.account_id,
+      conversationId: run.conversation_id,
+      contactId: run.contact_id,
+      configOwnerUserId: run.user_id,
+      agentId: cfg.agent_id,
+    });
+    await logEvent(db, run.id, "handoff", node.node_key, {
+      agent_id: cfg.agent_id,
+      detail,
+    });
+  } catch (err) {
+    // Unlike executeHandoff (which can't really fail), a bad agent_id,
+    // a billing lock, or a provider error here means the customer gets
+    // NO reply at all — that must surface as a failed run, not a quiet
+    // "handed_off", so whoever's watching Execuções notices.
+    await logEvent(db, run.id, "error", node.node_key, {
+      reason: "activate_ai_agent_failed",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    await endRun(db, run.id, "failed", "activate_ai_agent_failed");
+    return { outcome: "completed" };
+  }
+  await endRun(db, run.id, "handed_off", "activate_ai_agent_node");
+  return { outcome: "handed_off" };
+}
+
+/**
  * Resolve a condition node's subject value from DB / run state, then
  * call the pure `evaluateConditionPredicate`. Splits out so the
  * predicate itself stays unit-testable without a Supabase mock.
@@ -773,6 +821,9 @@ async function advanceFromNodeKey(
     if (node.node_type === "handoff") {
       await executeHandoff(db, run, node);
       return { outcome: "handed_off" };
+    }
+    if (node.node_type === "activate_ai_agent") {
+      return executeActivateAiAgent(db, run, node);
     }
     if (node.node_type === "end") {
       await logEvent(db, run.id, "completed", node.node_key);

@@ -205,6 +205,15 @@ export function NodeConfigForm({
         />
       );
 
+    case "activate_ai_agent":
+      return (
+        <ActivateAiAgentForm
+          cfg={cfg as { agent_id?: string }}
+          onUpdateConfig={onUpdateConfig}
+          t={t}
+        />
+      );
+
     case "end":
       return (
         <p className="text-xs text-muted-foreground">
@@ -860,6 +869,97 @@ function useUserTags(): UserTag[] {
     };
   }, []);
   return tags;
+}
+
+// ============================================================
+// activate_ai_agent
+// ============================================================
+
+interface AiAgentOption {
+  id: string;
+  name: string;
+  isActive: boolean;
+  autoReplyEnabled: boolean;
+}
+
+/** Loads the account's AI agents for the picker below. Falls back to
+ *  a raw id input when the list is empty or the endpoint is absent. */
+function useAiAgents(): AiAgentOption[] {
+  const [agents, setAgents] = useState<AiAgentOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/ai/agents").catch(() => null);
+        if (!res || !res.ok) return;
+        const json = (await res.json()) as { agents?: AiAgentOption[] };
+        if (!cancelled) setAgents(json.agents ?? []);
+      } catch {
+        // Agents endpoint absent — caller falls back to raw input.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return agents;
+}
+
+function ActivateAiAgentForm({
+  cfg,
+  onUpdateConfig,
+  t,
+}: {
+  cfg: { agent_id?: string };
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const agents = useAiAgents();
+  // Only offer agents that can actually reply — a picked-then-disabled
+  // agent is preserved below as an "unknown" option so editing an
+  // existing node doesn't silently drop the saved id.
+  const usable = agents.filter((a) => a.isActive && a.autoReplyEnabled);
+  const selected = usable.find((a) => a.id === cfg.agent_id);
+
+  return (
+    <>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          {t("aiAgentLabel")}
+        </label>
+        {usable.length > 0 ? (
+          <Select
+            value={cfg.agent_id ?? ""}
+            onValueChange={(v) => onUpdateConfig({ agent_id: v })}
+          >
+            <SelectTrigger className="bg-muted">
+              <SelectValue placeholder={t("pickAiAgent")} />
+            </SelectTrigger>
+            <SelectContent>
+              {usable.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+              {cfg.agent_id && !selected && (
+                <SelectItem value={cfg.agent_id}>
+                  {t("unknownAiAgent", { id: cfg.agent_id })}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            value={cfg.agent_id ?? ""}
+            onChange={(e) => onUpdateConfig({ agent_id: e.target.value })}
+            placeholder={t("aiAgentUuidPlaceholder")}
+            className="bg-muted font-mono text-xs"
+          />
+        )}
+      </div>
+      <p className="text-[10px] text-muted-foreground">{t("aiAgentHint")}</p>
+    </>
+  );
 }
 
 // ============================================================
