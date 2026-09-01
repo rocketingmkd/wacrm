@@ -77,6 +77,12 @@ function InboxPageInner() {
   const [resyncToken, setResyncToken] = useState(0);
 
   /**
+   * Bumped when the thread header's pipeline dropdown adds/removes a
+   * deal, so the contact sidebar re-fetches its deal list.
+   */
+  const [dealsToken, setDealsToken] = useState(0);
+
+  /**
    * Which desktop right-side panel (contact info, or the Gerente IA
    * copilot) is shown, if any. Defaults to `"contact"` (the historical
    * behaviour before the IA panel existed) and is restored from
@@ -656,6 +662,7 @@ function InboxPageInner() {
             aiPanelOpen={rightPanel === "ai"}
             onToggleAiPanel={planFeatures.aiCopilot ? handleToggleAiPanel : undefined}
             composerInsert={composerInsert}
+            onDealsChanged={() => setDealsToken((n) => n + 1)}
           />
         </div>
 
@@ -681,7 +688,10 @@ function InboxPageInner() {
               // "ai" persisted in localStorage from before a downgrade
               // to a plan without Gerente IA (src/lib/billing/plan.ts)
               // — never render AiPanel without the feature.
-              <ContactSidebar contact={activeContact} />
+              <ContactSidebar
+                contact={activeContact}
+                refreshToken={dealsToken}
+              />
             )}
           </div>
         )}

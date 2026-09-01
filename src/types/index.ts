@@ -567,7 +567,8 @@ export interface UpdateContactFieldStepConfig {
 export interface CreateDealStepConfig {
   pipeline_id: string;
   stage_id: string;
-  title: string;
+  /** Optional — the engine falls back to the contact's name / phone. */
+  title?: string;
   value?: number;
 }
 

@@ -49,6 +49,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { PipelineAssignMenu } from "./pipeline-assign-menu";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
@@ -119,6 +120,12 @@ interface MessageThreadProps {
   onToggleAiPanel?: () => void;
   /** Draft text pushed from the Gerente IA panel into the composer. */
   composerInsert?: { text: string; nonce: number } | null;
+  /**
+   * Fired when the header's pipeline dropdown adds or removes a deal for
+   * the contact, so the page can refresh the contact sidebar's deal
+   * list. Optional — the control still works without it.
+   */
+  onDealsChanged?: () => void;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -180,6 +187,7 @@ export function MessageThread({
   aiPanelOpen,
   onToggleAiPanel,
   composerInsert,
+  onDealsChanged,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -1087,6 +1095,9 @@ export function MessageThread({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Pipeline dropdown — associate the contact with a funnel */}
+          <PipelineAssignMenu contact={contact} onChanged={onDealsChanged} />
         </div>
       </div>
 

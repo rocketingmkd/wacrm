@@ -622,6 +622,20 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
+      // Title is optional in the builder — fall back to the contact's
+      // name (then phone / username) so a quick "add to pipeline X"
+      // automation doesn't force the author to invent a title.
+      let title = interpolate(cfg.title ?? '', args).trim()
+      if (!title && args.contactId) {
+        const { data: c } = await db
+          .from('contacts')
+          .select('name, phone, wa_username')
+          .eq('id', args.contactId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        title = c?.name || c?.phone || c?.wa_username || ''
+      }
+      if (!title) title = 'Lead'
       await db.from('deals').insert({
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
@@ -629,7 +643,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         pipeline_id: cfg.pipeline_id,
         stage_id: cfg.stage_id,
         contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
+        title,
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
         status: 'open',

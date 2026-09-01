@@ -1494,6 +1494,7 @@ function StepEditor({
             <Input
               value={(cfg.title as string) ?? ""}
               onChange={(e) => set({ title: e.target.value })}
+              placeholder={t("config.titleOptionalPlaceholder")}
               className="bg-muted text-foreground"
             />
           </FieldBlock>

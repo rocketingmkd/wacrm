@@ -31,9 +31,12 @@ import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  /** Bump to force a re-fetch of the contact's deals/notes/tags — e.g.
+   *  after the thread header's pipeline dropdown adds or removes a deal. */
+  refreshToken?: number;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -56,6 +59,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
+    // `refreshToken` isn't read here — it's a change signal: a new value
+    // (set by the thread header's pipeline dropdown) re-runs this fetch.
+    void refreshToken;
 
     const supabase = createClient();
 
@@ -88,7 +94,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
         }));
       setTags(mapped);
     }
-  }, [contact]);
+    // refreshToken is intentionally in the dep list: a change means the
+    // thread header mutated this contact's deals and we should refetch.
+  }, [contact, refreshToken]);
 
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.

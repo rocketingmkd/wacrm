@@ -109,15 +109,23 @@ describe("validateStepsForActivation", () => {
     ]);
   });
 
-  it("flags create_deal when required fields are missing", () => {
+  it("flags create_deal missing pipeline/stage, but title is optional", () => {
     const issues = validateStepsForActivation([
       { step_type: "create_deal", step_config: {} },
     ]);
     expect(issues.map((i) => i.path).sort()).toEqual([
       "steps[0].pipeline_id",
       "steps[0].stage_id",
-      "steps[0].title",
     ]);
+    // pipeline + stage present, no title → still valid
+    expect(
+      validateStepsForActivation([
+        {
+          step_type: "create_deal",
+          step_config: { pipeline_id: "p1", stage_id: "s1" },
+        },
+      ]),
+    ).toEqual([]);
   });
 
   it("flags move_deal with no stage, but allows a blank pipeline_id", () => {

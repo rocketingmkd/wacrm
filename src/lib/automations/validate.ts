@@ -103,9 +103,8 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (!nonEmpty(c.stage_id)) {
         issues.push({ path: `${path}.stage_id`, message: 'stage is required' })
       }
-      if (!nonEmpty(c.title)) {
-        issues.push({ path: `${path}.title`, message: 'title is required' })
-      }
+      // title is optional — the engine falls back to the contact's name
+      // (see runStep 'create_deal').
       break
     case 'move_deal':
       // pipeline_id is optional (blank = move within the same pipeline).
