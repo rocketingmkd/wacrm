@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
@@ -493,11 +494,18 @@ function AgentSelect({
   )
 }
 
-/** AI agent dropdown by name, storing the agent's id. Only offers
- *  agents that can actually reply (active + auto-reply enabled);
- *  preserves a saved id that no longer qualifies as an "unknown"
- *  option so editing an existing automation doesn't silently drop it.
- *  Falls back to a raw id input when the account has no agents yet. */
+/**
+ * AI agent dropdown by name, storing the agent's id. Never shows a raw
+ * id input or a bare uuid — an account owner with no technical
+ * background has no way to know what to type there.
+ *
+ * Lists every agent (not just usable ones): an agent that's inactive
+ * or has auto-reply turned off appears greyed out, disabled, with the
+ * reason spelled out in the label, so the mistake is impossible to
+ * make instead of surfacing later as a failed run. Zero agents on the
+ * account → an inline empty state pointing at where to create one,
+ * instead of an unusable text box.
+ */
 function AiAgentSelect({
   value,
   onChange,
@@ -508,18 +516,27 @@ function AiAgentSelect({
   t: ReturnType<typeof useTranslations>
 }) {
   const { aiAgents } = useResources()
-  const usable = aiAgents.filter((a) => a.isActive && a.autoReplyEnabled)
-  if (usable.length === 0) {
+  if (aiAgents.length === 0) {
     return (
-      <Input
-        placeholder={t("aiAgents.placeholder")}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-muted text-foreground"
-      />
+      <div className="rounded-md border border-dashed border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+        <p>{t("aiAgents.empty")}</p>
+        <Link
+          href="/agents"
+          target="_blank"
+          className="mt-1.5 inline-flex items-center font-medium text-primary underline-offset-2 hover:underline"
+        >
+          {t("aiAgents.createOne")}
+        </Link>
+      </div>
     )
   }
-  const selected = usable.find((a) => a.id === value)
+  const selected = aiAgents.find((a) => a.id === value)
+  const unusableReason = (a: AiAgentOption) =>
+    !a.isActive
+      ? t("aiAgents.reasonInactive")
+      : !a.autoReplyEnabled
+        ? t("aiAgents.reasonAutoReplyOff")
+        : null
   return (
     <select
       value={value}
@@ -527,13 +544,16 @@ function AiAgentSelect({
       className={SELECT_CLASS}
     >
       <option value="">{t("aiAgents.select")}</option>
-      {usable.map((a) => (
-        <option key={a.id} value={a.id}>
-          {a.name}
-        </option>
-      ))}
+      {aiAgents.map((a) => {
+        const reason = unusableReason(a)
+        return (
+          <option key={a.id} value={a.id} disabled={!!reason}>
+            {reason ? `${a.name} (${reason})` : a.name}
+          </option>
+        )
+      })}
       {value && !selected && (
-        <option value={value}>{t("aiAgents.unknown", { id: value })}</option>
+        <option value={value}>{t("aiAgents.unknown", { id: value.slice(0, 8) })}</option>
       )}
     </select>
   )

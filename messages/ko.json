@@ -968,8 +968,11 @@
       },
       "aiAgents": {
         "select": "AI 에이전트 선택…",
-        "placeholder": "AI 에이전트 id",
-        "unknown": "{id} (알 수 없는 AI 에이전트)"
+        "unknown": "삭제된 에이전트 ({id}…) — 다른 에이전트를 선택하세요",
+        "empty": "아직 만든 AI 에이전트가 없습니다.",
+        "createOne": "AI 에이전트 만들기 →",
+        "reasonInactive": "비활성",
+        "reasonAutoReplyOff": "자동 응답 꺼짐"
       },
       "pipelines": {
         "pipelineLabel": "파이프라인",
@@ -1138,8 +1141,11 @@
         "internalNote": "내부 메모 (인계받는 상담원용)",
         "aiAgentLabel": "AI 에이전트",
         "pickAiAgent": "에이전트 선택…",
-        "unknownAiAgent": "{id} (알 수 없는 에이전트)",
-        "aiAgentUuidPlaceholder": "에이전트 id",
+        "unknownAiAgent": "삭제된 에이전트 ({id}…) — 다른 에이전트를 선택하세요",
+        "noAiAgents": "아직 만든 AI 에이전트가 없습니다.",
+        "createAiAgent": "AI 에이전트 만들기 →",
+        "aiAgentReasonInactive": "비활성",
+        "aiAgentReasonAutoReplyOff": "자동 응답 꺼짐",
         "aiAgentHint": "여기에 도달하면 이 에이전트가 대화를 넘겨받아 고객에게 바로 응답합니다.",
         "endNodeHelp": "종료 노드입니다. 러너가 이 노드에 도달하면 실행이 완료로 표시됩니다. 추가 설정이 필요 없습니다.",
         "bodyText": "본문 텍스트",

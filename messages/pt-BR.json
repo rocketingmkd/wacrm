@@ -969,8 +969,11 @@
       },
       "aiAgents": {
         "select": "Selecione um agente…",
-        "placeholder": "ID do agente",
-        "unknown": "{id} (agente desconhecido)"
+        "unknown": "Agente removido ({id}…) — escolha outro",
+        "empty": "Você ainda não criou nenhum agente de IA.",
+        "createOne": "Criar um agente de IA →",
+        "reasonInactive": "desativado",
+        "reasonAutoReplyOff": "auto-resposta desligada"
       },
       "pipelines": {
         "pipelineLabel": "Funil",
@@ -1139,8 +1142,11 @@
         "internalNote": "Nota interna (para o atendente que assumir)",
         "aiAgentLabel": "Agente de IA",
         "pickAiAgent": "Escolha um agente…",
-        "unknownAiAgent": "{id} (agente desconhecido)",
-        "aiAgentUuidPlaceholder": "ID do agente",
+        "unknownAiAgent": "Agente removido ({id}…) — escolha outro",
+        "noAiAgents": "Você ainda não criou nenhum agente de IA.",
+        "createAiAgent": "Criar um agente de IA →",
+        "aiAgentReasonInactive": "desativado",
+        "aiAgentReasonAutoReplyOff": "auto-resposta desligada",
         "aiAgentHint": "Ao chegar aqui, esse agente assume a conversa e responde ao cliente na hora.",
         "endNodeHelp": "Nó terminal. Quando o motor chega a este nó, a execução é marcada como concluída. Não requer configuração.",
         "bodyText": "Texto do corpo",

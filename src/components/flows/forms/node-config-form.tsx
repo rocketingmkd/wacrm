@@ -25,6 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Loader2,
   Paperclip,
@@ -905,6 +906,17 @@ function useAiAgents(): AiAgentOption[] {
   return agents;
 }
 
+/**
+ * Never shows a raw id input or a bare uuid — an account owner with no
+ * technical background has no way to know what to type there.
+ *
+ * Lists every agent (not just usable ones): an agent that's inactive
+ * or has auto-reply turned off appears greyed out, disabled, with the
+ * reason spelled out in the label, so the mistake is impossible to
+ * make instead of surfacing later as a failed run. Zero agents on the
+ * account → an inline empty state pointing at where to create one,
+ * instead of an unusable text box.
+ */
 function ActivateAiAgentForm({
   cfg,
   onUpdateConfig,
@@ -915,11 +927,13 @@ function ActivateAiAgentForm({
   t: ReturnType<typeof useTranslations>;
 }) {
   const agents = useAiAgents();
-  // Only offer agents that can actually reply — a picked-then-disabled
-  // agent is preserved below as an "unknown" option so editing an
-  // existing node doesn't silently drop the saved id.
-  const usable = agents.filter((a) => a.isActive && a.autoReplyEnabled);
-  const selected = usable.find((a) => a.id === cfg.agent_id);
+  const selected = agents.find((a) => a.id === cfg.agent_id);
+  const unusableReason = (a: AiAgentOption) =>
+    !a.isActive
+      ? t("aiAgentReasonInactive")
+      : !a.autoReplyEnabled
+        ? t("aiAgentReasonAutoReplyOff")
+        : null;
 
   return (
     <>
@@ -927,7 +941,7 @@ function ActivateAiAgentForm({
         <label className="mb-1 block text-xs text-muted-foreground">
           {t("aiAgentLabel")}
         </label>
-        {usable.length > 0 ? (
+        {agents.length > 0 ? (
           <Select
             value={cfg.agent_id ?? ""}
             onValueChange={(v) => onUpdateConfig({ agent_id: v })}
@@ -936,25 +950,32 @@ function ActivateAiAgentForm({
               <SelectValue placeholder={t("pickAiAgent")} />
             </SelectTrigger>
             <SelectContent>
-              {usable.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
+              {agents.map((a) => {
+                const reason = unusableReason(a);
+                return (
+                  <SelectItem key={a.id} value={a.id} disabled={!!reason}>
+                    {reason ? `${a.name} (${reason})` : a.name}
+                  </SelectItem>
+                );
+              })}
               {cfg.agent_id && !selected && (
                 <SelectItem value={cfg.agent_id}>
-                  {t("unknownAiAgent", { id: cfg.agent_id })}
+                  {t("unknownAiAgent", { id: cfg.agent_id.slice(0, 8) })}
                 </SelectItem>
               )}
             </SelectContent>
           </Select>
         ) : (
-          <Input
-            value={cfg.agent_id ?? ""}
-            onChange={(e) => onUpdateConfig({ agent_id: e.target.value })}
-            placeholder={t("aiAgentUuidPlaceholder")}
-            className="bg-muted font-mono text-xs"
-          />
+          <div className="rounded-md border border-dashed border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+            <p>{t("noAiAgents")}</p>
+            <Link
+              href="/agents"
+              target="_blank"
+              className="mt-1.5 inline-flex items-center font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {t("createAiAgent")}
+            </Link>
+          </div>
         )}
       </div>
       <p className="text-[10px] text-muted-foreground">{t("aiAgentHint")}</p>

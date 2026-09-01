@@ -969,8 +969,11 @@
       },
       "aiAgents": {
         "select": "Select an AI agent…",
-        "placeholder": "AI agent id",
-        "unknown": "{id} (unknown AI agent)"
+        "unknown": "Removed agent ({id}…) — pick another",
+        "empty": "You haven't created any AI agents yet.",
+        "createOne": "Create an AI agent →",
+        "reasonInactive": "inactive",
+        "reasonAutoReplyOff": "auto-reply off"
       },
       "pipelines": {
         "pipelineLabel": "Pipeline",
@@ -1139,8 +1142,11 @@
         "internalNote": "Internal note (for the agent picking up)",
         "aiAgentLabel": "AI agent",
         "pickAiAgent": "Choose an agent…",
-        "unknownAiAgent": "{id} (unknown agent)",
-        "aiAgentUuidPlaceholder": "Agent id",
+        "unknownAiAgent": "Removed agent ({id}…) — pick another",
+        "noAiAgents": "You haven't created any AI agents yet.",
+        "createAiAgent": "Create an AI agent →",
+        "aiAgentReasonInactive": "inactive",
+        "aiAgentReasonAutoReplyOff": "auto-reply off",
         "aiAgentHint": "When execution reaches here, this agent takes over the conversation and replies to the customer right away.",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",
         "bodyText": "Body text",
