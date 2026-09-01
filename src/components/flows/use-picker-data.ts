@@ -13,16 +13,23 @@
  * data-fetching module would break that scope. This file is a plain
  * client-only sibling instead.
  *
- * `useUserTags` fetches through `/api/tags` (an existing REST route);
- * `usePipelinesAndStages` queries the browser Supabase client
- * directly, mirroring exactly how Automations' `ResourcesProvider`
+ * Both hooks query the browser Supabase client directly, mirroring
+ * exactly how Automations' `ResourcesProvider`
  * (`src/components/automations/automation-builder.tsx`) already loads
- * `pipelines`/`pipeline_stages` — RLS already scopes both tables to
- * the caller's account, proven by that code working today, so no new
- * API route is needed. Every hook here falls back to an empty array
- * on a missing/unreachable endpoint; callers render a raw-UUID input
- * fallback in that case, same contract as the tag/AI-agent pickers
- * elsewhere in Flows and Automations.
+ * `tags`/`pipelines`/`pipeline_stages` — RLS already scopes all three
+ * tables to the caller's account, proven by that code working today.
+ * `useUserTags` used to fetch a `/api/tags` REST route instead; that
+ * route was never actually built (grep turns up zero server files —
+ * it silently always fell back to a raw-UUID input), and a plain
+ * RLS-scoped SELECT needs no server-side logic a REST route would add
+ * value with (unlike `/api/account/members`, which exists specifically
+ * for its role-based email-visibility rules — see that route). Fixed
+ * by switching to the same direct-query shape as
+ * `usePipelinesAndStages` below instead of building a route with a
+ * single caller and no reason to exist. Every hook here still falls
+ * back to an empty array on a query failure; callers render a
+ * raw-UUID input fallback in that case, same contract as the
+ * tag/AI-agent pickers elsewhere in Flows and Automations.
  */
 
 import { useEffect, useState } from "react";
@@ -34,20 +41,25 @@ export interface UserTag {
   color?: string;
 }
 
-/** Moved verbatim from node-config-form.tsx so the trigger panel's
- *  new `tag_added` config can reuse it without duplicating the fetch. */
+/** Backs every tag picker in Flows (the `tag_added` trigger, the
+ *  `set_tag` node, and the `condition` node's tag subject). Query
+ *  shape mirrors automation-builder.tsx's ResourcesProvider tags load
+ *  exactly (same table, same ordering). */
 export function useUserTags(): UserTag[] {
   const [tags, setTags] = useState<UserTag[]>([]);
   useEffect(() => {
     let cancelled = false;
+    const supabase = createClient();
     (async () => {
       try {
-        const res = await fetch("/api/tags").catch(() => null);
-        if (!res || !res.ok) return;
-        const json = (await res.json()) as { tags?: UserTag[] };
-        if (!cancelled) setTags(json.tags ?? []);
+        const { data } = await supabase
+          .from("tags")
+          .select("id, name, color")
+          .order("name");
+        if (!cancelled) setTags((data as UserTag[] | null) ?? []);
       } catch {
-        // Tags endpoint absent — caller falls back to raw input.
+        // Table unreachable (RLS / network) — caller falls back to a
+        // raw-UUID input.
       }
     })();
     return () => {
