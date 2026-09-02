@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Bot,
   KeyRound,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
@@ -124,6 +125,19 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const loadedAccountIdRef = useRef<string | null>(null);
 
+  // "Gerar prompt" panel — a scratch area inside the agent dialog.
+  const [pg, setPg] = useState({
+    open: false,
+    busy: false,
+    role: '',
+    avoids: '',
+    handoffWhen: '',
+    tone: 'Amigável',
+    notes: '',
+  });
+  const resetPromptGen = () =>
+    setPg((p) => ({ ...p, open: false, busy: false }));
+
   const fetchAgents = useCallback(async () => {
     setLoading(true);
     try {
@@ -161,6 +175,7 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
     const defaultModel = providerStatus?.provider
       ? AI_PROVIDER_DEFAULT_MODEL[providerStatus.provider]
       : '';
+    resetPromptGen();
     setDraft(emptyDraft(defaultModel));
   };
 
@@ -172,6 +187,7 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         toast.error(data.error ?? 'Não foi possível abrir o agente.');
         return;
       }
+      resetPromptGen();
       setDraft({
         id,
         name: data.name ?? '',
@@ -199,6 +215,55 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         ? { ...d, name, slug: d.slugEdited ? d.slug : slugifyAgentName(name) }
         : d,
     );
+  };
+
+  const runPromptGen = async (mode: 'generate' | 'improve') => {
+    if (!draft) return;
+    if (mode === 'generate' && !pg.role.trim()) {
+      toast.error('Descreva o que o agente faz.');
+      return;
+    }
+    if (mode === 'improve' && !draft.systemPrompt.trim()) {
+      toast.error('Não há prompt para ajustar.');
+      return;
+    }
+    setPg((p) => ({ ...p, busy: true }));
+    try {
+      const res = await fetch('/api/ai/agents/prompt-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          agent_name: draft.name,
+          model: draft.model,
+          ...(mode === 'generate'
+            ? {
+                role: pg.role,
+                avoids: pg.avoids,
+                handoff_when: pg.handoffWhen,
+                tone: pg.tone,
+                notes: pg.notes,
+              }
+            : { current: draft.systemPrompt }),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(
+          data.code === 'provider_not_configured'
+            ? 'Configure sua chave de API primeiro.'
+            : (data.error ?? 'Não foi possível gerar o prompt.'),
+        );
+        return;
+      }
+      setDraft((d) => (d ? { ...d, systemPrompt: data.prompt } : d));
+      setPg((p) => ({ ...p, open: false }));
+      toast.success(mode === 'improve' ? 'Prompt ajustado.' : 'Prompt gerado.');
+    } catch {
+      toast.error('Não foi possível gerar o prompt.');
+    } finally {
+      setPg((p) => ({ ...p, busy: false }));
+    }
   };
 
   const handleTest = async () => {
@@ -535,7 +600,123 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
               </div>
 
               <div className="space-y-1.5">
-                <Label>Contexto de negócio / prompt</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Contexto de negócio / prompt</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                    onClick={() => setPg((p) => ({ ...p, open: !p.open }))}
+                    disabled={disabled}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {pg.open ? 'Fechar gerador' : 'Gerar prompt'}
+                  </Button>
+                </div>
+
+                {pg.open && (
+                  <div className="space-y-3 rounded-md border border-primary/20 bg-primary/[0.03] p-3">
+                    <p className="text-xs text-muted-foreground">
+                      A IA monta o prompt no formato que o sistema entende
+                      (protocolo de transferência, condição de parada). Você
+                      revisa e edita antes de salvar.
+                    </p>
+                    <div className="space-y-1">
+                      <Label className="text-xs">O que o agente faz</Label>
+                      <Input
+                        value={pg.role}
+                        onChange={(e) => setPg((p) => ({ ...p, role: e.target.value }))}
+                        placeholder="ex.: agendar uma reunião com o lead"
+                        disabled={disabled || pg.busy}
+                      />
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">O que ele NÃO faz</Label>
+                        <Input
+                          value={pg.avoids}
+                          onChange={(e) => setPg((p) => ({ ...p, avoids: e.target.value }))}
+                          placeholder="ex.: falar preço, fechar venda"
+                          disabled={disabled || pg.busy}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Quando passar para um humano</Label>
+                        <Input
+                          value={pg.handoffWhen}
+                          onChange={(e) =>
+                            setPg((p) => ({ ...p, handoffWhen: e.target.value }))
+                          }
+                          placeholder="ex.: assim que confirmar dia e horário"
+                          disabled={disabled || pg.busy}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tom</Label>
+                        <Select
+                          value={pg.tone}
+                          onValueChange={(v) => setPg((p) => ({ ...p, tone: v ?? 'Amigável' }))}
+                          disabled={disabled || pg.busy}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Amigável">Amigável</SelectItem>
+                            <SelectItem value="Formal">Formal</SelectItem>
+                            <SelectItem value="Direto">Direto</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Observações / regras{' '}
+                        <span className="font-normal text-muted-foreground">(opcional)</span>
+                      </Label>
+                      <Textarea
+                        value={pg.notes}
+                        onChange={(e) => setPg((p) => ({ ...p, notes: e.target.value }))}
+                        placeholder="Horários, links, políticas, o que mais for específico deste agente."
+                        rows={2}
+                        disabled={disabled || pg.busy}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void runPromptGen('generate')}
+                        disabled={disabled || pg.busy}
+                      >
+                        {pg.busy ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        Gerar dos campos
+                      </Button>
+                      {draft.systemPrompt.trim() && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void runPromptGen('improve')}
+                          disabled={disabled || pg.busy}
+                        >
+                          {pg.busy ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : null}
+                          Ajustar o texto atual ao padrão
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <Textarea
                   value={draft.systemPrompt}
                   onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
