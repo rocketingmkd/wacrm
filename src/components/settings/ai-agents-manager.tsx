@@ -53,6 +53,8 @@ interface AgentSummary {
   is_receptionist: boolean;
   is_active: boolean;
   auto_reply_enabled: boolean;
+  /** null = no per-conversation reply limit */
+  auto_reply_max_per_conversation: number | null;
 }
 
 interface ProviderStatus {
@@ -72,9 +74,16 @@ interface DraftState {
   systemPrompt: string;
   isActive: boolean;
   autoReplyEnabled: boolean;
+  /** Whether a per-conversation reply cap is in effect. Off = no limit. */
+  limitReplies: boolean;
+  /** The cap value, used only while `limitReplies` is on. */
   maxPerConversation: number;
   handoffAgentId: string;
 }
+
+/** Fallback shown in the number field when the user first turns the
+ *  limit on — not applied unless they do. */
+const DEFAULT_REPLY_CAP = 6;
 
 function emptyDraft(defaultModel: string): DraftState {
   return {
@@ -88,7 +97,8 @@ function emptyDraft(defaultModel: string): DraftState {
     systemPrompt: '',
     isActive: false,
     autoReplyEnabled: false,
-    maxPerConversation: 3,
+    limitReplies: false,
+    maxPerConversation: DEFAULT_REPLY_CAP,
     handoffAgentId: '',
   };
 }
@@ -173,7 +183,9 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         systemPrompt: data.system_prompt ?? '',
         isActive: Boolean(data.is_active),
         autoReplyEnabled: Boolean(data.auto_reply_enabled),
-        maxPerConversation: data.auto_reply_max_per_conversation ?? 3,
+        limitReplies: data.auto_reply_max_per_conversation != null,
+        maxPerConversation:
+          data.auto_reply_max_per_conversation ?? DEFAULT_REPLY_CAP,
         handoffAgentId: data.handoff_agent_id ?? '',
       });
     } catch {
@@ -233,7 +245,10 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         system_prompt: draft.systemPrompt.trim() || null,
         is_active: draft.isActive,
         auto_reply_enabled: draft.autoReplyEnabled,
-        auto_reply_max_per_conversation: draft.maxPerConversation,
+        // null = no limit
+        auto_reply_max_per_conversation: draft.limitReplies
+          ? draft.maxPerConversation
+          : null,
         handoff_agent_id: draft.handoffAgentId || null,
       };
 
@@ -393,6 +408,11 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                   {a.auto_reply_enabled && (
                     <Badge variant="outline">Resposta automática</Badge>
                   )}
+                  {a.auto_reply_max_per_conversation != null && (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      máx. {a.auto_reply_max_per_conversation}/conversa
+                    </Badge>
+                  )}
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
                   {a.description || `slug: ${a.slug}`}
@@ -544,6 +564,8 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                   <p className="text-sm font-medium text-foreground">Resposta automática</p>
                   <p className="text-xs text-muted-foreground">
                     Responde sozinho no WhatsApp quando é o agente da vez na conversa.
+                    Mesmo desligado, ele responde quando um fluxo ou uma automação o
+                    aciona.
                   </p>
                 </div>
                 <Switch
@@ -553,25 +575,49 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label>Respostas automáticas por conversa</Label>
-                  <p className="text-xs text-muted-foreground">Teto compartilhado da conversa.</p>
+              <div className="rounded-md border border-border p-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Limitar respostas da IA por conversa
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Depois de N respostas da IA na mesma conversa, ela pausa e passa
+                      para atendimento humano. Vale para qualquer forma de acionamento.
+                      Sem limite: a IA responde até transferir ou um humano assumir.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={draft.limitReplies}
+                    onCheckedChange={(v) => setDraft({ ...draft, limitReplies: v })}
+                    disabled={disabled}
+                  />
                 </div>
-                <Input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={draft.maxPerConversation}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      maxPerConversation: Math.min(20, Math.max(1, Number(e.target.value) || 1)),
-                    })
-                  }
-                  disabled={disabled || !draft.autoReplyEnabled}
-                  className="w-20"
-                />
+                {draft.limitReplies && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <Label htmlFor="reply-cap" className="text-xs text-muted-foreground">
+                      Máximo de respostas
+                    </Label>
+                    <Input
+                      id="reply-cap"
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={draft.maxPerConversation}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          maxPerConversation: Math.min(
+                            500,
+                            Math.max(1, Number(e.target.value) || 1),
+                          ),
+                        })
+                      }
+                      disabled={disabled}
+                      className="w-20"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -584,7 +630,7 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                   onValueChange={(v) =>
                     setDraft({ ...draft, handoffAgentId: !v || v === HANDOFF_QUEUE ? '' : v })
                   }
-                  disabled={disabled || !draft.autoReplyEnabled}
+                  disabled={disabled}
                 >
                   <SelectTrigger>
                     <SelectValue />

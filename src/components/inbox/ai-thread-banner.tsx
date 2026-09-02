@@ -145,8 +145,15 @@ export function AiThreadBanner({
     [conversationId, currentUserId, onChange, t],
   );
 
-  // Account has no auto-reply → nothing to show. (Still loading → nothing.)
-  if (!autoReplyOn) return null;
+  // A thread the bot handed off (it left a summary) always shows the
+  // banner, even on an account whose agents don't do blanket auto-reply
+  // — e.g. an agent activated only by a Flow. Without this the handoff
+  // was completely silent here: no banner, no note, nothing.
+  const handedOff = paused && !!handoffSummary;
+
+  // Account has no auto-reply and this isn't a post-handoff thread →
+  // nothing to show. (Still loading → nothing, unless handed off.)
+  if (!autoReplyOn && !handedOff) return null;
 
   // Paused here (a human took over, or the model handed off).
   if (paused) {

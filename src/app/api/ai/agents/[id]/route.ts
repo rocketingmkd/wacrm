@@ -8,6 +8,7 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { loadProviderConfig } from '@/lib/ai/config'
 import { isValidAgentSlug } from '@/lib/ai/slug'
+import { normalizeReplyCap } from '@/lib/ai/defaults'
 import { AiError } from '@/lib/ai/types'
 
 type Params = { params: Promise<{ id: string }> }
@@ -122,9 +123,10 @@ export async function PATCH(request: Request, { params }: Params) {
           : null
     }
     if ('auto_reply_max_per_conversation' in body) {
-      let maxPer = Number(body.auto_reply_max_per_conversation)
-      if (!Number.isFinite(maxPer)) maxPer = 3
-      update.auto_reply_max_per_conversation = Math.min(20, Math.max(1, Math.floor(maxPer)))
+      // null / '' / unparseable → no limit
+      update.auto_reply_max_per_conversation = normalizeReplyCap(
+        body.auto_reply_max_per_conversation,
+      )
     }
     if ('handoff_agent_id' in body) {
       const raw =

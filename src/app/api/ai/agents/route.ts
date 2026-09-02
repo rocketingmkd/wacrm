@@ -9,6 +9,7 @@ import { checkAccountFeature } from '@/lib/billing/feature-gate'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { listAiAgents, loadProviderConfig } from '@/lib/ai/config'
 import { isValidAgentSlug, slugifyAgentName } from '@/lib/ai/slug'
+import { normalizeReplyCap } from '@/lib/ai/defaults'
 import { AiError } from '@/lib/ai/types'
 
 function bad(message: string, code?: string) {
@@ -24,7 +25,23 @@ export async function GET() {
   try {
     const { supabase, accountId } = await getCurrentAccount()
     const agents = await listAiAgents(supabase, accountId)
-    return NextResponse.json({ agents })
+    // Serialize snake_case for HTTP consumers — matches
+    // /api/ai/agents/[id] and every client that reads this list
+    // (ai-agents-manager card, ai-thread-banner, ai-playground). The
+    // typed camelCase `AiAgentSummary` stays for server-side callers
+    // like /api/ai/playground.
+    return NextResponse.json({
+      agents: agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        slug: a.slug,
+        description: a.description,
+        is_receptionist: a.isReceptionist,
+        is_active: a.isActive,
+        auto_reply_enabled: a.autoReplyEnabled,
+        auto_reply_max_per_conversation: a.autoReplyMaxPerConversation,
+      })),
+    })
   } catch (err) {
     return toErrorResponse(err)
   }
@@ -115,9 +132,9 @@ export async function POST(request: Request) {
     const isActive = body.is_active === true
     const autoReplyEnabled = body.auto_reply_enabled === true
 
-    let maxPer = Number(body.auto_reply_max_per_conversation)
-    if (!Number.isFinite(maxPer)) maxPer = 3
-    maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+    // `null` = no per-conversation reply limit (the new default for a
+    // freshly created agent — an absent field normalizes to null too).
+    const maxPer = normalizeReplyCap(body.auto_reply_max_per_conversation)
 
     const rawHandoff =
       typeof body.handoff_agent_id === 'string' ? body.handoff_agent_id.trim() : ''

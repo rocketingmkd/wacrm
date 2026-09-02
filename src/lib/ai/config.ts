@@ -12,7 +12,7 @@ interface AiAgentRow {
   system_prompt: string | null
   is_active: boolean
   auto_reply_enabled: boolean
-  auto_reply_max_per_conversation: number
+  auto_reply_max_per_conversation: number | null
   handoff_agent_id: string | null
 }
 
@@ -33,7 +33,7 @@ const AGENT_COLUMNS =
   'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
 
 const SUMMARY_COLUMNS =
-  'id, name, slug, description, is_receptionist, is_active, auto_reply_enabled'
+  'id, name, slug, description, is_receptionist, is_active, auto_reply_enabled, auto_reply_max_per_conversation'
 
 /**
  * Load + decrypt the account's ONE shared BYO provider credential
@@ -215,6 +215,7 @@ export async function listAiAgents(
     is_receptionist: boolean
     is_active: boolean
     auto_reply_enabled: boolean
+    auto_reply_max_per_conversation: number | null
   }[]).map((row) => ({
     id: row.id,
     name: row.name,
@@ -223,6 +224,7 @@ export async function listAiAgents(
     isReceptionist: row.is_receptionist,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,
+    autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
   }))
 }
 

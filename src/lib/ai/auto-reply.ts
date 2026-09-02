@@ -5,6 +5,8 @@ import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt, type TransferableAgent } from './defaults'
 import { buildHandoffSummary } from './handoff'
+import { notifyHandoffToTeam } from './handoff-notify'
+import { syncDealToAiStage, moveFunnelDealToHumanStage } from './kanban-sync'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
@@ -135,7 +137,19 @@ export async function dispatchInboundToAiReply(
 
     // Cheap early-out; the authoritative cap check is the atomic claim
     // inside runAgentTurn (this read can race a concurrent inbound).
-    if (conversation.ai_reply_count >= agent.autoReplyMaxPerConversation) return
+    // `null` cap = no limit, so this gate is skipped entirely.
+    if (
+      agent.autoReplyMaxPerConversation != null &&
+      conversation.ai_reply_count >= agent.autoReplyMaxPerConversation
+    ) {
+      await standDownAtReplyCap(db, {
+        accountId,
+        conversationId,
+        contactId,
+        maxReplies: agent.autoReplyMaxPerConversation,
+      })
+      return
+    }
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
@@ -251,6 +265,66 @@ export async function activateAgentAndReply(args: ActivateAgentArgs): Promise<st
   return `agent "${agent.name}" activated`
 }
 
+/**
+ * The per-conversation auto-reply cap (`agent.autoReplyMaxPerConversation`
+ * — opt-in; `null` means no cap and this never runs) has been reached.
+ * Historically every cap-hit path was a bare `return` — the thread just
+ * went silent, with no note, no notification, no change in the inbox.
+ * Make it a first-class, visible stand-down,
+ * exactly like a model handoff:
+ *   - pause the bot on this thread (sticky until a human hits "Resume AI",
+ *     which also resets the counter)
+ *   - leave a plain-language note
+ *   - notify the team (no assignee → the on_conversation_assigned trigger
+ *     never fires on its own)
+ *   - move the pipeline card to the "human" stage
+ *
+ * Race-safe + fire-once: the pause is a conditional UPDATE, and only the
+ * transition from live → capped does the notifying. Never throws.
+ */
+async function standDownAtReplyCap(
+  db: SupabaseClient,
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string
+    maxReplies: number
+  },
+): Promise<void> {
+  try {
+    const summary = `A IA atingiu o limite de ${args.maxReplies} ${
+      args.maxReplies === 1 ? 'resposta automática' : 'respostas automáticas'
+    } nesta conversa. Passando para atendimento humano.`
+
+    const { data: flipped } = await db
+      .from('conversations')
+      .update({ ai_autoreply_disabled: true, ai_handoff_summary: summary })
+      .eq('id', args.conversationId)
+      .eq('ai_autoreply_disabled', false)
+      .select('id')
+    // Someone (a concurrent inbound, a human takeover) already stood this
+    // thread down — nothing more to do, and definitely don't re-notify.
+    if (!flipped || flipped.length === 0) return
+
+    void moveFunnelDealToHumanStage({
+      db,
+      accountId: args.accountId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+    })
+
+    await notifyHandoffToTeam(db, {
+      accountId: args.accountId,
+      conversationId: args.conversationId,
+      contactId: args.contactId,
+      assignedAgentId: null,
+      summary,
+    })
+  } catch (err) {
+    console.error('[ai auto-reply] standDownAtReplyCap failed:', err)
+  }
+}
+
 interface TurnState {
   accountId: string
   conversationId: string
@@ -277,7 +351,20 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
   const { accountId, conversationId, contactId, configOwnerUserId, agent, messages, replyCount } =
     state
 
-  if (replyCount >= agent.autoReplyMaxPerConversation) return // this agent's cap is already spent
+  if (
+    agent.autoReplyMaxPerConversation != null &&
+    replyCount >= agent.autoReplyMaxPerConversation
+  ) {
+    // This agent's cap is already spent (e.g. a transfer chain landed
+    // here with the budget gone). Stand down visibly, not silently.
+    await standDownAtReplyCap(db, {
+      accountId,
+      conversationId,
+      contactId,
+      maxReplies: agent.autoReplyMaxPerConversation,
+    })
+    return
+  }
 
   // Ground the reply in this agent's own knowledge base (best-effort).
   const knowledge = await retrieveKnowledge(
@@ -394,10 +481,34 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
       update.assigned_agent_id = agent.handoffAgentId
     }
     await db.from('conversations').update(update).eq('id', conversationId)
+
+    // Move the pipeline card to the "human" stage. Only needed when no
+    // queue was assigned just above — the assigned case is handled by
+    // the `on_conversation_human_takeover` DB trigger (migration 051),
+    // which covers every assignment entry point.
+    if (!agent.handoffAgentId) {
+      void moveFunnelDealToHumanStage({
+        db,
+        accountId,
+        conversationId,
+        contactId,
+      })
+    }
+
+    // Make the handoff visible. When no assignee was set, the
+    // `on_conversation_assigned` trigger never fires, so nothing would
+    // tell the team the bot went quiet — notify them here.
+    await notifyHandoffToTeam(db, {
+      accountId,
+      conversationId,
+      contactId,
+      assignedAgentId: agent.handoffAgentId ?? null,
+      summary: (update.ai_handoff_summary as string | undefined) ?? null,
+    })
     return
   }
 
-  await claimAndSend(db, {
+  const finalCount = await claimAndSend(db, {
     accountId,
     conversationId,
     contactId,
@@ -406,6 +517,21 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     maxReplies: agent.autoReplyMaxPerConversation,
     replyCountBefore: state.replyCount,
   })
+
+  // That was the last reply this thread's cap allows. Rather than let
+  // the NEXT customer message hit a silent wall, stand the bot down now
+  // — visibly — so a human can pick it up. (No-op when the cap is null.)
+  if (
+    agent.autoReplyMaxPerConversation != null &&
+    finalCount >= agent.autoReplyMaxPerConversation
+  ) {
+    await standDownAtReplyCap(db, {
+      accountId,
+      conversationId,
+      contactId,
+      maxReplies: agent.autoReplyMaxPerConversation,
+    })
+  }
 }
 
 /**
@@ -424,7 +550,8 @@ async function claimAndSend(
     contactId: string
     configOwnerUserId: string
     text: string
-    maxReplies: number
+    /** `null` → the atomic claim never gates (no per-conversation limit). */
+    maxReplies: number | null
     replyCountBefore: number
   },
 ): Promise<number> {
@@ -450,6 +577,18 @@ async function claimAndSend(
     text: args.text,
     aiGenerated: true,
   })
+
+  // Reflect "the AI is handling this" on the pipeline board. Best-effort
+  // and idempotent — a no-op unless the account configured
+  // `ai_kanban_config`; creates the card if the contact has none.
+  void syncDealToAiStage({
+    db,
+    accountId: args.accountId,
+    conversationId: args.conversationId,
+    contactId: args.contactId,
+    ownerUserId: args.configOwnerUserId,
+  })
+
   return args.replyCountBefore + 1
 }
 
