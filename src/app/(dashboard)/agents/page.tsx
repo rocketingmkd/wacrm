@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bot, Sparkles, KeyRound, Users, BarChart3 } from 'lucide-react';
+import { Bot, Sparkles, KeyRound, Users, BarChart3, GitBranch } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
 import { AiProviderConfig } from '@/components/settings/ai-provider-config';
 import { AiAgentsManager } from '@/components/settings/ai-agents-manager';
+import { AiKanbanConfig } from '@/components/settings/ai-kanban-config';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 
-type Tab = 'playground' | 'key' | 'agents' | 'usage';
+type Tab = 'playground' | 'key' | 'agents' | 'usage' | 'kanban';
 
 export default function AgentsPage() {
   const { accountRole } = useAuth();
@@ -73,6 +74,9 @@ export default function AgentsPage() {
             <TabsTrigger value="agents">
               <Users className="mr-1.5 h-4 w-4" /> Agentes
             </TabsTrigger>
+            <TabsTrigger value="kanban">
+              <GitBranch className="mr-1.5 h-4 w-4" /> Kanban
+            </TabsTrigger>
             {canViewUsage && (
               <TabsTrigger value="usage">
                 <BarChart3 className="mr-1.5 h-4 w-4" /> Uso
@@ -89,6 +93,10 @@ export default function AgentsPage() {
 
           <TabsContent value="agents" className="mt-4">
             <AiAgentsManager onNeedProviderConfig={() => setTab('key')} />
+          </TabsContent>
+
+          <TabsContent value="kanban" className="mt-4">
+            <AiKanbanConfig />
           </TabsContent>
 
           {canViewUsage && (

@@ -38,6 +38,24 @@ export interface TransferableAgent {
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
 
+/** Highest per-conversation auto-reply cap the API will store. Past
+ *  this, "no limit" (null) is the intent. */
+export const MAX_REPLY_CAP = 500
+
+/**
+ * Normalize the `auto_reply_max_per_conversation` value from an agent
+ * create/update request body:
+ *   - `null` / `undefined` / `''` → `null` (no limit)
+ *   - a number       → clamped to [1, MAX_REPLY_CAP]
+ *   - anything else   → `null`
+ */
+export function normalizeReplyCap(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null
+  const n = Math.floor(Number(raw))
+  if (!Number.isFinite(n)) return null
+  return Math.min(MAX_REPLY_CAP, Math.max(1, n))
+}
+
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 20
 

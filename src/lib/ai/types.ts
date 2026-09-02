@@ -38,7 +38,10 @@ export interface AiConfig {
   systemPrompt: string | null
   isActive: boolean
   autoReplyEnabled: boolean
-  autoReplyMaxPerConversation: number
+  /** Max AI replies per conversation before the bot stands down to a
+   *  human. `null` = no limit — it keeps answering until it transfers
+   *  or a human takes the thread over. */
+  autoReplyMaxPerConversation: number | null
   /** Where THIS agent hands a conversation off when it bails: a
    *  human's `auth.users.id`, or null to leave it unassigned (drop
    *  into the shared queue). Each agent can point at a different
@@ -60,6 +63,8 @@ export interface AiAgentSummary {
   isReceptionist: boolean
   isActive: boolean
   autoReplyEnabled: boolean
+  /** `null` = no per-conversation reply limit. */
+  autoReplyMaxPerConversation: number | null
 }
 
 /** A single conversation turn in the shape both providers accept. */

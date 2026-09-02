@@ -9,6 +9,9 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  notifyHandoffToTeam: vi.fn(),
+  syncDealToAiStage: vi.fn(),
+  moveFunnelDealToHumanStage: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -17,6 +20,9 @@ const h = vi.hoisted(() => ({
     conversationUpdates: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
     writeLocked: false as boolean,
+    // Rows the conditional "flip to capped" UPDATE reports back — empty
+    // simulates "another path already stood the thread down".
+    capFlipRows: [{ id: 'conv-1' }] as { id: string }[],
   },
 }))
 
@@ -36,6 +42,11 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('./handoff-notify', () => ({ notifyHandoffToTeam: h.notifyHandoffToTeam }))
+vi.mock('./kanban-sync', () => ({
+  syncDealToAiStage: h.syncDealToAiStage,
+  moveFunnelDealToHumanStage: h.moveFunnelDealToHumanStage,
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -69,7 +80,18 @@ vi.mock('./admin-client', () => ({
         }),
         update: (payload: Record<string, unknown>) => {
           h.state.conversationUpdates.push(payload)
-          return { eq: () => Promise.resolve({ error: null }) }
+          // Chainable + awaitable: supports both `.update().eq()` (handoff)
+          // and `.update().eq().eq().select()` (the conditional cap flip).
+          const chain: Record<string, unknown> = {
+            eq: () => chain,
+            select: () =>
+              Promise.resolve({ data: h.state.capFlipRows, error: null }),
+            then: (
+              onFulfilled: (v: { error: null }) => unknown,
+              onRejected?: (e: unknown) => unknown,
+            ) => Promise.resolve({ error: null }).then(onFulfilled, onRejected),
+          }
+          return chain
         },
       }
     },
@@ -122,8 +144,12 @@ beforeEach(() => {
   h.state.conversationUpdates = []
   h.state.rpcCalls = []
   h.state.writeLocked = false
+  h.state.capFlipRows = [{ id: 'conv-1' }]
   h.loadAiAgent.mockReset()
   h.loadReceptionistAgent.mockReset()
+  h.notifyHandoffToTeam.mockReset()
+  h.syncDealToAiStage.mockReset()
+  h.moveFunnelDealToHumanStage.mockReset()
   h.loadReceptionistAgent.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
@@ -247,10 +273,36 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
-  it('skips when the per-conversation cap is reached', async () => {
+  it('stands down visibly when the per-conversation cap is already reached', async () => {
     h.state.conv = { ...h.state.conv, ai_reply_count: 3 }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
+    // Not a silent return any more: pause the bot, leave a note, tell the
+    // team, move the pipeline card.
+    const update = h.state.conversationUpdates[0]
+    expect(update).toMatchObject({ ai_autoreply_disabled: true })
+    expect(update.ai_handoff_summary).toContain('limite de 3')
+    expect(h.notifyHandoffToTeam).toHaveBeenCalledOnce()
+    expect(h.moveFunnelDealToHumanStage).toHaveBeenCalledOnce()
+  })
+
+  it('does not re-notify when another path already stood the thread down', async () => {
+    h.state.conv = { ...h.state.conv, ai_reply_count: 3 }
+    h.state.capFlipRows = [] // conditional flip affected no row
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.notifyHandoffToTeam).not.toHaveBeenCalled()
+    expect(h.moveFunnelDealToHumanStage).not.toHaveBeenCalled()
+  })
+
+  it('stands down right after sending the last reply the cap allows', async () => {
+    h.state.conv = { ...h.state.conv, ai_reply_count: 2 } // this send makes it 3
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalledOnce()
+    expect(h.notifyHandoffToTeam).toHaveBeenCalledOnce()
+    const update = h.state.conversationUpdates.find(
+      (u) => u.ai_autoreply_disabled === true,
+    )
+    expect(update?.ai_handoff_summary).toContain('limite de 3')
   })
 
   it('skips when there is nothing to reply to', async () => {
