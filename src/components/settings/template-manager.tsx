@@ -126,6 +126,24 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
+  const headerFormatLabel = (type: HeaderFormat) =>
+    type === 'none'
+      ? t('headerNone')
+      : type === 'text'
+        ? t('headerText')
+        : type === 'image'
+          ? t('headerImage')
+          : type === 'video'
+            ? t('headerVideo')
+            : t('headerDocument');
+  const buttonTypeLabel = (type: TemplateButton['type']) =>
+    type === 'QUICK_REPLY'
+      ? t('btnQuickReply')
+      : type === 'URL'
+        ? t('btnUrl')
+        : type === 'PHONE_NUMBER'
+          ? t('btnPhone')
+          : t('btnCopyCode');
   const supabase = createClient();
   const { loading: authLoading, accountId, profileLoading } = useAuth();
 
@@ -847,7 +865,7 @@ export function TemplateManager() {
                 }
               >
                 <SelectTrigger className="w-full bg-muted border-border text-foreground">
-                  <SelectValue />
+                  <SelectValue>{(type: HeaderFormat) => headerFormatLabel(type)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
                   {HEADER_FORMATS.map((type) => (
@@ -856,15 +874,7 @@ export function TemplateManager() {
                       value={type}
                       className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
                     >
-                      {type === 'none'
-                        ? t('headerNone')
-                        : type === 'text'
-                          ? t('headerText')
-                          : type === 'image'
-                            ? t('headerImage')
-                            : type === 'video'
-                              ? t('headerVideo')
-                              : t('headerDocument')}
+                      {headerFormatLabel(type)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1055,7 +1065,9 @@ export function TemplateManager() {
                           }}
                         >
                           <SelectTrigger className="w-40 bg-muted border-border text-foreground h-8 text-xs">
-                            <SelectValue />
+                            <SelectValue>
+                              {(type: TemplateButton['type']) => buttonTypeLabel(type)}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent className="bg-popover border-border">
                             <SelectItem

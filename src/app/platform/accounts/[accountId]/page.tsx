@@ -277,7 +277,9 @@ export default function PlatformAccountDetailPage({
               onValueChange={(v) => setPlanInput(v === 'none' ? '' : (v as Plan))}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {(v: Plan | 'none') => (v === 'none' ? 'Nenhum' : PLAN_LABEL[v])}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Nenhum</SelectItem>
@@ -306,7 +308,7 @@ export default function PlatformAccountDetailPage({
           <CardContent className="space-y-3">
             <Select value={forceStatus} onValueChange={(v) => setForceStatus(v as BillingStatus)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>{(v: BillingStatus) => STATUS_LABEL[v]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {BILLING_STATUSES.map((s) => (

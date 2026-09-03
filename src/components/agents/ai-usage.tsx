@@ -119,7 +119,7 @@ export function AiUsageCard() {
             onValueChange={(v) => setDays(Number(v))}
           >
             <SelectTrigger className="w-32 flex-shrink-0">
-              <SelectValue />
+              <SelectValue>{(v: string) => `Últimos ${v} dias`}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {WINDOWS.map((w) => (

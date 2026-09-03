@@ -640,7 +640,17 @@ function ConditionForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              {/* Explicit lookup — a bare `<SelectValue />` shows the raw
+                  stored value until the popup has opened once. */}
+              <SelectValue>
+                {(v: ConditionCfg["subject"]) =>
+                  v === "var"
+                    ? t("capturedVariable")
+                    : v === "tag"
+                      ? t("contactHasTag")
+                      : t("contactField")
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="var">{t("capturedVariable")}</SelectItem>
@@ -716,7 +726,16 @@ function ConditionForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              <SelectValue>
+                {(v: ConditionCfg["operator"]) =>
+                  ({
+                    present: t("isPresent"),
+                    absent: t("isAbsent"),
+                    equals: t("equals"),
+                    contains: t("contains"),
+                  })[v ?? "equals"]
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="present">{t("isPresent")}</SelectItem>
@@ -795,7 +814,9 @@ function SetTagForm({
             }
           >
             <SelectTrigger className="bg-muted">
-              <SelectValue />
+              <SelectValue>
+                {(v: SetTagCfg["mode"]) => (v === "remove" ? t("removeTag") : t("addTag"))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="add">{t("addTag")}</SelectItem>
@@ -849,8 +870,15 @@ function SetTagForm({
 interface AiAgentOption {
   id: string;
   name: string;
-  isActive: boolean;
-  autoReplyEnabled: boolean;
+  // Wire shape from GET /api/ai/agents — snake_case (see that route's
+  // header comment). This type used to declare `isActive`/
+  // `autoReplyEnabled` and cast the fetch response straight into it;
+  // since the JSON never had those camelCase keys, `a.isActive` was
+  // always `undefined`, so every agent looked inactive and the picker
+  // permanently showed the "none of your agents are active" banner
+  // even when one was on.
+  is_active: boolean;
+  auto_reply_enabled: boolean;
 }
 
 /** Loads the account's AI agents for the picker below. Falls back to
@@ -908,7 +936,7 @@ function ActivateAiAgentForm({
 }) {
   const agents = useAiAgents();
   const selected = agents.find((a) => a.id === cfg.agent_id);
-  const unusableReason = (a: AiAgentOption) => (!a.isActive ? t("aiAgentReasonInactive") : null);
+  const unusableReason = (a: AiAgentOption) => (!a.is_active ? t("aiAgentReasonInactive") : null);
   const noneUsable = agents.length > 0 && agents.every((a) => unusableReason(a));
 
   return (
@@ -1094,7 +1122,11 @@ function SendMediaForm({
           }}
         >
           <SelectTrigger className="bg-muted">
-            <SelectValue />
+            <SelectValue>
+              {(v: NonNullable<SendMediaCfg["media_type"]>) =>
+                ({ image: t("imageLabel"), video: t("videoLabel"), document: t("documentLabel") })[v]
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="image">{t("imageLabel")}</SelectItem>

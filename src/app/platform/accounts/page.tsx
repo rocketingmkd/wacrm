@@ -157,7 +157,9 @@ export default function PlatformAccountsPage() {
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as BillingStatus | 'all')}>
           <SelectTrigger className="w-48 flex-shrink-0">
-            <SelectValue />
+            <SelectValue>
+              {(v: BillingStatus | 'all') => (v === 'all' ? 'Todos os status' : STATUS_LABEL[v])}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>

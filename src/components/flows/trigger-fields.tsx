@@ -50,6 +50,19 @@ import { DEFAULT_TRIGGER_CONFIG, type BuilderState } from './flow-editor-state';
 import { useUserTags, usePipelinesAndStages } from './use-picker-data';
 import type { FlowTriggerType } from '@/lib/flows/types';
 
+/** Mirrors the `<SelectItem>` labels in `TriggerFields` below — used to
+ *  resolve the closed trigger's display label directly instead of
+ *  relying on Base UI's auto-lookup (see the `SelectValue` comment). */
+const TRIGGER_TYPE_LABEL_KEY: Record<FlowTriggerType, string> = {
+  keyword: 'triggerKeywordTitle',
+  new_contact_created: 'triggerNewContactTitle',
+  first_inbound_message: 'triggerFirstInboundTitle',
+  new_message_received: 'triggerNewMessageTitle',
+  tag_added: 'triggerTagAddedTitle',
+  deal_stage_changed: 'triggerDealStageTitle',
+  manual: 'triggerManualTitle',
+};
+
 // ============================================================
 // Keyword trigger input
 // ============================================================
@@ -264,7 +277,12 @@ export function TriggerFields({
           }
         >
           <SelectTrigger className="bg-muted w-full">
-            <SelectValue />
+            {/* Explicit label lookup, not the bare-`<SelectValue />`
+                auto-resolve — Base UI can't resolve an item's label
+                until the popup has mounted once (on first open), so
+                the closed trigger would show the raw `trigger_type`
+                value (e.g. "new_message_received") until then. */}
+            <SelectValue>{() => TRIGGER_TYPE_LABEL_KEY[state.trigger_type] ? t(TRIGGER_TYPE_LABEL_KEY[state.trigger_type]) : state.trigger_type}</SelectValue>
           </SelectTrigger>
           {/* Options ordered to match the entry-match priority
               (selectEntryFlow in src/lib/flows/engine.ts): most

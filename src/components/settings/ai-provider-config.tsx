@@ -222,7 +222,9 @@ export function AiProviderConfig({ onSaved }: { onSaved?: () => void }) {
               disabled={disabled}
             >
               <SelectTrigger>
-                <SelectValue />
+                {/* Explicit lookup — a bare `<SelectValue />` shows the
+                    raw stored value ("openai") until the popup opens once. */}
+                <SelectValue>{(v: AiProvider) => PROVIDER_LABEL[v] ?? v}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>

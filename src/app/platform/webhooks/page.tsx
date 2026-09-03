@@ -125,7 +125,11 @@ export default function PlatformWebhooksPage() {
         </div>
         <Select value={outcome} onValueChange={(v) => setOutcome(v as typeof outcome)}>
           <SelectTrigger className="w-48 flex-shrink-0">
-            <SelectValue />
+            <SelectValue>
+              {(v: typeof outcome) =>
+                ({ all: 'Todos os resultados', success: 'Sucesso', ignored: 'Ignorado', error: 'Erro' })[v]
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os resultados</SelectItem>

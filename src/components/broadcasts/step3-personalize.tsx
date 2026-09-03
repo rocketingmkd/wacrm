@@ -322,7 +322,15 @@ export function Step3Personalize({
                       }
                     >
                       <SelectTrigger className="w-full border-border bg-muted text-foreground">
-                        <SelectValue />
+                        <SelectValue>
+                          {(v: VariableType) =>
+                            v === 'static'
+                              ? t('personalize.typeStatic')
+                              : v === 'field'
+                                ? t('personalize.typeContact')
+                                : t('personalize.typeCustom')
+                          }
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="border-border bg-popover">
                         <SelectItem value="static">{t('personalize.typeStatic')}</SelectItem>
