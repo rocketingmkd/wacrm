@@ -245,8 +245,13 @@ interface AutomationResources {
 interface AiAgentOption {
   id: string
   name: string
-  isActive: boolean
-  autoReplyEnabled: boolean
+  // Wire shape from GET /api/ai/agents — snake_case (see that route's
+  // header comment). Was `isActive`/`autoReplyEnabled` here, which the
+  // fetched JSON never actually had — `a.isActive` was always
+  // `undefined`, so every agent read as inactive regardless of its
+  // real state.
+  is_active: boolean
+  auto_reply_enabled: boolean
 }
 
 interface PipelineOption {
@@ -541,7 +546,7 @@ function AiAgentSelect({
     )
   }
   const selected = aiAgents.find((a) => a.id === value)
-  const unusableReason = (a: AiAgentOption) => (!a.isActive ? t("aiAgents.reasonInactive") : null)
+  const unusableReason = (a: AiAgentOption) => (!a.is_active ? t("aiAgents.reasonInactive") : null)
   const noneUsable = aiAgents.every((a) => unusableReason(a))
   return (
     <div className="flex flex-col gap-2">

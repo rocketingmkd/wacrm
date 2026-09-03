@@ -38,9 +38,14 @@ async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus>
     const j = await res.json();
     const agents = Array.isArray(j?.agents) ? j.agents : [];
     const status = {
-      // AI auto-reply is "live" for the account when at least one agent
-      // is active with the inbound bot enabled — which one applies to a
-      // given thread is resolved server-side per conversation.
+      // AI auto-reply is "live" for the account when the receptionist
+      // is active with the inbound bot enabled. `auto_reply_enabled`
+      // is a receptionist-only concept (migration 053 — a DB
+      // constraint guarantees no other agent can have it true), so
+      // "any agent" and "the receptionist" are equivalent here; this
+      // still checks every row rather than filtering to the
+      // receptionist client-side, since which one applies to a given
+      // thread is resolved server-side per conversation anyway.
       autoReplyOn: agents.some(
         (a: { is_active?: boolean; auto_reply_enabled?: boolean }) =>
           a?.is_active && a?.auto_reply_enabled,

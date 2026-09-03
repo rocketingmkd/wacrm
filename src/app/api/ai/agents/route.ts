@@ -130,7 +130,10 @@ export async function POST(request: Request) {
         ? body.system_prompt.trim()
         : null
     const isActive = body.is_active === true
-    const autoReplyEnabled = body.auto_reply_enabled === true
+    // Receptionist-only concept (migration 053) — a specialist agent
+    // never fields a cold inbound on its own, only the account's first
+    // (auto-receptionist) agent can turn this on at creation time.
+    const autoReplyEnabled = isFirstAgent && body.auto_reply_enabled === true
 
     // `null` = no per-conversation reply limit (the new default for a
     // freshly created agent — an absent field normalizes to null too).

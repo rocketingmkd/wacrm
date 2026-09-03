@@ -431,11 +431,13 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
       .eq('id', conversationId)
 
     const nextAgent = await loadAiAgent(db, accountId, target.id)
-    // Defensive: siblings was filtered to active+auto_reply_enabled
-    // agents moments ago, but a concurrent edit could have turned the
-    // target off in between — fall back to a human handoff rather than
-    // silently dropping the transfer.
-    if (nextAgent && nextAgent.autoReplyEnabled) {
+    // Defensive: siblings was filtered to active agents moments ago,
+    // but a concurrent edit could have deactivated the target in
+    // between (loadAiAgent's default requireActive:true then returns
+    // null) — fall back to a human handoff rather than silently
+    // dropping the transfer. Deliberately does NOT also require
+    // `autoReplyEnabled` — see loadTransferSiblings' doc comment.
+    if (nextAgent) {
       // Re-fetch the transcript so the next agent sees the message
       // that was just sent (if any), not a stale copy.
       const nextMessages = text
@@ -592,11 +594,19 @@ async function claimAndSend(
   return args.replyCountBefore + 1
 }
 
-/** Active, auto-reply-enabled sibling agents this account's agent
- *  could transfer to — feeds both the transfer-menu prompt block and
- *  the dispatcher's slug→agent resolution. Naturally empty on a
- *  single-agent (Starter) account, which keeps behaviour identical to
- *  the pre-multi-agent bot with zero extra branching. */
+/** Active sibling agents this account's agent could transfer to — feeds
+ *  both the transfer-menu prompt block and the dispatcher's
+ *  slug→agent resolution. Naturally empty on a single-agent (Starter)
+ *  account, which keeps behaviour identical to the pre-multi-agent bot
+ *  with zero extra branching.
+ *
+ *  Deliberately does NOT require `auto_reply_enabled` — same principle
+ *  as the doc comment on `dispatchInboundToAiReply`: that flag only
+ *  gates the RECEPTIONIST's blanket "pick up any cold inbound"
+ *  behaviour. A specialist scoped to "only talks when explicitly
+ *  handed a conversation" must still be a valid transfer target, or
+ *  every account's multi-agent setup would need every agent's
+ *  auto-reply on just to be reachable by a live transfer. */
 async function loadTransferSiblings(
   db: SupabaseClient,
   accountId: string,
@@ -607,7 +617,6 @@ async function loadTransferSiblings(
     .select('id, slug, name, description')
     .eq('account_id', accountId)
     .eq('is_active', true)
-    .eq('auto_reply_enabled', true)
     .neq('id', currentAgentId)
   if (error || !data) return []
   return data as TransferableAgent[]

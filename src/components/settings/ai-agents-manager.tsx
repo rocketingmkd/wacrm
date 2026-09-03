@@ -369,8 +369,33 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
     }
   };
 
-  const remove = async (id: string) => {
-    if (!window.confirm('Excluir este agente? Essa ação não pode ser desfeita.')) return;
+  const demote = async (id: string) => {
+    // Leaves the account with no receptionist — a valid state (see
+    // PATCH /api/ai/agents/[id]'s doc comment): no agent auto-picks up
+    // a cold inbound until someone is promoted again.
+    try {
+      const res = await fetch(`/api/ai/agents/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_receptionist: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? 'Não foi possível remover o recepcionista.');
+        return;
+      }
+      toast.success('Recepcionista removido — nenhum agente pega conversa nova automaticamente agora.');
+      await fetchAgents();
+    } catch {
+      toast.error('Não foi possível remover o recepcionista.');
+    }
+  };
+
+  const remove = async (id: string, isReceptionist: boolean) => {
+    const warning = isReceptionist
+      ? 'Excluir este agente? Ele é o recepcionista — depois disso nenhum agente vai atender conversa nova automaticamente até você promover outro. Essa ação não pode ser desfeita.'
+      : 'Excluir este agente? Essa ação não pode ser desfeita.';
+    if (!window.confirm(warning)) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/ai/agents/${id}`, { method: 'DELETE' });
@@ -398,6 +423,17 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
 
   const disabled = !canEdit || saving;
   const providerConfigured = Boolean(providerStatus?.configured);
+  // Whether the agent being edited is (or, for a brand-new draft, will
+  // become on save) the receptionist — "Resposta automática" only
+  // applies to that one agent (migration 053), so the dialog only
+  // shows the toggle then. A new agent becomes the receptionist iff
+  // it's the account's very first (mirrors the POST route's
+  // `isFirstAgent`).
+  const isDraftReceptionist = draft
+    ? draft.id
+      ? draft.isReceptionist
+      : agents.length === 0
+    : false;
 
   return (
     <div>
@@ -440,7 +476,8 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
 
       {agents.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          Nenhum agente ainda. Crie o primeiro — ele vira o recepcionista automaticamente.
+          Nenhum agente ainda. Crie o primeiro — ele vira o recepcionista automaticamente (dá pra
+          trocar ou remover depois).
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -484,16 +521,28 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                 </p>
               </div>
               <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-                {canEdit && !a.is_receptionist && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-xs text-muted-foreground"
-                    onClick={() => void promote(a.id)}
-                    title="Tornar recepcionista"
-                  >
-                    <Star className="h-3.5 w-3.5" />
-                  </Button>
+                {canEdit && (
+                  a.is_receptionist ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-xs text-muted-foreground"
+                      onClick={() => void demote(a.id)}
+                      title="Nenhum agente ficará como recepcionista até você promover outro"
+                    >
+                      Remover recepcionista
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+                      onClick={() => void promote(a.id)}
+                      title="Passa a atender toda conversa nova automaticamente"
+                    >
+                      <Star className="h-3.5 w-3.5" /> Tornar recepcionista
+                    </Button>
+                  )
                 )}
                 <Button
                   variant="ghost"
@@ -506,10 +555,10 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => void remove(a.id)}
-                  disabled={!canEdit || a.is_receptionist || deletingId === a.id}
+                  onClick={() => void remove(a.id, a.is_receptionist)}
+                  disabled={!canEdit || deletingId === a.id}
                   className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  title={a.is_receptionist ? 'Promova outro agente antes de excluir este' : 'Excluir'}
+                  title="Excluir"
                 >
                   {deletingId === a.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -740,21 +789,29 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Resposta automática</p>
-                  <p className="text-xs text-muted-foreground">
-                    Responde sozinho no WhatsApp quando é o agente da vez na conversa.
-                    Mesmo desligado, ele responde quando um fluxo ou uma automação o
-                    aciona.
-                  </p>
+              {isDraftReceptionist ? (
+                <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Resposta automática</p>
+                    <p className="text-xs text-muted-foreground">
+                      Como recepcionista, responde sozinho toda conversa nova que chegar no
+                      WhatsApp. Desligado, a conversa fica no inbox esperando um humano (uma
+                      automação ou fluxo ainda pode acionar um agente manualmente).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={draft.autoReplyEnabled}
+                    onCheckedChange={(v) => setDraft({ ...draft, autoReplyEnabled: v })}
+                    disabled={disabled || !draft.isActive}
+                  />
                 </div>
-                <Switch
-                  checked={draft.autoReplyEnabled}
-                  onCheckedChange={(v) => setDraft({ ...draft, autoReplyEnabled: v })}
-                  disabled={disabled || !draft.isActive}
-                />
-              </div>
+              ) : (
+                <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Só o recepcionista responde conversa nova sozinho. Este agente entra em ação
+                  quando o recepcionista transfere pra ele, ou quando uma automação/fluxo o aciona
+                  explicitamente.
+                </div>
+              )}
 
               <div className="rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-4">
@@ -814,7 +871,16 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                   disabled={disabled}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    {/* Explicit label lookup — a bare `<SelectValue />`
+                        shows the raw stored value (e.g. "__queue__")
+                        until the popup has been opened once. */}
+                    <SelectValue>
+                      {(v: string) => {
+                        if (v === HANDOFF_QUEUE) return 'Fila compartilhada';
+                        const member = members.find((m) => m.user_id === v);
+                        return member ? memberLabel(member) : v;
+                      }}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={HANDOFF_QUEUE}>Fila compartilhada</SelectItem>

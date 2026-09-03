@@ -62,7 +62,7 @@ vi.mock('./admin-client', () => ({
         return chain
       }
       if (table === 'ai_agents') {
-        // loadTransferSiblings: .select().eq().eq().eq().neq()
+        // loadTransferSiblings: .select().eq().eq().neq()
         const chain = {
           select: () => chain,
           eq: () => chain,
@@ -321,7 +321,7 @@ describe('dispatchInboundToAiReply — handoff', () => {
     expect(h.state.rpcCalls).toHaveLength(0)
     const update = h.state.conversationUpdates[0]
     expect(update).toMatchObject({ ai_autoreply_disabled: true })
-    expect(update.ai_handoff_summary).toContain('AI agent handed off')
+    expect(update.ai_handoff_summary).toContain('IA transferiu para humano')
     // No handoff target configured → conversation left unassigned.
     expect(update).not.toHaveProperty('assigned_agent_id')
   })
@@ -388,6 +388,20 @@ describe('dispatchInboundToAiReply — transfer between agents', () => {
     )
     // Both sends claim a slot off the same shared per-conversation counter.
     expect(h.state.rpcCalls).toHaveLength(2)
+  })
+
+  it('transfers to a specialist that has auto-reply off — only isActive gates a transfer target', async () => {
+    h.generateReply
+      .mockResolvedValueOnce({ text: '', handoff: false, transferToSlug: 'suporte' })
+      .mockResolvedValueOnce({ text: 'Claro, posso ajudar!', handoff: false, transferToSlug: null })
+    h.loadAiAgent.mockResolvedValue(aiConfig({ ...suporte, autoReplyEnabled: false }))
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Claro, posso ajudar!' }),
+    )
   })
 
   it('degrades to a human handoff once the transfer-hop limit is exceeded', async () => {

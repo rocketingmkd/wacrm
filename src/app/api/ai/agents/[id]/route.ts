@@ -61,9 +61,20 @@ export async function GET(_request: Request, { params }: Params) {
  *
  * Receptionist promotion: `is_receptionist: true` unsets the account's
  * current receptionist first (the partial unique index would otherwise
- * reject having two). `is_receptionist: false` is rejected outright —
- * promote a different agent instead, which demotes this one as a side
- * effect. This guarantees the account always has exactly one.
+ * reject having two — at most one, never enforced as "at least one").
+ * `is_receptionist: false` is a plain demotion: the account is left
+ * with none, which is a valid state — no agent auto-picks up a cold
+ * inbound (`dispatchInboundToAiReply` degrades to "no agent on duty"
+ * and the conversation just sits in the inbox for a human).
+ *
+ * `auto_reply_enabled` is a receptionist-only concept (migration 053):
+ * a specialist agent is only ever reached by explicit routing (the
+ * receptionist's own transfer judgment, or an automation/flow's
+ * "activate AI agent" step), never by fielding a cold inbound on its
+ * own — so turning this on is rejected unless the row already is, or
+ * is becoming in this same request, the receptionist. Demoting or
+ * promoting a receptionist clears/leaves this flag accordingly so the
+ * DB's CHECK constraint is never the thing that catches it.
  */
 export async function PATCH(request: Request, { params }: Params) {
   try {
@@ -87,14 +98,22 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    if ('is_receptionist' in body && body.is_receptionist === false && existing.is_receptionist) {
-      return bad(
-        'Every account needs exactly one receptionist — promote another agent instead of removing this one.',
-        'last_receptionist',
-      )
-    }
-
     const update: Record<string, unknown> = {}
+
+    const demoting = 'is_receptionist' in body && body.is_receptionist === false
+    const promoting = body.is_receptionist === true && !existing.is_receptionist
+    // Resolves the row's `is_receptionist` value AFTER this request, so
+    // the `auto_reply_enabled` gate below (a receptionist-only concept,
+    // migration 053) sees the right answer even when both fields are
+    // sent in the same PATCH.
+    const willBeReceptionist = demoting ? false : promoting ? true : existing.is_receptionist
+
+    if (demoting) {
+      update.is_receptionist = false
+      // Stops being meaningful the moment it's demoted — see migration
+      // 053's DB constraint, which would reject leaving this true.
+      update.auto_reply_enabled = false
+    }
 
     if ('name' in body) {
       const name = typeof body.name === 'string' ? body.name.trim() : ''
@@ -115,7 +134,16 @@ export async function PATCH(request: Request, { params }: Params) {
           : null
     }
     if ('is_active' in body) update.is_active = body.is_active === true
-    if ('auto_reply_enabled' in body) update.auto_reply_enabled = body.auto_reply_enabled === true
+    if ('auto_reply_enabled' in body && !demoting) {
+      const wantsOn = body.auto_reply_enabled === true
+      if (wantsOn && !willBeReceptionist) {
+        return bad(
+          'Só o agente recepcionista pode ter Resposta automática — promova este agente primeiro.',
+          'auto_reply_receptionist_only',
+        )
+      }
+      update.auto_reply_enabled = wantsOn
+    }
     if ('system_prompt' in body) {
       update.system_prompt =
         typeof body.system_prompt === 'string' && body.system_prompt.trim()
@@ -183,11 +211,13 @@ export async function PATCH(request: Request, { params }: Params) {
 
     // Receptionist promotion: demote the current one first so the
     // partial unique index (one receptionist per account) never sees
-    // two true rows at once.
-    if (body.is_receptionist === true && !existing.is_receptionist) {
+    // two true rows at once. Also clears its `auto_reply_enabled` —
+    // migration 053's CHECK constraint would otherwise reject leaving
+    // a non-receptionist row with it still true.
+    if (promoting) {
       const { error: demoteErr } = await supabase
         .from('ai_agents')
-        .update({ is_receptionist: false })
+        .update({ is_receptionist: false, auto_reply_enabled: false })
         .eq('account_id', accountId)
         .eq('is_receptionist', true)
       if (demoteErr) {
@@ -223,10 +253,12 @@ export async function PATCH(request: Request, { params }: Params) {
 /**
  * DELETE /api/ai/agents/[id]  (admin+)
  *
- * Refuses to delete the receptionist — every account must always have
- * one, and it's also always the last-remaining agent when there's only
- * one, so this rule alone keeps the account from ever hitting zero.
- * Promote another agent first (PATCH is_receptionist:true), then delete.
+ * Deleting the receptionist is allowed — it leaves the account with no
+ * receptionist (a valid state, see the PATCH doc comment above), same
+ * end result as demoting it first. Deleting the account's only agent
+ * is likewise allowed, leaving zero agents; every caller that resolves
+ * "the agent for this conversation" already treats "no agent" as a
+ * normal case (silent no-op for auto-reply, an empty state in the UI).
  */
 export async function DELETE(_request: Request, { params }: Params) {
   try {
@@ -235,17 +267,11 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     const { data: existing } = await supabase
       .from('ai_agents')
-      .select('id, is_receptionist')
+      .select('id')
       .eq('account_id', accountId)
       .eq('id', id)
       .maybeSingle()
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (existing.is_receptionist) {
-      return bad(
-        'The receptionist agent cannot be deleted — promote another agent first.',
-        'last_receptionist',
-      )
-    }
 
     const { error } = await supabase
       .from('ai_agents')
