@@ -612,8 +612,10 @@
     "page": {
       "title": "Agenda",
       "subtitle": "Compromissos marcados pelo agente de IA ou por você — acompanhe status e horários num só lugar.",
+      "tabCalendar": "Calendário",
       "tabKanban": "Kanban",
       "tabList": "Agenda",
+      "tabAvailability": "Disponibilidade",
       "addAppointment": "Novo compromisso",
       "manage": "Gerenciar",
       "loadError": "Não foi possível carregar a agenda."
@@ -627,6 +629,43 @@
       "filterUpcoming": "Próximos",
       "filterPast": "Passados",
       "filterAll": "Todos"
+    },
+    "calendar": {
+      "today": "Hoje",
+      "previousMonth": "Mês anterior",
+      "nextMonth": "Próximo mês",
+      "more": "+{count} mais"
+    },
+    "availability": {
+      "weeklyTitle": "Horários de atendimento",
+      "weeklyDesc": "Defina os dias e horários em que compromissos podem ser marcados. Adicione mais de um intervalo no mesmo dia para reservar um horário de almoço.",
+      "copyMondayToWeekdays": "Copiar segunda pros dias úteis",
+      "dayOff": "Fechado",
+      "rangeTo": "até",
+      "addRange": "Adicionar intervalo",
+      "removeRange": "Remover intervalo",
+      "durationTitle": "Duração padrão do compromisso",
+      "durationDesc": "Usada pelo agente de IA pra dividir os horários disponíveis em blocos.",
+      "durationMinutes": "{m} minutos",
+      "durationHours": "{h, plural, =1 {1 hora} other {# horas}}",
+      "saving": "Salvando...",
+      "save": "Salvar disponibilidade",
+      "toastSaved": "Disponibilidade salva.",
+      "toastFailedSave": "Não foi possível salvar a disponibilidade.",
+      "toastInvalidRange": "O horário final precisa ser depois do inicial.",
+      "exceptionsTitle": "Dias de folga e feriados",
+      "exceptionsDesc": "Datas específicas em que não há atendimento, mesmo dentro do horário normal.",
+      "exceptionsEmpty": "Nenhum dia de folga cadastrado.",
+      "exceptionFrom": "De",
+      "exceptionTo": "Até (opcional)",
+      "exceptionLabel": "Motivo (opcional)",
+      "exceptionLabelPlaceholder": "ex.: Feriado nacional, Férias",
+      "exceptionAdd": "Adicionar",
+      "removeException": "Remover",
+      "toastExceptionAdded": "Dia de folga adicionado.",
+      "toastFailedAddException": "Não foi possível adicionar o dia de folga.",
+      "toastFailedRemoveException": "Não foi possível remover.",
+      "toastInvalidExceptionRange": "A data final precisa ser igual ou depois da inicial."
     }
   },
   "Broadcasts": {

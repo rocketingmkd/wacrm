@@ -612,8 +612,10 @@
     "page": {
       "title": "Agenda",
       "subtitle": "Appointments booked by the AI agent or by you — track status and times in one place.",
+      "tabCalendar": "Calendar",
       "tabKanban": "Kanban",
       "tabList": "Agenda",
+      "tabAvailability": "Availability",
       "addAppointment": "New appointment",
       "manage": "Manage",
       "loadError": "Couldn't load the agenda."
@@ -627,6 +629,43 @@
       "filterUpcoming": "Upcoming",
       "filterPast": "Past",
       "filterAll": "All"
+    },
+    "calendar": {
+      "today": "Today",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "more": "+{count} more"
+    },
+    "availability": {
+      "weeklyTitle": "Working hours",
+      "weeklyDesc": "Set the days and times appointments can be booked. Add more than one range on the same day to reserve a lunch break.",
+      "copyMondayToWeekdays": "Copy Monday to weekdays",
+      "dayOff": "Closed",
+      "rangeTo": "to",
+      "addRange": "Add range",
+      "removeRange": "Remove range",
+      "durationTitle": "Default appointment duration",
+      "durationDesc": "Used by the AI agent to split the available hours into bookable slots.",
+      "durationMinutes": "{m} minutes",
+      "durationHours": "{h, plural, =1 {1 hour} other {# hours}}",
+      "saving": "Saving...",
+      "save": "Save availability",
+      "toastSaved": "Availability saved.",
+      "toastFailedSave": "Couldn't save availability.",
+      "toastInvalidRange": "The end time must be after the start time.",
+      "exceptionsTitle": "Days off and holidays",
+      "exceptionsDesc": "Specific dates with no appointments, even within regular hours.",
+      "exceptionsEmpty": "No days off yet.",
+      "exceptionFrom": "From",
+      "exceptionTo": "To (optional)",
+      "exceptionLabel": "Reason (optional)",
+      "exceptionLabelPlaceholder": "e.g. National holiday, Vacation",
+      "exceptionAdd": "Add",
+      "removeException": "Remove",
+      "toastExceptionAdded": "Day off added.",
+      "toastFailedAddException": "Couldn't add the day off.",
+      "toastFailedRemoveException": "Couldn't remove it.",
+      "toastInvalidExceptionRange": "The end date must be on or after the start date."
     }
   },
   "Broadcasts": {

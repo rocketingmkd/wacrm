@@ -611,8 +611,10 @@
     "page": {
       "title": "일정",
       "subtitle": "AI 에이전트 또는 직접 예약한 약속을 한곳에서 상태와 시간별로 확인하세요.",
+      "tabCalendar": "달력",
       "tabKanban": "칸반",
       "tabList": "일정",
+      "tabAvailability": "예약 가능 시간",
       "addAppointment": "새 약속",
       "manage": "관리",
       "loadError": "일정을 불러오지 못했습니다."
@@ -626,6 +628,43 @@
       "filterUpcoming": "예정된 일정",
       "filterPast": "지난 일정",
       "filterAll": "전체"
+    },
+    "calendar": {
+      "today": "오늘",
+      "previousMonth": "이전 달",
+      "nextMonth": "다음 달",
+      "more": "+{count}개 더보기"
+    },
+    "availability": {
+      "weeklyTitle": "근무 시간",
+      "weeklyDesc": "약속을 예약할 수 있는 요일과 시간을 설정하세요. 같은 요일에 시간대를 하나 더 추가하면 점심시간을 비워둘 수 있습니다.",
+      "copyMondayToWeekdays": "월요일 설정을 평일에 복사",
+      "dayOff": "휴무",
+      "rangeTo": "~",
+      "addRange": "시간대 추가",
+      "removeRange": "시간대 삭제",
+      "durationTitle": "기본 약속 소요 시간",
+      "durationDesc": "AI 에이전트가 예약 가능 시간을 나눌 때 사용합니다.",
+      "durationMinutes": "{m}분",
+      "durationHours": "{h}시간",
+      "saving": "저장 중...",
+      "save": "예약 가능 시간 저장",
+      "toastSaved": "예약 가능 시간이 저장되었습니다.",
+      "toastFailedSave": "예약 가능 시간을 저장하지 못했습니다.",
+      "toastInvalidRange": "종료 시간은 시작 시간보다 늦어야 합니다.",
+      "exceptionsTitle": "휴무일 및 공휴일",
+      "exceptionsDesc": "정규 근무 시간 안이라도 약속을 받지 않는 특정 날짜입니다.",
+      "exceptionsEmpty": "등록된 휴무일이 없습니다.",
+      "exceptionFrom": "시작일",
+      "exceptionTo": "종료일 (선택)",
+      "exceptionLabel": "사유 (선택)",
+      "exceptionLabelPlaceholder": "예: 공휴일, 휴가",
+      "exceptionAdd": "추가",
+      "removeException": "삭제",
+      "toastExceptionAdded": "휴무일이 추가되었습니다.",
+      "toastFailedAddException": "휴무일을 추가하지 못했습니다.",
+      "toastFailedRemoveException": "삭제하지 못했습니다.",
+      "toastInvalidExceptionRange": "종료일은 시작일과 같거나 이후여야 합니다."
     }
   },
   "Broadcasts": {

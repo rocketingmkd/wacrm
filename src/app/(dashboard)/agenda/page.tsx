@@ -7,6 +7,8 @@ import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
 import { AgendaList } from "@/components/agenda/agenda-list";
+import { AgendaCalendar } from "@/components/agenda/agenda-calendar";
+import { AgendaAvailability } from "@/components/agenda/agenda-availability";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Plus, Settings } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +31,7 @@ const DEFAULT_AGENDA_STAGES = [
   { name: "Não compareceu", color: "#ef4444", position: 4 },
 ];
 
-type Tab = "kanban" | "list";
+type Tab = "calendar" | "list" | "kanban" | "availability";
 
 export default function AgendaPage() {
   const t = useTranslations("Agenda.page");
@@ -43,7 +45,10 @@ export default function AgendaPage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("kanban");
+  // Calendar first — the visual "what's on today" view the user
+  // (and, over their shoulder, the client) reaches for; Kanban stays
+  // last as the process/status view for internal follow-up.
+  const [tab, setTab] = useState<Tab>("calendar");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [dealFormOpen, setDealFormOpen] = useState(false);
@@ -273,11 +278,14 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      {/* Kanban / Agenda tabs — same status-vs-time split discussed for
-          this feature: the board answers "where is each lead in the
-          process", the list answers "what do I have today". */}
+      {/* Calendário / Agenda / Kanban / Disponibilidade — calendar
+          answers "what's on today" (the client-facing glance), the
+          list answers "what's next in order", the board answers
+          "where is each lead in the process" (internal follow-up),
+          and availability is the config surface the scheduling agent
+          will read before offering a slot. */}
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
-        {(["kanban", "list"] as const).map((tb) => (
+        {(["calendar", "list", "kanban", "availability"] as const).map((tb) => (
           <button
             key={tb}
             type="button"
@@ -289,7 +297,13 @@ export default function AgendaPage() {
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {tb === "kanban" ? t("tabKanban") : t("tabList")}
+            {tb === "calendar"
+              ? t("tabCalendar")
+              : tb === "list"
+                ? t("tabList")
+                : tb === "kanban"
+                  ? t("tabKanban")
+                  : t("tabAvailability")}
           </button>
         ))}
       </div>
@@ -303,8 +317,12 @@ export default function AgendaPage() {
           onEditDeal={handleEditDeal}
           hideValue
         />
-      ) : (
+      ) : tab === "list" ? (
         <AgendaList deals={deals} stages={stages} onEditDeal={handleEditDeal} />
+      ) : tab === "calendar" ? (
+        <AgendaCalendar deals={deals} stages={stages} onEditDeal={handleEditDeal} />
+      ) : (
+        <AgendaAvailability />
       )}
 
       {pipeline && (
