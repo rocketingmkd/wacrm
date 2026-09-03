@@ -262,6 +262,13 @@ export interface Message {
    * badge in the inbox. Migration 033.
    */
   ai_generated?: boolean;
+  /**
+   * Display name of the AI agent that generated this message,
+   * snapshotted at send time. Only set alongside `ai_generated`; turns
+   * the badge into "IA · <agent>" so a silent agent-to-agent transfer
+   * is visible in the thread. Migration 056.
+   */
+  ai_agent_name?: string;
 }
 
 export type ReactionActor = 'customer' | 'agent';

@@ -48,6 +48,11 @@ interface SendTextEngineArgs {
    *  badges it as an AI reply. Only the auto-reply bot sets this;
    *  deterministic Flow/automation sends leave it false. */
   aiGenerated?: boolean
+  /** Display name of the AI agent that produced this reply, snapshotted
+   *  onto the message row (`ai_agent_name`) so the inbox badge can read
+   *  "IA · <agent>". Only meaningful alongside `aiGenerated`; ignored
+   *  for human/Flow/automation sends. */
+  aiAgentName?: string
 }
 
 /**
@@ -133,6 +138,7 @@ export async function engineSendText(
     message_id: waMessageId,
     status: 'sent',
     ai_generated: args.aiGenerated ?? false,
+    ai_agent_name: args.aiGenerated ? (args.aiAgentName ?? null) : null,
   })
   if (msgErr) {
     throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)

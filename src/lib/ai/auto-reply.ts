@@ -384,7 +384,7 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     availableAgents: siblings,
   })
 
-  const { text, handoff, transferToSlug, usage } = await generateReply({
+  const { text, handoff, transferToSlug, note, usage } = await generateReply({
     config: agent,
     systemPrompt,
     messages,
@@ -404,25 +404,40 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     usage,
   })
 
+  // Persist any internal note the model recorded (`[[NOTE: ...]]`) —
+  // best-effort and fire-and-forget so it never blocks or fails the
+  // customer-facing reply. Recorded whatever the routing outcome is
+  // (normal reply, silent transfer, or handoff).
+  if (note) {
+    void recordAiNote(db, {
+      accountId,
+      contactId,
+      authorUserId: configOwnerUserId,
+      agentName: agent.name,
+      note,
+    })
+  }
+
   const target = transferToSlug
     ? siblings.find((s) => s.slug === transferToSlug)
     : undefined
 
+  // Transfer requested but the slug matches no active sibling — almost
+  // always a prompt hard-coding a slug that doesn't exist on this
+  // account. The current agent's `text` (if any) is a "transferring you
+  // now" line the customer must not see, so don't fall through to
+  // sending it: surface the mis-route as a visible human handoff with a
+  // pointed note (below).
+  const badTransfer = Boolean(transferToSlug) && !target
+
   if (target && state.hopsRemaining > 0) {
-    let nextReplyCount = state.replyCount
-    // The model may leave a short lead-in before the marker (e.g. "let
-    // me get you the right person") — send it as a normal message if
-    // so; a bare marker (empty text after parsing) sends nothing.
+    // Silent handoff: any text the model wrote alongside the marker is
+    // a lead-in ("let me get you the right person") and must not be
+    // sent — the receiving agent produces the first visible message.
     if (text) {
-      nextReplyCount = await claimAndSend(db, {
-        accountId,
-        conversationId,
-        contactId,
-        configOwnerUserId,
-        text,
-        maxReplies: agent.autoReplyMaxPerConversation,
-        replyCountBefore: state.replyCount,
-      })
+      console.warn(
+        `[ai auto-reply] agent "${agent.slug}" emitted text alongside [[TRANSFER:${transferToSlug}]] — suppressed for a silent handoff: ${text.slice(0, 200)}`,
+      )
     }
 
     await db
@@ -438,16 +453,13 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     // dropping the transfer. Deliberately does NOT also require
     // `autoReplyEnabled` — see loadTransferSiblings' doc comment.
     if (nextAgent) {
-      // Re-fetch the transcript so the next agent sees the message
-      // that was just sent (if any), not a stale copy.
-      const nextMessages = text
-        ? await buildConversationContext(db, conversationId)
-        : state.messages
+      // No message was sent above, so the next agent sees the same
+      // transcript this turn started from — no re-fetch needed.
       await runAgentTurn(db, {
         ...state,
         agent: nextAgent,
-        messages: nextMessages,
-        replyCount: nextReplyCount,
+        messages: state.messages,
+        replyCount: state.replyCount,
         hopsRemaining: state.hopsRemaining - 1,
       })
       return
@@ -456,7 +468,7 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
 
   const hopLimitExceeded = Boolean(target) && state.hopsRemaining <= 0
 
-  if (handoff || hopLimitExceeded || !text) {
+  if (handoff || hopLimitExceeded || badTransfer || !text) {
     // The model can't (or shouldn't) answer — or a transfer chain ran
     // out of hops — so stop auto-replying on this thread and hand it to
     // a human. We (a) pause the bot here (sticky until re-enabled), (b)
@@ -473,7 +485,9 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
       ai_autoreply_disabled: true,
       ai_handoff_summary: hopLimitExceeded
         ? `${summary} (transfer loop hit the ${MAX_TRANSFER_HOPS}-hop limit — routed to a human instead.)`
-        : summary,
+        : badTransfer
+          ? `${summary} (a IA tentou transferir para um agente inexistente: "${transferToSlug}" — confira o slug dos agentes.)`
+          : summary,
     }
     // Only set the assignee when a target is configured — the thread
     // is guaranteed unowned here: `dispatchInboundToAiReply` already
@@ -516,6 +530,7 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     contactId,
     configOwnerUserId,
     text,
+    aiAgentName: agent.name,
     maxReplies: agent.autoReplyMaxPerConversation,
     replyCountBefore: state.replyCount,
   })
@@ -552,6 +567,9 @@ async function claimAndSend(
     contactId: string
     configOwnerUserId: string
     text: string
+    /** Snapshotted onto the message row so the inbox badge reads
+     *  "IA · <agent>". */
+    aiAgentName?: string
     /** `null` → the atomic claim never gates (no per-conversation limit). */
     maxReplies: number | null
     replyCountBefore: number
@@ -578,6 +596,7 @@ async function claimAndSend(
     contactId: args.contactId,
     text: args.text,
     aiGenerated: true,
+    aiAgentName: args.aiAgentName,
   })
 
   // Reflect "the AI is handling this" on the pipeline board. Best-effort
@@ -620,4 +639,45 @@ async function loadTransferSiblings(
     .neq('id', currentAgentId)
   if (error || !data) return []
   return data as TransferableAgent[]
+}
+
+/**
+ * Write an AI-authored internal note to the contact — the summary /
+ * qualification recap the model used to type into the chat now lands
+ * here instead (`[[NOTE: ...]]`, parsed in generate.ts). Shows up in
+ * the inbox contact sidebar's Notes list and on the contacts page,
+ * prefixed so it's unmistakably the bot and which agent wrote it.
+ *
+ * `contact_notes.user_id` is NOT NULL and FKs `auth.users` — there's
+ * no bot principal, so the note is authored as the account's WhatsApp
+ * config owner (same id the outbound send is attributed to). The text
+ * prefix carries the real author.
+ *
+ * Best-effort: swallows its own errors so a notes failure can never
+ * break or delay the customer-facing reply.
+ */
+async function recordAiNote(
+  db: SupabaseClient,
+  args: {
+    accountId: string
+    contactId: string
+    authorUserId: string
+    agentName: string
+    note: string
+  },
+): Promise<void> {
+  try {
+    const body = `🤖 IA · ${args.agentName}\n\n${args.note}`
+    const { error } = await db.from('contact_notes').insert({
+      account_id: args.accountId,
+      contact_id: args.contactId,
+      user_id: args.authorUserId,
+      note_text: body,
+    })
+    if (error) {
+      console.error('[ai auto-reply] recordAiNote insert failed:', error)
+    }
+  } catch (err) {
+    console.error('[ai auto-reply] recordAiNote failed:', err)
+  }
 }

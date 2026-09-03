@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
     siblings: [] as { id: string; slug: string; name: string; description: string | null }[],
     claim: true as boolean,
     conversationUpdates: [] as Record<string, unknown>[],
+    noteInserts: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
     writeLocked: false as boolean,
     // Rows the conditional "flip to capped" UPDATE reports back — empty
@@ -69,6 +70,15 @@ vi.mock('./admin-client', () => ({
           neq: () => Promise.resolve({ data: h.state.siblings, error: null }),
         }
         return chain
+      }
+      if (table === 'contact_notes') {
+        // recordAiNote: .insert(payload)
+        return {
+          insert: (payload: Record<string, unknown>) => {
+            h.state.noteInserts.push(payload)
+            return Promise.resolve({ error: null })
+          },
+        }
       }
       // conversations
       return {
@@ -142,6 +152,7 @@ beforeEach(() => {
   h.state.siblings = []
   h.state.claim = true
   h.state.conversationUpdates = []
+  h.state.noteInserts = []
   h.state.rpcCalls = []
   h.state.writeLocked = false
   h.state.capFlipRows = [{ id: 'conv-1' }]
@@ -153,7 +164,12 @@ beforeEach(() => {
   h.loadReceptionistAgent.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
-  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false, transferToSlug: null })
+  h.generateReply.mockResolvedValue({
+    text: 'Hello!',
+    handoff: false,
+    transferToSlug: null,
+    note: null,
+  })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
 })
 
@@ -369,7 +385,7 @@ describe('dispatchInboundToAiReply — transfer between agents', () => {
     expect(h.generateReply).toHaveBeenCalledTimes(2)
   })
 
-  it('sends a lead-in message before transferring when the model leaves text', async () => {
+  it('never sends a lead-in the model wrote alongside the transfer marker — the handoff is silent', async () => {
     h.generateReply
       .mockResolvedValueOnce({
         text: 'Já te encaminho para o suporte!',
@@ -381,13 +397,52 @@ describe('dispatchInboundToAiReply — transfer between agents', () => {
 
     await dispatchInboundToAiReply(ARGS)
 
-    expect(h.engineSendText).toHaveBeenCalledTimes(2)
-    expect(h.engineSendText).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ text: 'Já te encaminho para o suporte!' }),
+    // Only the post-transfer agent's reply goes out — the "transferring
+    // you now" line is dropped so the customer never sees the handoff.
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Oi, em que posso ajudar?' }),
     )
-    // Both sends claim a slot off the same shared per-conversation counter.
-    expect(h.state.rpcCalls).toHaveLength(2)
+    expect(h.state.rpcCalls).toHaveLength(1)
+  })
+
+  it('turns a transfer to an unknown slug into a visible human handoff', async () => {
+    // siblings only has "suporte"; the model asks for "comercial".
+    h.generateReply.mockResolvedValue({
+      text: 'Vou te passar para o comercial!',
+      handoff: false,
+      transferToSlug: 'comercial',
+      note: null,
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    // The mis-routed lead-in is NOT sent…
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    // …and the thread is paused for a human with a pointed reason.
+    const handoffUpdate = h.state.conversationUpdates.find((u) => u.ai_autoreply_disabled)
+    expect(handoffUpdate).toBeTruthy()
+    expect(handoffUpdate!.ai_handoff_summary).toContain('inexistente')
+    expect(handoffUpdate!.ai_handoff_summary).toContain('comercial')
+    expect(h.notifyHandoffToTeam).toHaveBeenCalled()
+  })
+
+  it('passes the sending agent name to engineSendText so the inbox badges it', async () => {
+    h.generateReply
+      .mockResolvedValueOnce({ text: '', handoff: false, transferToSlug: 'suporte', note: null })
+      .mockResolvedValueOnce({
+        text: 'Claro, posso ajudar!',
+        handoff: false,
+        transferToSlug: null,
+        note: null,
+      })
+    h.loadAiAgent.mockResolvedValue(suporte)
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ aiGenerated: true, aiAgentName: 'Suporte' }),
+    )
   })
 
   it('transfers to a specialist that has auto-reply off — only isActive gates a transfer target', async () => {
@@ -417,5 +472,37 @@ describe('dispatchInboundToAiReply — transfer between agents', () => {
     const handoffUpdate = h.state.conversationUpdates.find((u) => u.ai_autoreply_disabled)
     expect(handoffUpdate).toBeTruthy()
     expect(handoffUpdate!.ai_handoff_summary).toContain('hop limit')
+  })
+})
+
+describe('dispatchInboundToAiReply — internal notes', () => {
+  it('records a [[NOTE: ...]] as a private contact note and still sends the plain reply', async () => {
+    h.loadReceptionistAgent.mockResolvedValue(aiConfig({ name: 'Recepção' }))
+    h.generateReply.mockResolvedValue({
+      text: 'Perfeito, obrigado pelas informações!',
+      handoff: false,
+      transferToSlug: null,
+      note: 'Cliente: Acme. Quer landing page. Prazo: 2 semanas.',
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.state.noteInserts).toHaveLength(1)
+    expect(h.state.noteInserts[0]).toMatchObject({
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      user_id: 'user-1',
+    })
+    expect(h.state.noteInserts[0].note_text).toContain('Cliente: Acme')
+    expect(h.state.noteInserts[0].note_text).toContain('IA · Recepção')
+    // The customer-facing send is unaffected — just the reply text.
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Perfeito, obrigado pelas informações!' }),
+    )
+  })
+
+  it('writes no note when the model returns none', async () => {
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.noteInserts).toHaveLength(0)
   })
 })

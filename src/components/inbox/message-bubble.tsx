@@ -327,14 +327,25 @@ export function MessageBubble({
           {/* AI badge — only on replies the auto-reply bot generated
               (always outbound, so it sits on the wa-out fill). Lets
               agents tell an AI reply from their own / a Flow's at a
-              glance. */}
+              glance. When the reply carries the agent's name (multi-
+              agent accounts, migration 056) the badge names it —
+              "IA · Comercial" — so a silent transfer is visible. */}
           {message.ai_generated && (
             <span
-              className="inline-flex items-center gap-0.5 rounded-full bg-wa-out-foreground/20 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-wa-out-foreground"
-              title={t("aiBadgeTitle")}
+              className="inline-flex max-w-[60%] items-center gap-0.5 rounded-full bg-wa-out-foreground/20 px-1.5 py-px text-[9px] font-semibold leading-none tracking-wide text-wa-out-foreground"
+              title={
+                message.ai_agent_name
+                  ? `${t("aiBadgeTitle")} — ${message.ai_agent_name}`
+                  : t("aiBadgeTitle")
+              }
             >
-              <Sparkles className="h-2.5 w-2.5" />
-              {t("aiBadge")}
+              <Sparkles className="h-2.5 w-2.5 shrink-0" />
+              <span className="uppercase">{t("aiBadge")}</span>
+              {message.ai_agent_name && (
+                <span className="truncate normal-case opacity-90">
+                  · {message.ai_agent_name}
+                </span>
+              )}
             </span>
           )}
           {/* Fixed WhatsApp metadata gray — reads fine against both the

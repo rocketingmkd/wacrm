@@ -109,13 +109,24 @@ export function buildSystemPrompt(args: {
 
   if (mode === 'auto_reply' && availableAgents && availableAgents.length > 0) {
     parts.push(
-      'You are one of several specialized agents on this account. If the conversation is better handled by one of the other agents below, transfer it by including exactly ' +
-        `[[TRANSFER:<slug>]] (using the exact slug from the list — never invent one) in your reply. You may say a short line to the customer first (e.g. "let me get you the right person"), or just emit the marker alone — either way, do not answer the customer's actual question yourself once you've decided to transfer. ` +
-        `Only transfer when a listed agent is clearly a better fit than you; otherwise keep helping, or use ${HANDOFF_SENTINEL} if you need a human instead. ` +
+      'You are one of several specialized agents on this account. When the conversation is clearly a better fit for one of the agents listed below, transfer it by outputting exactly ' +
+        '[[TRANSFER:<slug>]] using one of the exact slugs from the "Available agents" list — never invent, translate, or reformat a slug, and never guess a slug when unsure. ' +
+        'The transfer is SILENT: the customer must not be told they are being transferred, moved, connected, or passed to anyone. Do NOT write a hand-off line ' +
+        '("let me get you the right person", "one moment", "I\'ll pass you to the team"), and do NOT answer the customer\'s question yourself. Output the marker on its own with no other text — ' +
+        'the receiving agent sends the next visible message. ' +
+        `Only transfer when a listed agent is clearly better suited than you; otherwise keep helping, or use ${HANDOFF_SENTINEL} if you need a human instead. ` +
         'Available agents:\n' +
         availableAgents
           .map((a) => `- ${a.slug}: ${a.name}${a.description ? ` — ${a.description}` : ''}`)
           .join('\n'),
+    )
+  }
+
+  if (mode === 'auto_reply') {
+    parts.push(
+      'Internal notes: to record structured context for the human team (a lead-qualification summary, a support-ticket recap, key facts you gathered), output it as ' +
+        '[[NOTE: ...your note here...]] anywhere in your reply. It is removed before the message is sent and saved privately on the contact — the customer never sees it. ' +
+        'Never put a recap, summary, checklist, or "here is what I understood" block in the message you send the customer; use a [[NOTE: ...]] for that. A normal reply needs no note.',
     )
   }
 
