@@ -404,17 +404,15 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     usage,
   })
 
-  // Persist any internal note the model recorded (`[[NOTE: ...]]`) —
+  // Persist the contact's single evolving "IA note" (`[[NOTE: ...]]`) —
   // best-effort and fire-and-forget so it never blocks or fails the
   // customer-facing reply. Recorded whatever the routing outcome is
   // (normal reply, silent transfer, or handoff).
   if (note) {
-    void recordAiNote(db, {
-      accountId,
+    void upsertAiSummary(db, {
       contactId,
-      authorUserId: configOwnerUserId,
       agentName: agent.name,
-      note,
+      summary: note,
     })
   }
 
@@ -642,42 +640,38 @@ async function loadTransferSiblings(
 }
 
 /**
- * Write an AI-authored internal note to the contact — the summary /
- * qualification recap the model used to type into the chat now lands
- * here instead (`[[NOTE: ...]]`, parsed in generate.ts). Shows up in
- * the inbox contact sidebar's Notes list and on the contacts page,
- * prefixed so it's unmistakably the bot and which agent wrote it.
+ * Update the contact's single "IA note" — one living summary the
+ * agents keep for the human team (`[[NOTE: ...]]`, parsed in
+ * generate.ts). REPLACES the previous value rather than appending, so
+ * a qualification that develops over several turns leaves one clean
+ * summary instead of a pile of near-duplicate notes (the pre-058
+ * contact_notes approach). Surfaced in the UI behind the "Nota IA"
+ * button, separate from the human notes list.
  *
- * `contact_notes.user_id` is NOT NULL and FKs `auth.users` — there's
- * no bot principal, so the note is authored as the account's WhatsApp
- * config owner (same id the outbound send is attributed to). The text
- * prefix carries the real author.
- *
- * Best-effort: swallows its own errors so a notes failure can never
+ * Best-effort: swallows its own errors so a summary write can never
  * break or delay the customer-facing reply.
  */
-async function recordAiNote(
+async function upsertAiSummary(
   db: SupabaseClient,
   args: {
-    accountId: string
     contactId: string
-    authorUserId: string
     agentName: string
-    note: string
+    summary: string
   },
 ): Promise<void> {
   try {
-    const body = `🤖 IA · ${args.agentName}\n\n${args.note}`
-    const { error } = await db.from('contact_notes').insert({
-      account_id: args.accountId,
-      contact_id: args.contactId,
-      user_id: args.authorUserId,
-      note_text: body,
-    })
+    const { error } = await db
+      .from('contacts')
+      .update({
+        ai_summary: args.summary,
+        ai_summary_agent: args.agentName,
+        ai_summary_updated_at: new Date().toISOString(),
+      })
+      .eq('id', args.contactId)
     if (error) {
-      console.error('[ai auto-reply] recordAiNote insert failed:', error)
+      console.error('[ai auto-reply] upsertAiSummary failed:', error)
     }
   } catch (err) {
-    console.error('[ai auto-reply] recordAiNote failed:', err)
+    console.error('[ai auto-reply] upsertAiSummary failed:', err)
   }
 }

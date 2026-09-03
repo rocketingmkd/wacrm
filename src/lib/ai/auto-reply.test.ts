@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
     siblings: [] as { id: string; slug: string; name: string; description: string | null }[],
     claim: true as boolean,
     conversationUpdates: [] as Record<string, unknown>[],
-    noteInserts: [] as Record<string, unknown>[],
+    aiSummaryWrites: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
     writeLocked: false as boolean,
     // Rows the conditional "flip to capped" UPDATE reports back — empty
@@ -71,12 +71,12 @@ vi.mock('./admin-client', () => ({
         }
         return chain
       }
-      if (table === 'contact_notes') {
-        // recordAiNote: .insert(payload)
+      if (table === 'contacts') {
+        // upsertAiSummary: .update(payload).eq('id', contactId)
         return {
-          insert: (payload: Record<string, unknown>) => {
-            h.state.noteInserts.push(payload)
-            return Promise.resolve({ error: null })
+          update: (payload: Record<string, unknown>) => {
+            h.state.aiSummaryWrites.push(payload)
+            return { eq: () => Promise.resolve({ error: null }) }
           },
         }
       }
@@ -152,7 +152,7 @@ beforeEach(() => {
   h.state.siblings = []
   h.state.claim = true
   h.state.conversationUpdates = []
-  h.state.noteInserts = []
+  h.state.aiSummaryWrites = []
   h.state.rpcCalls = []
   h.state.writeLocked = false
   h.state.capFlipRows = [{ id: 'conv-1' }]
@@ -475,8 +475,8 @@ describe('dispatchInboundToAiReply — transfer between agents', () => {
   })
 })
 
-describe('dispatchInboundToAiReply — internal notes', () => {
-  it('records a [[NOTE: ...]] as a private contact note and still sends the plain reply', async () => {
+describe('dispatchInboundToAiReply — AI note', () => {
+  it('replaces the contact ai_summary from a [[NOTE: ...]] and still sends the plain reply', async () => {
     h.loadReceptionistAgent.mockResolvedValue(aiConfig({ name: 'Recepção' }))
     h.generateReply.mockResolvedValue({
       text: 'Perfeito, obrigado pelas informações!',
@@ -487,22 +487,20 @@ describe('dispatchInboundToAiReply — internal notes', () => {
 
     await dispatchInboundToAiReply(ARGS)
 
-    expect(h.state.noteInserts).toHaveLength(1)
-    expect(h.state.noteInserts[0]).toMatchObject({
-      account_id: 'acct-1',
-      contact_id: 'contact-1',
-      user_id: 'user-1',
+    expect(h.state.aiSummaryWrites).toHaveLength(1)
+    expect(h.state.aiSummaryWrites[0]).toMatchObject({
+      ai_summary: 'Cliente: Acme. Quer landing page. Prazo: 2 semanas.',
+      ai_summary_agent: 'Recepção',
     })
-    expect(h.state.noteInserts[0].note_text).toContain('Cliente: Acme')
-    expect(h.state.noteInserts[0].note_text).toContain('IA · Recepção')
+    expect(h.state.aiSummaryWrites[0].ai_summary_updated_at).toBeTruthy()
     // The customer-facing send is unaffected — just the reply text.
     expect(h.engineSendText).toHaveBeenCalledWith(
       expect.objectContaining({ text: 'Perfeito, obrigado pelas informações!' }),
     )
   })
 
-  it('writes no note when the model returns none', async () => {
+  it('does not touch ai_summary when the model returns no note', async () => {
     await dispatchInboundToAiReply(ARGS)
-    expect(h.state.noteInserts).toHaveLength(0)
+    expect(h.state.aiSummaryWrites).toHaveLength(0)
   })
 })

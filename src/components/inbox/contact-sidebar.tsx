@@ -13,6 +13,7 @@ import type {
   PipelineStage,
 } from "@/types";
 import { DealForm } from "@/components/pipelines/deal-form";
+import { AiSummaryButton } from "@/components/contacts/ai-summary-button";
 import {
   Phone,
   Mail,
@@ -327,9 +328,17 @@ export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
 
           {/* Notes */}
           <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <StickyNote className="h-3 w-3" />
-              {tSidebar("notes")}
+            <div className="flex items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <StickyNote className="h-3 w-3" />
+                {tSidebar("notes")}
+              </div>
+              <AiSummaryButton
+                summary={contact.ai_summary}
+                updatedAt={contact.ai_summary_updated_at}
+                agent={contact.ai_summary_agent}
+                className="h-6 px-1.5 text-[10px]"
+              />
             </div>
             <div className="mt-2">
               <div className="flex gap-2">

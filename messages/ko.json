@@ -491,6 +491,11 @@
       "toastDeleted": "\"{name}\"을(를) 삭제했습니다."
     }
   },
+  "AiNote": {
+    "button": "AI 메모",
+    "title": "AI 메모",
+    "empty": "아직 AI 요약이 없습니다."
+  },
   "Pipelines": {
     "page": {
       "selectPipeline": "파이프라인 선택",

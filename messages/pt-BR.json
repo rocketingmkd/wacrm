@@ -492,6 +492,11 @@
       "toastDeleted": "Excluído \"{name}\"."
     }
   },
+  "AiNote": {
+    "button": "Nota IA",
+    "title": "Nota IA",
+    "empty": "A IA ainda não registrou um resumo."
+  },
   "Pipelines": {
     "page": {
       "selectPipeline": "Selecionar funil",

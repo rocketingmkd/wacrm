@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { AiSummaryButton } from '@/components/contacts/ai-summary-button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -584,6 +585,15 @@ export function ContactDetailView({
 
               {/* Notes Tab */}
               <TabsContent value="notes" className="flex-1 flex flex-col min-h-0 px-4 py-3">
+                {contact?.ai_summary && (
+                  <div className="mb-3 flex justify-end">
+                    <AiSummaryButton
+                      summary={contact.ai_summary}
+                      updatedAt={contact.ai_summary_updated_at}
+                      agent={contact.ai_summary_agent}
+                    />
+                  </div>
+                )}
                 <div className="space-y-2 mb-3">
                   <Textarea
                     value={newNote}

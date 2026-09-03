@@ -120,6 +120,13 @@ export interface Contact {
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  /** Single evolving summary the AI auto-reply agents keep on this
+   *  contact (migration 058). Shown behind the "Nota IA" button,
+   *  separate from `contact_notes`. Null until an agent records one. */
+  ai_summary?: string | null;
+  ai_summary_updated_at?: string | null;
+  /** Display name of the agent that last wrote `ai_summary`. */
+  ai_summary_agent?: string | null;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];

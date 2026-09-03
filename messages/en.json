@@ -492,6 +492,11 @@
       "toastDeleted": "Deleted \"{name}\"."
     }
   },
+  "AiNote": {
+    "button": "AI note",
+    "title": "AI note",
+    "empty": "No AI summary yet."
+  },
   "Pipelines": {
     "page": {
       "selectPipeline": "Select Pipeline",
