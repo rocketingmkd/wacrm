@@ -100,6 +100,11 @@ export interface GenerateResult {
    *  another AI agent (`[[TRANSFER:<slug>]]`), else null. Auto-reply
    *  mode only — see buildSystemPrompt's transfer-menu block. */
   transferToSlug: string | null
+  /** Internal note the model asked to record for the human team
+   *  (`[[NOTE:<text>]]`), else null. Stripped from `text` so the
+   *  customer never sees it; the dispatcher writes it to the contact's
+   *  notes. Auto-reply mode only. */
+  note: string | null
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

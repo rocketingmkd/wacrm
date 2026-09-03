@@ -58,17 +58,28 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
  *  lower-case. */
 const TRANSFER_SENTINEL_RE = /\[\[TRANSFER:([a-z0-9_-]+)\]\]/i
 
+/** Matches `[[NOTE: … ]]` — the model records internal context for the
+ *  human team here (a lead-qualification summary, a support-ticket
+ *  recap) instead of putting a recap in the customer-facing reply.
+ *  Non-greedy `[\s\S]` so it spans newlines but stops at the first
+ *  closing `]]`. Case-insensitive on the label for the same reason as
+ *  the other sentinels — models drift on casing. Only the FIRST note
+ *  is captured; any stray extra one is still stripped from the reply
+ *  text by the global replace below. */
+const NOTE_SENTINEL_RE = /\[\[NOTE:\s*([\s\S]*?)\]\]/i
+
 /**
  * Split the raw model output into `{ text, handoff, transferToSlug,
- * usage }`. Either sentinel can appear alone or trailing a partial
+ * note, usage }`. Any sentinel can appear alone or trailing a partial
  * reply; either way the marker is stripped from any remaining text.
  * `usage` is passed straight through (null when the provider didn't
  * report it).
  *
- * A model could in principle emit both sentinels in one turn (a
- * malformed response, not a valid instruction — the prompt only ever
- * asks for one or the other). Both are still parsed defensively;
- * `dispatchInboundToAiReply` decides precedence when routing.
+ * A model could in principle emit several sentinels in one turn (a
+ * malformed response, not a valid instruction — the prompt asks for
+ * one control marker plus an optional note). All are parsed
+ * defensively; `dispatchInboundToAiReply` decides precedence when
+ * routing.
  */
 export function parseGeneration(
   raw: string,
@@ -77,10 +88,13 @@ export function parseGeneration(
   const handoff = raw.includes(HANDOFF_SENTINEL)
   const transferMatch = raw.match(TRANSFER_SENTINEL_RE)
   const transferToSlug = transferMatch ? transferMatch[1].toLowerCase() : null
+  const noteMatch = raw.match(NOTE_SENTINEL_RE)
+  const note = noteMatch ? noteMatch[1].trim() || null : null
   const text = raw
     .split(HANDOFF_SENTINEL)
     .join('')
     .replace(TRANSFER_SENTINEL_RE, '')
+    .replace(new RegExp(NOTE_SENTINEL_RE.source, 'gi'), '')
     .trim()
-  return { text, handoff, transferToSlug, usage }
+  return { text, handoff, transferToSlug, note, usage }
 }

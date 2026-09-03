@@ -49,6 +49,7 @@ describe('parseGeneration', () => {
       text: 'Hello there',
       handoff: false,
       transferToSlug: null,
+      note: null,
       usage: null,
     })
   })
@@ -58,12 +59,14 @@ describe('parseGeneration', () => {
       text: '',
       handoff: true,
       transferToSlug: null,
+      note: null,
       usage: null,
     })
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
       text: 'Let me get a human',
       handoff: true,
       transferToSlug: null,
+      note: null,
       usage: null,
     })
   })
@@ -73,14 +76,44 @@ describe('parseGeneration', () => {
       text: '',
       handoff: false,
       transferToSlug: 'suporte',
+      note: null,
       usage: null,
     })
     expect(parseGeneration('Vou te passar para o time [[TRANSFER:Vendas]]')).toEqual({
       text: 'Vou te passar para o time',
       handoff: false,
       transferToSlug: 'vendas',
+      note: null,
       usage: null,
     })
+  })
+
+  it('detects + strips a [[NOTE: ...]] block, keeping the rest as the reply', () => {
+    expect(
+      parseGeneration(
+        'Claro, já registrei aqui.\n\n[[NOTE: Cliente quer site institucional. Prazo: 30 dias.]]',
+      ),
+    ).toEqual({
+      text: 'Claro, já registrei aqui.',
+      handoff: false,
+      transferToSlug: null,
+      note: 'Cliente quer site institucional. Prazo: 30 dias.',
+      usage: null,
+    })
+  })
+
+  it('captures a multi-line note alongside a transfer marker', () => {
+    expect(parseGeneration('[[NOTE: Resumo\nLinha 2]]\n[[TRANSFER:comercial]]')).toEqual({
+      text: '',
+      handoff: false,
+      transferToSlug: 'comercial',
+      note: 'Resumo\nLinha 2',
+      usage: null,
+    })
+  })
+
+  it('treats an empty note body as no note', () => {
+    expect(parseGeneration('Oi [[NOTE:   ]]').note).toBeNull()
   })
 
   it('passes usage straight through', () => {
@@ -89,6 +122,7 @@ describe('parseGeneration', () => {
       text: 'Hi',
       handoff: false,
       transferToSlug: null,
+      note: null,
       usage,
     })
   })
@@ -114,6 +148,7 @@ describe('generateReply — OpenAI', () => {
       text: 'Sure — happy to help!',
       handoff: false,
       transferToSlug: null,
+      note: null,
       usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -174,6 +209,7 @@ describe('generateReply — Anthropic', () => {
       text: 'Hi there!',
       handoff: false,
       transferToSlug: null,
+      note: null,
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
