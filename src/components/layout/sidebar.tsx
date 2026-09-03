@@ -11,6 +11,7 @@ import type { PlanFeatures } from "@/lib/billing/plan";
 import {
   Bell,
   Bot,
+  CalendarDays,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -103,6 +104,7 @@ const navItems: NavItem[] = [
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
+  { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
   { href: "/flows", labelKey: "flows", icon: Workflow, beta: true, feature: "flows" },

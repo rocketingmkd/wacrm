@@ -21,6 +21,7 @@
     "notifications": "Notifications",
     "contacts": "Contacts",
     "pipelines": "Pipelines",
+    "agenda": "Agenda",
     "broadcasts": "Broadcasts",
     "automations": "Automations",
     "flows": "Flows",
@@ -46,6 +47,7 @@
     "notifications": "Notifications",
     "contacts": "Contacts",
     "pipelines": "Pipelines",
+    "agenda": "Agenda",
     "broadcasts": "Broadcasts",
     "automations": "Automations",
     "settings": "Settings",
@@ -533,6 +535,7 @@
       "value": "Value",
       "currency": "Currency",
       "expectedCloseDate": "Expected Close Date",
+      "scheduledAt": "Appointment date and time",
       "stage": "Stage",
       "assignedTo": "Assigned To",
       "unassigned": "Unassigned",
@@ -551,6 +554,7 @@
       "deleting": "Deleting...",
       "deleteDeal": "Delete Deal",
       "toastRequired": "Title, contact, and stage are required",
+      "toastScheduledAtRequired": "Set the appointment's date and time",
       "toastFailedSave": "Failed to save deal",
       "toastNotSignedIn": "Not signed in",
       "toastNotLinked": "Your profile is not linked to an account.",
@@ -602,6 +606,27 @@
       "lostThisMonth": "Lost This Month",
       "lostThisMonthTooltip": "Deals marked as Lost since the first day of the current month.",
       "howCalculated": "How {label} is calculated"
+    }
+  },
+  "Agenda": {
+    "page": {
+      "title": "Agenda",
+      "subtitle": "Appointments booked by the AI agent or by you — track status and times in one place.",
+      "tabKanban": "Kanban",
+      "tabList": "Agenda",
+      "addAppointment": "New appointment",
+      "manage": "Manage",
+      "loadError": "Couldn't load the agenda."
+    },
+    "list": {
+      "empty": "No appointments booked yet.",
+      "emptyFiltered": "No appointments in this period.",
+      "noTime": "No time set",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "filterUpcoming": "Upcoming",
+      "filterPast": "Past",
+      "filterAll": "All"
     }
   },
   "Broadcasts": {

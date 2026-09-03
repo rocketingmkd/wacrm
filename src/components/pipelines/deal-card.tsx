@@ -3,8 +3,10 @@
 import Link from "next/link";
 import type { Deal, PipelineStage } from "@/types";
 import { formatCurrency } from "@/lib/currency";
-import { Check, MessageSquare, X } from "lucide-react";
+import { Check, Clock, MessageSquare, X } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface DealCardProps {
   deal: Deal;
@@ -82,6 +84,13 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
 
       {/* Lead source lands here once the field exists — a future
           phase, per product decision. */}
+
+      {deal.scheduled_at && (
+        <div className="mt-2 flex items-center gap-1 text-xs font-medium text-foreground">
+          <Clock className="h-3 w-3 text-muted-foreground" />
+          {format(new Date(deal.scheduled_at), "d 'de' MMM, HH:mm", { locale: ptBR })}
+        </div>
+      )}
 
       {(deal.value > 0 || deal.conversation_id) && (
         <div className="mt-2 flex items-center justify-between gap-2">

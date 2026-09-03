@@ -21,6 +21,7 @@
     "notifications": "Notificações",
     "contacts": "Contatos",
     "pipelines": "Funis",
+    "agenda": "Agenda",
     "broadcasts": "Disparos",
     "automations": "Automações",
     "flows": "Fluxos",
@@ -46,6 +47,7 @@
     "notifications": "Notificações",
     "contacts": "Contatos",
     "pipelines": "Funis",
+    "agenda": "Agenda",
     "broadcasts": "Disparos",
     "automations": "Automações",
     "settings": "Configurações",
@@ -533,6 +535,7 @@
       "value": "Valor",
       "currency": "Moeda",
       "expectedCloseDate": "Data prevista de fechamento",
+      "scheduledAt": "Data e hora do compromisso",
       "stage": "Etapa",
       "assignedTo": "Atribuído a",
       "unassigned": "Não atribuído",
@@ -551,6 +554,7 @@
       "deleting": "Excluindo...",
       "deleteDeal": "Excluir negócio",
       "toastRequired": "Título, contato e etapa são obrigatórios",
+      "toastScheduledAtRequired": "Informe a data e hora do compromisso",
       "toastFailedSave": "Falha ao salvar negócio",
       "toastNotSignedIn": "Não conectado",
       "toastNotLinked": "Seu perfil não está vinculado a uma conta.",
@@ -602,6 +606,27 @@
       "lostThisMonth": "Perdidos este mês",
       "lostThisMonthTooltip": "Negócios marcados como Perdido desde o primeiro dia do mês atual.",
       "howCalculated": "Como {label} é calculado"
+    }
+  },
+  "Agenda": {
+    "page": {
+      "title": "Agenda",
+      "subtitle": "Compromissos marcados pelo agente de IA ou por você — acompanhe status e horários num só lugar.",
+      "tabKanban": "Kanban",
+      "tabList": "Agenda",
+      "addAppointment": "Novo compromisso",
+      "manage": "Gerenciar",
+      "loadError": "Não foi possível carregar a agenda."
+    },
+    "list": {
+      "empty": "Nenhum compromisso marcado.",
+      "emptyFiltered": "Nenhum compromisso neste período.",
+      "noTime": "Sem horário definido",
+      "today": "Hoje",
+      "tomorrow": "Amanhã",
+      "filterUpcoming": "Próximos",
+      "filterPast": "Passados",
+      "filterAll": "Todos"
     }
   },
   "Broadcasts": {

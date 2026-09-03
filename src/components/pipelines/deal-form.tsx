@@ -33,6 +33,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { format } from "date-fns";
+
+/** `<input type="datetime-local">` reads/writes local wall-clock time
+ *  with no timezone suffix — this renders an ISO `scheduled_at` (UTC)
+ *  into that shape, and `new Date(rawInputValue)` below does the
+ *  inverse (a timezone-less string is parsed as local time by `Date`). */
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return format(new Date(iso), "yyyy-MM-dd'T'HH:mm");
+}
 
 interface DealFormProps {
   open: boolean;
@@ -45,6 +55,10 @@ interface DealFormProps {
    *  inbox's contact sidebar, where the contact is already known).
    *  Ignored when editing an existing `deal`. */
   defaultContactId?: string;
+  /** True on the account's Agenda pipeline — shows the appointment
+   *  date/time field (and requires it) instead of leaving `deals.
+   *  scheduled_at` to a generic "expected close date". */
+  isScheduling?: boolean;
   onSaved: () => void;
 }
 
@@ -56,6 +70,7 @@ export function DealForm({
   stages,
   defaultStageId,
   defaultContactId,
+  isScheduling,
   onSaved,
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
@@ -69,6 +84,7 @@ export function DealForm({
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [expectedCloseDate, setExpectedCloseDate] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [notes, setNotes] = useState("");
 
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -98,6 +114,7 @@ export function DealForm({
       setStageId(deal.stage_id);
       setAssignedTo(deal.assigned_to ?? "");
       setExpectedCloseDate(deal.expected_close_date ?? "");
+      setScheduledAt(toDatetimeLocal(deal.scheduled_at));
       setNotes(deal.notes ?? "");
     } else {
       setTitle("");
@@ -107,6 +124,7 @@ export function DealForm({
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
       setExpectedCloseDate("");
+      setScheduledAt("");
       setNotes("");
     }
   }, [open, deal, defaultStageId, defaultContactId, stages, defaultCurrency]);
@@ -161,6 +179,10 @@ export function DealForm({
       toast.error(t("toastRequired"));
       return;
     }
+    if (isScheduling && !scheduledAt) {
+      toast.error(t("toastScheduledAtRequired"));
+      return;
+    }
     setSaving(true);
 
     // `stage_id` is deliberately NOT in this shared payload. On edit it
@@ -177,6 +199,10 @@ export function DealForm({
       assigned_to: assignedTo || null,
       notes: notes.trim() || null,
       expected_close_date: expectedCloseDate || null,
+      // A timezone-less datetime-local value is parsed as local time —
+      // `.toISOString()` is what actually lands in the `timestamptz`
+      // column. Empty/untouched (a non-Agenda deal) stores null.
+      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
     };
 
     if (deal) {
@@ -322,45 +348,61 @@ export function DealForm({
               )}
             </div>
 
-            <div className="grid grid-cols-[1fr_110px] gap-3">
+            {isScheduling && (
               <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t("value")}</Label>
-                <div className="relative">
-                  <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Label className="text-muted-foreground">{t("scheduledAt")}</Label>
+                <Input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  className="border-border bg-muted text-foreground"
+                />
+              </div>
+            )}
+
+            {!isScheduling && (
+              <>
+                <div className="grid grid-cols-[1fr_110px] gap-3">
+                  <div className="grid gap-2">
+                    <Label className="text-muted-foreground">{t("value")}</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        placeholder="0"
+                        className="border-border bg-muted pl-7 text-foreground"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-muted-foreground">{t("currency")}</Label>
+                    <select
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
+                    >
+                      {CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label className="text-muted-foreground">{t("expectedCloseDate")}</Label>
                   <Input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder="0"
-                    className="border-border bg-muted pl-7 text-foreground"
+                    type="date"
+                    value={expectedCloseDate}
+                    onChange={(e) => setExpectedCloseDate(e.target.value)}
+                    className="border-border bg-muted text-foreground"
                   />
                 </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-muted-foreground">{t("currency")}</Label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  {CURRENCIES.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">{t("expectedCloseDate")}</Label>
-              <Input
-                type="date"
-                value={expectedCloseDate}
-                onChange={(e) => setExpectedCloseDate(e.target.value)}
-                className="border-border bg-muted text-foreground"
-              />
-            </div>
+              </>
+            )}
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">{t("stage")}</Label>

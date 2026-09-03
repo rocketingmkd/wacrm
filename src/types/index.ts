@@ -360,7 +360,11 @@ export interface MessageTemplate {
 export interface Pipeline {
   id: string;
   user_id: string;
+  account_id: string;
   name: string;
+  /** Marks the account's one dedicated scheduling pipeline (migration
+   *  054) — the Agenda tab, not the regular sales pipeline(s). */
+  is_scheduling?: boolean;
   created_at: string;
 }
 
@@ -392,6 +396,9 @@ export interface Deal {
   currency?: string;
   notes?: string;
   expected_close_date?: string;
+  /** The compromisso's date+time on the Agenda pipeline (migration
+   *  054) — unused on a regular sales deal. */
+  scheduled_at?: string | null;
   status?: DealStatus;
   created_at: string;
   updated_at?: string;

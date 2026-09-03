@@ -21,6 +21,7 @@
     "notifications": "알림",
     "contacts": "연락처",
     "pipelines": "파이프라인",
+    "agenda": "일정",
     "broadcasts": "브로드캐스트",
     "automations": "자동화",
     "flows": "플로우",
@@ -46,6 +47,7 @@
     "notifications": "알림",
     "contacts": "연락처",
     "pipelines": "파이프라인",
+    "agenda": "일정",
     "broadcasts": "브로드캐스트",
     "automations": "자동화",
     "settings": "설정",
@@ -532,6 +534,7 @@
       "value": "금액",
       "currency": "통화",
       "expectedCloseDate": "예상 마감일",
+      "scheduledAt": "예약 날짜 및 시간",
       "stage": "단계",
       "assignedTo": "담당자",
       "unassigned": "담당자 없음",
@@ -550,6 +553,7 @@
       "deleting": "삭제 중...",
       "deleteDeal": "딜 삭제",
       "toastRequired": "제목, 연락처, 단계는 필수입니다",
+      "toastScheduledAtRequired": "약속 날짜와 시간을 입력하세요",
       "toastFailedSave": "딜을 저장하지 못했습니다",
       "toastNotSignedIn": "로그인되어 있지 않습니다",
       "toastNotLinked": "프로필이 계정에 연결되어 있지 않습니다.",
@@ -601,6 +605,27 @@
       "lostThisMonth": "이번 달 실패",
       "lostThisMonthTooltip": "이번 달 1일 이후 실패로 표시된 딜입니다.",
       "howCalculated": "{label} 계산 방법"
+    }
+  },
+  "Agenda": {
+    "page": {
+      "title": "일정",
+      "subtitle": "AI 에이전트 또는 직접 예약한 약속을 한곳에서 상태와 시간별로 확인하세요.",
+      "tabKanban": "칸반",
+      "tabList": "일정",
+      "addAppointment": "새 약속",
+      "manage": "관리",
+      "loadError": "일정을 불러오지 못했습니다."
+    },
+    "list": {
+      "empty": "예약된 약속이 없습니다.",
+      "emptyFiltered": "이 기간에는 예약된 약속이 없습니다.",
+      "noTime": "시간 미정",
+      "today": "오늘",
+      "tomorrow": "내일",
+      "filterUpcoming": "예정된 일정",
+      "filterPast": "지난 일정",
+      "filterAll": "전체"
     }
   },
   "Broadcasts": {

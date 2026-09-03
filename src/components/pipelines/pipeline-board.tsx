@@ -28,6 +28,10 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  /** Hides the per-column currency total — the Agenda pipeline's cards
+   *  never carry a monetary value, so "R$0,00" under every column
+   *  would just be noise. */
+  hideValue?: boolean;
 }
 
 export function PipelineBoard({
@@ -36,6 +40,7 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  hideValue,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -119,6 +124,7 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              hideValue={hideValue}
             />
           );
         })}
@@ -193,6 +199,7 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  hideValue,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -200,6 +207,7 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  hideValue?: boolean;
 }) {
   const t = useTranslations("Pipelines.board");
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
@@ -225,9 +233,11 @@ function StageColumn({
           {deals.length}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
-      </p>
+      {!hideValue && (
+        <p className="text-xs text-muted-foreground">
+          {formatCurrency(totalValue, currency)}
+        </p>
+      )}
 
       <div
         ref={setNodeRef}

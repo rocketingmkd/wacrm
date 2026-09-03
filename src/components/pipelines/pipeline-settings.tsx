@@ -58,6 +58,10 @@ interface PipelineSettingsProps {
   onPipelinesChanged: () => void;
   onStagesChanged: () => void;
   onCreateNewPipeline: () => void;
+  /** Hides the "create another pipeline" action — the Agenda pipeline
+   *  is a fixed singleton (migration 054), not something to fan out
+   *  from here like the regular sales pipelines. */
+  hideCreateNew?: boolean;
 }
 
 export function PipelineSettings({
@@ -68,6 +72,7 @@ export function PipelineSettings({
   onPipelinesChanged,
   onStagesChanged,
   onCreateNewPipeline,
+  hideCreateNew,
 }: PipelineSettingsProps) {
   const t = useTranslations("Pipelines.settings");
   const supabase = createClient();
@@ -325,14 +330,16 @@ export function PipelineSettings({
                 </div>
               </div>
 
-              <Button
-                variant="outline"
-                onClick={onCreateNewPipeline}
-                className="w-full border-border bg-transparent text-muted-foreground hover:bg-muted"
-              >
-                <Plus className="mr-1 h-3 w-3" />
-                {t("createNewPipeline")}
-              </Button>
+              {!hideCreateNew && (
+                <Button
+                  variant="outline"
+                  onClick={onCreateNewPipeline}
+                  className="w-full border-border bg-transparent text-muted-foreground hover:bg-muted"
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  {t("createNewPipeline")}
+                </Button>
+              )}
             </div>
 
             <DialogFooter className="border-border bg-popover/50">
