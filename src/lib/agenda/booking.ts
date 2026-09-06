@@ -23,6 +23,46 @@ const VALIDATION_SLOT_LIMIT = 1000
 
 const TZ = 'America/Sao_Paulo'
 
+/** Every distinct "HH:MM" (or "HHh"/"HHhMM") time mentioned in a reply
+ *  — used only to cross-check against the token the model is about to
+ *  book, never to parse a booking request itself (that's always the
+ *  marker's `whenRaw`). */
+function extractMentionedTimes(text: string): Array<{ h: number; m: number }> {
+  const times: Array<{ h: number; m: number }> = []
+  const re = /\b([01]?\d|2[0-3])[:h]([0-5]\d)\b|\b([01]?\d|2[0-3])h\b/gi
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text))) {
+    if (match[1] !== undefined && match[2] !== undefined) {
+      times.push({ h: Number(match[1]), m: Number(match[2]) })
+    } else if (match[3] !== undefined) {
+      times.push({ h: Number(match[3]), m: 0 })
+    }
+  }
+  return times
+}
+
+/**
+ * Guards against the model confirming one time in the customer-facing
+ * text while booking a different one via `[[BOOK: quando=...]]` —
+ * observed in practice ("segunda-feira, 07/09 às 09:00" in the reply,
+ * 08:00 actually booked). Deliberately conservative: only flags a
+ * mismatch when the reply mentions EXACTLY ONE plausible time and it
+ * disagrees with the token being booked — zero or several mentions are
+ * left alone so this never blocks an otherwise-fine reply on a false
+ * positive (e.g. a duration like "30 minutos" doesn't parse as a
+ * time at all, so it never counts as a mention).
+ */
+export function textTimeMismatchesBooking(text: string, whenRaw: string): boolean {
+  const timePart = whenRaw.split('T')[1]
+  if (!timePart) return false
+  const [bookedH, bookedM] = timePart.slice(0, 5).split(':').map(Number)
+  if (Number.isNaN(bookedH) || Number.isNaN(bookedM)) return false
+
+  const mentioned = extractMentionedTimes(text)
+  if (mentioned.length !== 1) return false
+  return mentioned[0].h !== bookedH || mentioned[0].m !== bookedM
+}
+
 export interface BookingOutcome {
   ok: boolean
   reason?: string

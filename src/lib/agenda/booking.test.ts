@@ -14,7 +14,7 @@ vi.mock('./availability', () => ({
   listFreeSlots: h.listFreeSlots,
 }))
 
-import { attemptBooking } from './booking'
+import { attemptBooking, textTimeMismatchesBooking } from './booking'
 import { zonedWallTimeToUtc, formatWallTimeToken, formatSlotLabelPtBr } from './timezone'
 import type { BookingRequest } from '@/lib/ai/types'
 
@@ -235,5 +235,43 @@ describe('attemptBooking', () => {
     })
     expect(outcome).toMatchObject({ ok: false, reason: 'slot_just_taken' })
     expect(attemptsOf(inserts)[0].outcome).toBe('rejected')
+  })
+})
+
+describe('textTimeMismatchesBooking', () => {
+  it('flags a reply that states a different time than it books', () => {
+    expect(
+      textTimeMismatchesBooking(
+        'Perfeito! Confirmado segunda-feira, 07/09 às 09:00.',
+        '2026-09-07T08:00',
+      ),
+    ).toBe(true)
+  })
+
+  it('does not flag a reply whose stated time matches the booking', () => {
+    expect(
+      textTimeMismatchesBooking(
+        'Perfeito! Confirmado segunda-feira, 07/09 às 08:00.',
+        '2026-09-07T08:00',
+      ),
+    ).toBe(false)
+  })
+
+  it('recognizes the "9h" style alongside "09:00"', () => {
+    expect(textTimeMismatchesBooking('Combinado às 8h!', '2026-09-07T08:00')).toBe(false)
+    expect(textTimeMismatchesBooking('Combinado às 9h!', '2026-09-07T08:00')).toBe(true)
+  })
+
+  it('is conservative when no time is mentioned', () => {
+    expect(textTimeMismatchesBooking('Perfeito, combinado!', '2026-09-07T08:00')).toBe(false)
+  })
+
+  it('is conservative when more than one time is mentioned', () => {
+    expect(
+      textTimeMismatchesBooking(
+        'Consigo às 08:00 ou às 09:00, qual prefere?',
+        '2026-09-07T08:00',
+      ),
+    ).toBe(false)
   })
 })

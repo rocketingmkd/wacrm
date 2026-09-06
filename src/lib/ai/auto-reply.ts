@@ -13,7 +13,7 @@ import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { listFreeSlots, type FreeSlotsResult } from '@/lib/agenda/availability'
-import { attemptBooking } from '@/lib/agenda/booking'
+import { attemptBooking, textTimeMismatchesBooking, type BookingOutcome } from '@/lib/agenda/booking'
 import type { AiConfig, ChatMessage, GenerateResult } from './types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -427,16 +427,27 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
   // never teaches the marker otherwise, so `generation.booking` is
   // always null for everyone else.
   if (generation.booking && agent.canSchedule) {
-    let result = await attemptBooking({
-      db,
-      accountId,
-      conversationId,
-      contactId,
-      ownerUserId: configOwnerUserId,
-      agentId: agent.id,
-      agentName: agent.name,
-      booking: generation.booking,
-    })
+    // Cross-check BEFORE writing anything: the model can say one time
+    // in the customer-facing text and book a different one via the
+    // marker (observed in practice — "09:00" in the reply, 08:00
+    // actually booked). Catching this here means a mismatched turn
+    // never reaches attemptBooking at all, so it can never create a
+    // deal that contradicts what the customer was told.
+    let result: BookingOutcome = textTimeMismatchesBooking(
+      generation.text,
+      generation.booking.whenRaw,
+    )
+      ? { ok: false, reason: 'text_time_mismatch', alternatives: [] }
+      : await attemptBooking({
+          db,
+          accountId,
+          conversationId,
+          contactId,
+          ownerUserId: configOwnerUserId,
+          agentId: agent.id,
+          agentName: agent.name,
+          booking: generation.booking,
+        })
     let resolved = result.ok
 
     if (!result.ok) {
@@ -444,9 +455,12 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
       const nudge: ChatMessage = {
         role: 'user',
         content:
-          '[sistema interno — não é o cliente, não mencione isto a ele] ' +
-          `O horário solicitado não pôde ser confirmado (motivo interno: ${result.reason ?? 'indisponível'}). ` +
-          'Escolha outro horário da disponibilidade atualizada abaixo e confirme de novo com o cliente na mesma resposta.',
+          result.reason === 'text_time_mismatch'
+            ? '[sistema interno — não é o cliente, não mencione isto a ele] Sua última resposta mencionou um horário diferente do que você estava confirmando no marcador. ' +
+              'Refaça a confirmação: o horário escrito na mensagem para o cliente e o token em [[BOOK: quando=...]] têm que ser exatamente o mesmo horário, escolhido da disponibilidade atualizada abaixo.'
+            : '[sistema interno — não é o cliente, não mencione isto a ele] ' +
+              `O horário solicitado não pôde ser confirmado (motivo interno: ${result.reason ?? 'indisponível'}). ` +
+              'Escolha outro horário da disponibilidade atualizada abaixo e confirme de novo com o cliente na mesma resposta.',
       }
       generation = await generateReply({
         config: agent,
@@ -464,16 +478,18 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
       })
 
       if (generation.booking) {
-        result = await attemptBooking({
-          db,
-          accountId,
-          conversationId,
-          contactId,
-          ownerUserId: configOwnerUserId,
-          agentId: agent.id,
-          agentName: agent.name,
-          booking: generation.booking,
-        })
+        result = textTimeMismatchesBooking(generation.text, generation.booking.whenRaw)
+          ? { ok: false, reason: 'text_time_mismatch', alternatives: [] }
+          : await attemptBooking({
+              db,
+              accountId,
+              conversationId,
+              contactId,
+              ownerUserId: configOwnerUserId,
+              agentId: agent.id,
+              agentName: agent.name,
+              booking: generation.booking,
+            })
         resolved = result.ok
       } else {
         // The retry didn't attempt a new booking — its reply (whatever
