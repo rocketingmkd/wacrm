@@ -9,6 +9,7 @@ import { DealForm } from "@/components/pipelines/deal-form";
 import { AgendaList } from "@/components/agenda/agenda-list";
 import { AgendaCalendar } from "@/components/agenda/agenda-calendar";
 import { AgendaAvailability } from "@/components/agenda/agenda-availability";
+import { AgendaBookingLog } from "@/components/agenda/agenda-booking-log";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Plus, Settings } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +32,7 @@ const DEFAULT_AGENDA_STAGES = [
   { name: "Não compareceu", color: "#ef4444", position: 4 },
 ];
 
-type Tab = "calendar" | "list" | "kanban" | "availability";
+type Tab = "calendar" | "list" | "kanban" | "availability" | "log";
 
 export default function AgendaPage() {
   const t = useTranslations("Agenda.page");
@@ -278,14 +279,16 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      {/* Calendário / Agenda / Kanban / Disponibilidade — calendar
-          answers "what's on today" (the client-facing glance), the
-          list answers "what's next in order", the board answers
-          "where is each lead in the process" (internal follow-up),
-          and availability is the config surface the scheduling agent
-          will read before offering a slot. */}
-      <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
-        {(["calendar", "list", "kanban", "availability"] as const).map((tb) => (
+      {/* Calendário / Agenda / Kanban / Disponibilidade / Registros —
+          calendar answers "what's on today" (the client-facing
+          glance), the list answers "what's next in order", the board
+          answers "where is each lead in the process" (internal
+          follow-up), availability is the config surface the
+          scheduling agent reads before offering a slot, and log is
+          the audit trail of what the AI actually booked (or tried
+          to). */}
+      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1 w-fit">
+        {(["calendar", "list", "kanban", "availability", "log"] as const).map((tb) => (
           <button
             key={tb}
             type="button"
@@ -303,7 +306,9 @@ export default function AgendaPage() {
                 ? t("tabList")
                 : tb === "kanban"
                   ? t("tabKanban")
-                  : t("tabAvailability")}
+                  : tb === "availability"
+                    ? t("tabAvailability")
+                    : t("tabLog")}
           </button>
         ))}
       </div>
@@ -321,8 +326,10 @@ export default function AgendaPage() {
         <AgendaList deals={deals} stages={stages} onEditDeal={handleEditDeal} />
       ) : tab === "calendar" ? (
         <AgendaCalendar deals={deals} stages={stages} onEditDeal={handleEditDeal} />
-      ) : (
+      ) : tab === "availability" ? (
         <AgendaAvailability />
+      ) : (
+        <AgendaBookingLog />
       )}
 
       {pipeline && (

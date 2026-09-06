@@ -18,7 +18,7 @@ function bad(message: string, code?: string) {
 }
 
 const DETAIL_COLUMNS =
-  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
+  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, can_schedule'
 
 /**
  * GET /api/ai/agents/[id]
@@ -156,6 +156,7 @@ export async function PATCH(request: Request, { params }: Params) {
         body.auto_reply_max_per_conversation,
       )
     }
+    if ('can_schedule' in body) update.can_schedule = body.can_schedule === true
     if ('handoff_agent_id' in body) {
       const raw =
         typeof body.handoff_agent_id === 'string' ? body.handoff_agent_id.trim() : ''
@@ -197,6 +198,7 @@ export async function PATCH(request: Request, { params }: Params) {
             autoReplyMaxPerConversation: 3,
             handoffAgentId: null,
             embeddingsApiKey: null,
+            canSchedule: false,
           })
         } catch (err) {
           if (err instanceof AiError) {

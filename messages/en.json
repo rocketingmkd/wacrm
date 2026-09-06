@@ -560,6 +560,7 @@
       "deleteDeal": "Delete Deal",
       "toastRequired": "Title, contact, and stage are required",
       "toastScheduledAtRequired": "Set the appointment's date and time",
+      "toastScheduledConflict": "There's already an appointment at that time. Pick another one.",
       "toastFailedSave": "Failed to save deal",
       "toastNotSignedIn": "Not signed in",
       "toastNotLinked": "Your profile is not linked to an account.",
@@ -621,6 +622,7 @@
       "tabKanban": "Kanban",
       "tabList": "Agenda",
       "tabAvailability": "Availability",
+      "tabLog": "Log",
       "addAppointment": "New appointment",
       "manage": "Manage",
       "loadError": "Couldn't load the agenda."

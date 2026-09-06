@@ -3,7 +3,7 @@ import { loadAiAgent, loadReceptionistAgent } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
-import { buildSystemPrompt, type TransferableAgent } from './defaults'
+import { buildSystemPrompt, aiTimezone, type TransferableAgent } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { notifyHandoffToTeam } from './handoff-notify'
 import { syncDealToAiStage, moveFunnelDealToHumanStage } from './kanban-sync'
@@ -12,7 +12,9 @@ import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
-import type { AiConfig, ChatMessage } from './types'
+import { listFreeSlots, type FreeSlotsResult } from '@/lib/agenda/availability'
+import { attemptBooking } from '@/lib/agenda/booking'
+import type { AiConfig, ChatMessage, GenerateResult } from './types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** How many agent-to-agent transfers one inbound message may trigger
@@ -377,16 +379,28 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
 
   const siblings = await loadTransferSiblings(db, accountId, agent.id)
 
-  const systemPrompt = buildSystemPrompt({
-    userPrompt: agent.systemPrompt,
-    mode: 'auto_reply',
-    knowledge,
-    availableAgents: siblings,
-  })
+  // Only a canSchedule agent pays for this — it's the one thing that
+  // teaches [[BOOK: ...]] in the prompt at all (buildSystemPrompt omits
+  // the whole block otherwise), and the one thing that reads its result.
+  const tz = aiTimezone()
+  const availability: FreeSlotsResult | null = agent.canSchedule
+    ? await listFreeSlots(db, { accountId, tz })
+    : null
 
-  const { text, handoff, transferToSlug, note, usage } = await generateReply({
+  const buildPrompt = (avail: FreeSlotsResult | null) =>
+    buildSystemPrompt({
+      userPrompt: agent.systemPrompt,
+      mode: 'auto_reply',
+      knowledge,
+      availableAgents: siblings,
+      availability: avail
+        ? { slotDurationMinutes: avail.slotDurationMinutes, slots: avail.slots }
+        : undefined,
+    })
+
+  let generation: GenerateResult = await generateReply({
     config: agent,
-    systemPrompt,
+    systemPrompt: buildPrompt(availability),
     messages,
   })
 
@@ -401,8 +415,83 @@ export async function runAgentTurn(db: SupabaseClient, state: TurnState): Promis
     provider: agent.provider,
     model: agent.model,
     agentId: agent.id,
-    usage,
+    usage: generation.usage,
   })
+
+  // Resolve a booking request against the real calendar BEFORE any text
+  // is allowed through — a confirmation message must never outrun what
+  // was actually written to the Agenda. One bounded retry: a stale pick
+  // (or a lost race against another conversation) gets a fresh slot
+  // list and a shot at recovering without waiting for the customer's
+  // next message. Only reachable for a canSchedule agent — the prompt
+  // never teaches the marker otherwise, so `generation.booking` is
+  // always null for everyone else.
+  if (generation.booking && agent.canSchedule) {
+    let result = await attemptBooking({
+      db,
+      accountId,
+      conversationId,
+      contactId,
+      ownerUserId: configOwnerUserId,
+      agentId: agent.id,
+      agentName: agent.name,
+      booking: generation.booking,
+    })
+    let resolved = result.ok
+
+    if (!result.ok) {
+      const retryAvailability = await listFreeSlots(db, { accountId, tz })
+      const nudge: ChatMessage = {
+        role: 'user',
+        content:
+          '[sistema interno — não é o cliente, não mencione isto a ele] ' +
+          `O horário solicitado não pôde ser confirmado (motivo interno: ${result.reason ?? 'indisponível'}). ` +
+          'Escolha outro horário da disponibilidade atualizada abaixo e confirme de novo com o cliente na mesma resposta.',
+      }
+      generation = await generateReply({
+        config: agent,
+        systemPrompt: buildPrompt(retryAvailability),
+        messages: [...messages, nudge],
+      })
+      void logAiUsage(db, {
+        accountId,
+        conversationId,
+        mode: 'auto_reply',
+        provider: agent.provider,
+        model: agent.model,
+        agentId: agent.id,
+        usage: generation.usage,
+      })
+
+      if (generation.booking) {
+        result = await attemptBooking({
+          db,
+          accountId,
+          conversationId,
+          contactId,
+          ownerUserId: configOwnerUserId,
+          agentId: agent.id,
+          agentName: agent.name,
+          booking: generation.booking,
+        })
+        resolved = result.ok
+      } else {
+        // The retry didn't attempt a new booking — its reply (whatever
+        // it says) stands on its own; nothing to enforce.
+        resolved = true
+      }
+    }
+
+    if (!resolved) {
+      // Both attempts failed. The model's own text may well still
+      // claim success — it must never reach the customer. Force the
+      // existing "couldn't help" branch below (empty text + handoff)
+      // rather than duplicating its handoff/notify logic here.
+      generation = { ...generation, text: '', handoff: true }
+    }
+  }
+
+  const { text, handoff, transferToSlug, note } = generation
 
   // Persist the contact's single evolving "IA note" (`[[NOTE: ...]]`) —
   // best-effort and fire-and-forget so it never blocks or fails the

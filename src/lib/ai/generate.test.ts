@@ -18,6 +18,7 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     embeddingsApiKey: null,
+    canSchedule: false,
     ...overrides,
   }
 }
@@ -50,6 +51,7 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage: null,
     })
   })
@@ -60,6 +62,7 @@ describe('parseGeneration', () => {
       handoff: true,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage: null,
     })
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
@@ -67,6 +70,7 @@ describe('parseGeneration', () => {
       handoff: true,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage: null,
     })
   })
@@ -77,6 +81,7 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: 'suporte',
       note: null,
+      booking: null,
       usage: null,
     })
     expect(parseGeneration('Vou te passar para o time [[TRANSFER:Vendas]]')).toEqual({
@@ -84,6 +89,7 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: 'vendas',
       note: null,
+      booking: null,
       usage: null,
     })
   })
@@ -98,6 +104,7 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: null,
       note: 'Cliente quer site institucional. Prazo: 30 dias.',
+      booking: null,
       usage: null,
     })
   })
@@ -108,6 +115,7 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: 'comercial',
       note: 'Resumo\nLinha 2',
+      booking: null,
       usage: null,
     })
   })
@@ -123,8 +131,43 @@ describe('parseGeneration', () => {
       handoff: false,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage,
     })
+  })
+
+  it('detects + strips a bare [[BOOK: ...]] token', () => {
+    expect(parseGeneration('Perfeito! [[BOOK: 2026-09-10T14:00]]')).toEqual({
+      text: 'Perfeito!',
+      handoff: false,
+      transferToSlug: null,
+      note: null,
+      booking: { whenRaw: '2026-09-10T14:00', email: null, subject: null },
+      usage: null,
+    })
+  })
+
+  it('detects + strips a [[BOOK: ...]] with key=value fields', () => {
+    expect(
+      parseGeneration(
+        'Combinado! [[BOOK: quando=2026-09-10T14:00; email=joao@empresa.com; assunto=Reunião sobre CRM]]',
+      ),
+    ).toEqual({
+      text: 'Combinado!',
+      handoff: false,
+      transferToSlug: null,
+      note: null,
+      booking: {
+        whenRaw: '2026-09-10T14:00',
+        email: 'joao@empresa.com',
+        subject: 'Reunião sobre CRM',
+      },
+      usage: null,
+    })
+  })
+
+  it('treats a [[BOOK: ...]] with no date as no booking', () => {
+    expect(parseGeneration('Oi [[BOOK: email=x@y.com]]').booking).toBeNull()
   })
 })
 
@@ -149,6 +192,7 @@ describe('generateReply — OpenAI', () => {
       handoff: false,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -210,6 +254,7 @@ describe('generateReply — Anthropic', () => {
       handoff: false,
       transferToSlug: null,
       note: null,
+      booking: null,
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     const [url, opts] = fetchMock.mock.calls[0]

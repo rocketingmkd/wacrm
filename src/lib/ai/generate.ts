@@ -2,6 +2,7 @@ import {
   AiError,
   type AiConfig,
   type AiUsage,
+  type BookingRequest,
   type ChatMessage,
   type GenerateResult,
 } from './types'
@@ -68,12 +69,54 @@ const TRANSFER_SENTINEL_RE = /\[\[TRANSFER:([a-z0-9_-]+)\]\]/i
  *  text by the global replace below. */
 const NOTE_SENTINEL_RE = /\[\[NOTE:\s*([\s\S]*?)\]\]/i
 
+/** Matches `[[BOOK: ...]]` — the scheduling agent's booking request,
+ *  taught only when `buildSystemPrompt` receives an `availability`
+ *  block (canSchedule agents). Payload is either the bare wall-clock
+ *  token (`[[BOOK: 2026-09-10T14:00]]`) or `key=value` pairs separated
+ *  by `;` (`quando=...; email=...; assunto=...`) — see
+ *  `parseBookingPayload`. Non-greedy for the same reason as the note
+ *  sentinel; case-insensitive for the same reason as every other one. */
+const BOOK_SENTINEL_RE = /\[\[BOOK:\s*([\s\S]*?)\]\]/i
+
+/** Parse a `[[BOOK: ...]]` payload into a `BookingRequest`, or `null`
+ *  when it has no `quando`/date at all (a malformed emission — treated
+ *  as "no booking request" rather than throwing, since a bad marker
+ *  should degrade to a normal reply, not break the turn). Accepts
+ *  either the bare-token form or `key=value; key=value` pairs;
+ *  `quando`/`when` is the only required field. */
+function parseBookingPayload(raw: string): BookingRequest | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  const fields: Record<string, string> = {}
+  if (trimmed.includes('=')) {
+    for (const part of trimmed.split(';')) {
+      const eq = part.indexOf('=')
+      if (eq === -1) continue
+      const key = part.slice(0, eq).trim().toLowerCase()
+      const value = part.slice(eq + 1).trim()
+      if (key) fields[key] = value
+    }
+  } else {
+    fields.quando = trimmed
+  }
+
+  const whenRaw = fields.quando || fields.when
+  if (!whenRaw) return null
+
+  return {
+    whenRaw,
+    email: fields.email || null,
+    subject: fields.assunto || fields.subject || null,
+  }
+}
+
 /**
  * Split the raw model output into `{ text, handoff, transferToSlug,
- * note, usage }`. Any sentinel can appear alone or trailing a partial
- * reply; either way the marker is stripped from any remaining text.
- * `usage` is passed straight through (null when the provider didn't
- * report it).
+ * note, booking, usage }`. Any sentinel can appear alone or trailing a
+ * partial reply; either way the marker is stripped from any remaining
+ * text. `usage` is passed straight through (null when the provider
+ * didn't report it).
  *
  * A model could in principle emit several sentinels in one turn (a
  * malformed response, not a valid instruction — the prompt asks for
@@ -90,11 +133,14 @@ export function parseGeneration(
   const transferToSlug = transferMatch ? transferMatch[1].toLowerCase() : null
   const noteMatch = raw.match(NOTE_SENTINEL_RE)
   const note = noteMatch ? noteMatch[1].trim() || null : null
+  const bookMatch = raw.match(BOOK_SENTINEL_RE)
+  const booking = bookMatch ? parseBookingPayload(bookMatch[1]) : null
   const text = raw
     .split(HANDOFF_SENTINEL)
     .join('')
     .replace(TRANSFER_SENTINEL_RE, '')
     .replace(new RegExp(NOTE_SENTINEL_RE.source, 'gi'), '')
+    .replace(new RegExp(BOOK_SENTINEL_RE.source, 'gi'), '')
     .trim()
-  return { text, handoff, transferToSlug, note, usage }
+  return { text, handoff, transferToSlug, note, booking, usage }
 }

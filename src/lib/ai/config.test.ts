@@ -41,6 +41,7 @@ const AGENT_ROW = {
   auto_reply_enabled: false,
   auto_reply_max_per_conversation: 3,
   handoff_agent_id: null,
+  can_schedule: false,
 }
 
 const PROVIDER_ROW = {

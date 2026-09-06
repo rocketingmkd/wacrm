@@ -139,6 +139,8 @@ export async function POST(request: Request) {
     // freshly created agent — an absent field normalizes to null too).
     const maxPer = normalizeReplyCap(body.auto_reply_max_per_conversation)
 
+    const canSchedule = body.can_schedule === true
+
     const rawHandoff =
       typeof body.handoff_agent_id === 'string' ? body.handoff_agent_id.trim() : ''
     let handoffAgentId: string | null = null
@@ -169,6 +171,7 @@ export async function POST(request: Request) {
         autoReplyMaxPerConversation: maxPer,
         handoffAgentId: null,
         embeddingsApiKey: null,
+        canSchedule,
       })
     } catch (err) {
       if (err instanceof AiError) {
@@ -196,6 +199,7 @@ export async function POST(request: Request) {
         auto_reply_enabled: autoReplyEnabled,
         auto_reply_max_per_conversation: maxPer,
         handoff_agent_id: handoffAgentId,
+        can_schedule: canSchedule,
       })
       .select('id')
       .single()

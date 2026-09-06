@@ -34,6 +34,24 @@ export interface TransferableAgent {
   description: string | null
 }
 
+/** One real, currently-free slot to show a `canSchedule` agent —
+ *  `token` is what it must echo back verbatim in
+ *  `[[BOOK: quando=<token>]]`, `label` is the pt-BR phrasing it can use
+ *  when talking to the customer. Produced by
+ *  `src/lib/agenda/availability.ts`'s `listFreeSlots`. */
+export interface AvailabilitySlot {
+  token: string
+  label: string
+}
+
+/** The availability block for `buildSystemPrompt` — `null`/absent
+ *  slots means the account has no bookable time in the scanned window
+ *  (still worth telling the model, so it doesn't invent one). */
+export interface AvailabilityPromptData {
+  slotDurationMinutes: number
+  slots: AvailabilitySlot[]
+}
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
@@ -126,12 +144,16 @@ export function buildSystemPrompt(args: {
    *  account, which keeps the prompt byte-for-byte what it was before
    *  multi-agent existed. */
   availableAgents?: TransferableAgent[]
+  /** Real free slots for a `canSchedule` agent — see
+   *  `AvailabilityPromptData`. Omitted entirely for an agent without
+   *  that permission, which pays no extra prompt tokens for it. */
+  availability?: AvailabilityPromptData
   /** "Now" for the current-date line. Defaults to the real clock;
    *  injectable so tests stay deterministic. Pass `null` to omit the
    *  line entirely. */
   now?: Date | null
 }): string {
-  const { userPrompt, mode, knowledge, availableAgents } = args
+  const { userPrompt, mode, knowledge, availableAgents, availability } = args
   const now = args.now === undefined ? new Date() : args.now
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
@@ -176,6 +198,26 @@ export function buildSystemPrompt(args: {
         'Only emit a [[NOTE: ...]] when you actually have new information worth persisting; a routine reply needs none. ' +
         'Never put a recap, summary, checklist, or "here is what I understood" block in the message you send the customer — that belongs only in the note.',
     )
+  }
+
+  if (mode === 'auto_reply' && availability) {
+    if (availability.slots.length > 0) {
+      parts.push(
+        `Real scheduling availability (appointment length: ${availability.slotDurationMinutes} minutes). ` +
+          'This OVERRIDES the general "never invent availability" guideline above for scheduling specifically: for a real appointment, offer the customer ONLY times from this list — phrase them naturally in Portuguese ' +
+          '(e.g. "quinta-feira de manhã"), never invent, calculate, or offer a time from your own reasoning even if it seems obviously free. ' +
+          'The moment the customer confirms one of these times, reply confirming it AND, in the very same reply, output the marker ' +
+          '[[BOOK: quando=<exact token>; email=<email if you have it>; assunto=<short subject>]] using the exact token shown in parentheses below for that slot — copy it exactly, do not reformat or recompute it. ' +
+          'If the time the customer asks for is not in this list, do not confirm it — offer the closest options from the list instead. ' +
+          'If your booking is rejected, you will be told and given an updated list; offer from that new list instead, without mentioning any internal error to the customer.\n\n' +
+          availability.slots.map((s) => `- ${s.label} (${s.token})`).join('\n'),
+      )
+    } else {
+      parts.push(
+        'Real scheduling availability: there is currently no bookable time in the scheduling window. ' +
+          'Tell the customer you could not find an open slot right now and offer to have the team follow up, instead of inventing a time or emitting [[BOOK: ...]].',
+      )
+    }
   }
 
   if (userPrompt && userPrompt.trim()) {

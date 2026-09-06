@@ -211,7 +211,11 @@ export function DealForm({
         .update(payload)
         .eq("id", deal.id);
       if (error) {
-        toast.error(t("toastFailedSave"));
+        toast.error(
+          isScheduling && error.code === "23505"
+            ? t("toastScheduledConflict")
+            : t("toastFailedSave"),
+        );
         setSaving(false);
         return;
       }
@@ -252,7 +256,11 @@ export function DealForm({
           status: "open",
         });
       if (error) {
-        toast.error(t("toastFailedCreate"));
+        toast.error(
+          isScheduling && error.code === "23505"
+            ? t("toastScheduledConflict")
+            : t("toastFailedCreate"),
+        );
         setSaving(false);
         return;
       }

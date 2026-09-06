@@ -559,6 +559,7 @@
       "deleteDeal": "딜 삭제",
       "toastRequired": "제목, 연락처, 단계는 필수입니다",
       "toastScheduledAtRequired": "약속 날짜와 시간을 입력하세요",
+      "toastScheduledConflict": "이미 그 시간에 예약된 약속이 있습니다. 다른 시간을 선택하세요.",
       "toastFailedSave": "딜을 저장하지 못했습니다",
       "toastNotSignedIn": "로그인되어 있지 않습니다",
       "toastNotLinked": "프로필이 계정에 연결되어 있지 않습니다.",
@@ -620,6 +621,7 @@
       "tabKanban": "칸반",
       "tabList": "일정",
       "tabAvailability": "예약 가능 시간",
+      "tabLog": "기록",
       "addAppointment": "새 약속",
       "manage": "관리",
       "loadError": "일정을 불러오지 못했습니다."

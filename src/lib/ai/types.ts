@@ -51,6 +51,10 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  /** Permission to check real availability and book an appointment via
+   *  `[[BOOK: ...]]` (migration 059, src/lib/agenda/booking.ts). Off by
+   *  default — an agent has to be deliberately granted this. */
+  canSchedule: boolean
 }
 
 /** Lightweight agent info for the transfer-menu prompt block and
@@ -71,6 +75,17 @@ export interface AiAgentSummary {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+}
+
+/** Parsed `[[BOOK: quando=...; email=...; assunto=...]]` payload — see
+ *  the sentinel regex in generate.ts. `whenRaw` is the wall-clock token
+ *  ("YYYY-MM-DDTHH:MM") the model echoed back from the availability
+ *  block in buildSystemPrompt; src/lib/agenda/booking.ts resolves it to
+ *  a real instant and re-validates it before writing anything. */
+export interface BookingRequest {
+  whenRaw: string
+  email: string | null
+  subject: string | null
 }
 
 /**
@@ -105,6 +120,11 @@ export interface GenerateResult {
    *  customer never sees it; the dispatcher writes it to the contact's
    *  notes. Auto-reply mode only. */
   note: string | null
+  /** Appointment request the model asked to book
+   *  (`[[BOOK: quando=...]]`), else null. Only meaningful for an agent
+   *  with `canSchedule` — the auto-reply engine resolves it via
+   *  `attemptBooking` before deciding whether to send `text`. */
+  booking: BookingRequest | null
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

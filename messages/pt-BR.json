@@ -560,6 +560,7 @@
       "deleteDeal": "Excluir negócio",
       "toastRequired": "Título, contato e etapa são obrigatórios",
       "toastScheduledAtRequired": "Informe a data e hora do compromisso",
+      "toastScheduledConflict": "Já existe um compromisso marcado nesse horário. Escolha outro.",
       "toastFailedSave": "Falha ao salvar negócio",
       "toastNotSignedIn": "Não conectado",
       "toastNotLinked": "Seu perfil não está vinculado a uma conta.",
@@ -621,6 +622,7 @@
       "tabKanban": "Kanban",
       "tabList": "Agenda",
       "tabAvailability": "Disponibilidade",
+      "tabLog": "Registros",
       "addAppointment": "Novo compromisso",
       "manage": "Gerenciar",
       "loadError": "Não foi possível carregar a agenda."

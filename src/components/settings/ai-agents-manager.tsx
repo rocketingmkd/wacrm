@@ -80,6 +80,9 @@ interface DraftState {
   /** The cap value, used only while `limitReplies` is on. */
   maxPerConversation: number;
   handoffAgentId: string;
+  /** Permission to check real Agenda availability and book an
+   *  appointment via `[[BOOK: ...]]` (migration 059). */
+  canSchedule: boolean;
 }
 
 /** Fallback shown in the number field when the user first turns the
@@ -101,6 +104,7 @@ function emptyDraft(defaultModel: string): DraftState {
     limitReplies: false,
     maxPerConversation: DEFAULT_REPLY_CAP,
     handoffAgentId: '',
+    canSchedule: false,
   };
 }
 
@@ -203,6 +207,7 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         maxPerConversation:
           data.auto_reply_max_per_conversation ?? DEFAULT_REPLY_CAP,
         handoffAgentId: data.handoff_agent_id ?? '',
+        canSchedule: Boolean(data.can_schedule),
       });
     } catch {
       toast.error('Não foi possível abrir o agente.');
@@ -315,6 +320,7 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
           ? draft.maxPerConversation
           : null,
         handoff_agent_id: draft.handoffAgentId || null,
+        can_schedule: draft.canSchedule,
       };
 
       const res = await fetch(
@@ -856,6 +862,24 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Pode marcar compromissos na Agenda
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Vê os horários realmente livres (configurados em Agenda → Disponibilidade) e
+                    cria o compromisso sozinho quando o cliente confirmar. Sem isto, ele só pode
+                    conversar sobre agendamento, nunca marcar de verdade.
+                  </p>
+                </div>
+                <Switch
+                  checked={draft.canSchedule}
+                  onCheckedChange={(v) => setDraft({ ...draft, canSchedule: v })}
+                  disabled={disabled}
+                />
               </div>
 
               <div className="space-y-1.5">

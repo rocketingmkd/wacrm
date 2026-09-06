@@ -14,6 +14,7 @@ interface AiAgentRow {
   auto_reply_enabled: boolean
   auto_reply_max_per_conversation: number | null
   handoff_agent_id: string | null
+  can_schedule: boolean
 }
 
 interface ProviderConfigRow {
@@ -30,7 +31,7 @@ export interface ProviderCredential {
 }
 
 const AGENT_COLUMNS =
-  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id'
+  'id, name, slug, description, is_receptionist, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, can_schedule'
 
 const SUMMARY_COLUMNS =
   'id, name, slug, description, is_receptionist, is_active, auto_reply_enabled, auto_reply_max_per_conversation'
@@ -95,6 +96,7 @@ function mergeAgent(row: AiAgentRow, credential: ProviderCredential): AiConfig {
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey: credential.embeddingsApiKey,
+    canSchedule: row.can_schedule,
   }
 }
 
