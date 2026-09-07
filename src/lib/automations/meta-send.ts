@@ -1,5 +1,7 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
+import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
+import type { MessageTemplate } from '@/types'
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
@@ -45,7 +47,18 @@ interface SendTemplateArgs {
   contactId: string
   templateName: string
   language?: string
+  /** Legacy body-only path — kept for existing callers (automation
+   *  `send_template` step). New callers that need buttons/media should
+   *  pass `template` + `messageParams` instead (see below). */
   params?: string[]
+  /** The template row from message_templates. When provided, the
+   *  structured send path is used (buildSendComponents) so quick-reply
+   *  button payload overrides and media headers actually reach the
+   *  recipient — the legacy `params`-only path silently drops both. */
+  template?: MessageTemplate
+  /** Structured per-send values, paired with `template`. See
+   *  SendTimeParams for the shape (body/header/button overrides). */
+  messageParams?: SendTimeParams
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -151,6 +164,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         templateName: input.templateName,
         language: input.language,
         params: input.params,
+        template: input.template,
+        messageParams: input.messageParams,
       })
       return r.messageId
     }

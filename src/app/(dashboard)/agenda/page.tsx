@@ -10,6 +10,7 @@ import { AgendaList } from "@/components/agenda/agenda-list";
 import { AgendaCalendar } from "@/components/agenda/agenda-calendar";
 import { AgendaAvailability } from "@/components/agenda/agenda-availability";
 import { AgendaBookingLog } from "@/components/agenda/agenda-booking-log";
+import { AgendaReminders } from "@/components/agenda/agenda-reminders";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Plus, Settings } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +33,7 @@ const DEFAULT_AGENDA_STAGES = [
   { name: "Não compareceu", color: "#ef4444", position: 4 },
 ];
 
-type Tab = "calendar" | "list" | "kanban" | "availability" | "log";
+type Tab = "calendar" | "list" | "kanban" | "availability" | "reminders" | "log";
 
 export default function AgendaPage() {
   const t = useTranslations("Agenda.page");
@@ -288,7 +289,7 @@ export default function AgendaPage() {
           the audit trail of what the AI actually booked (or tried
           to). */}
       <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-card p-1 w-fit">
-        {(["calendar", "list", "kanban", "availability", "log"] as const).map((tb) => (
+        {(["calendar", "list", "kanban", "availability", "reminders", "log"] as const).map((tb) => (
           <button
             key={tb}
             type="button"
@@ -308,7 +309,9 @@ export default function AgendaPage() {
                   ? t("tabKanban")
                   : tb === "availability"
                     ? t("tabAvailability")
-                    : t("tabLog")}
+                    : tb === "reminders"
+                      ? t("tabReminders")
+                      : t("tabLog")}
           </button>
         ))}
       </div>
@@ -328,6 +331,8 @@ export default function AgendaPage() {
         <AgendaCalendar deals={deals} stages={stages} onEditDeal={handleEditDeal} />
       ) : tab === "availability" ? (
         <AgendaAvailability />
+      ) : tab === "reminders" ? (
+        <AgendaReminders stages={stages} />
       ) : (
         <AgendaBookingLog />
       )}

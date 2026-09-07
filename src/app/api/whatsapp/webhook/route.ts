@@ -15,6 +15,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { isReminderButtonReply, handleReminderButtonTap } from '@/lib/agenda/reminder-replies'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -1314,6 +1315,25 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // A tap on an appointment reminder's "Confirmar"/"Remarcar" button
+  // (src/lib/agenda/reminders.ts sets the payload at send time). Handled
+  // here, before Flows/Automations/AI-reply dispatch: it's a control
+  // action tied to a specific deal, not a message those engines should
+  // interpret. No `return` needed — nothing downstream matches this
+  // reply's synthetic id, and AI auto-reply already skips any inbound
+  // that carries an `interactiveReplyId` (see the `!interactiveReplyId`
+  // check below).
+  if (isReminderButtonReply(interactiveReplyId)) {
+    await handleReminderButtonTap({
+      db: supabaseAdmin(),
+      accountId,
+      conversationId: conversation.id,
+      contactId: contactRecord.id,
+      configOwnerUserId,
+      replyId: interactiveReplyId as string,
+    })
+  }
 
   // ============================================================
   // Flow runner dispatch.
