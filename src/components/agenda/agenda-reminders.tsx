@@ -25,7 +25,8 @@ interface TemplateOption {
 
 interface SettingsState {
   enabled: boolean;
-  templateId: string | null;
+  firstTemplateId: string | null;
+  secondTemplateId: string | null;
   firstEnabled: boolean;
   firstHours: number;
   secondEnabled: boolean;
@@ -71,7 +72,8 @@ function defaultSettings(stages: PipelineStage[]): SettingsState {
     .map((s) => s.id);
   return {
     enabled: true,
-    templateId: null,
+    firstTemplateId: null,
+    secondTemplateId: null,
     firstEnabled: true,
     firstHours: 24,
     secondEnabled: true,
@@ -86,7 +88,7 @@ function defaultSettings(stages: PipelineStage[]): SettingsState {
 
 /**
  * Configuration + send log for the appointment-reminder engine
- * (migration 061, src/lib/agenda/reminders.ts). Settings write here;
+ * (migrations 061/062, src/lib/agenda/reminders.ts). Settings write here;
  * the actual sends happen server-side on a cron tick — this tab never
  * sends anything itself.
  */
@@ -125,7 +127,8 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
       row
         ? {
             enabled: row.enabled as boolean,
-            templateId: (row.template_id as string | null) ?? null,
+            firstTemplateId: (row.first_template_id as string | null) ?? null,
+            secondTemplateId: (row.second_template_id as string | null) ?? null,
             firstEnabled: row.first_offset_minutes != null,
             firstHours: row.first_offset_minutes != null ? (row.first_offset_minutes as number) / 60 : 24,
             secondEnabled: row.second_offset_minutes != null,
@@ -154,12 +157,21 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
     [templates],
   );
 
-  const resolvedTemplateId = useMemo(() => {
-    if (settings.templateId && eligibleTemplates.some((tp) => tp.id === settings.templateId)) {
-      return settings.templateId;
-    }
-    return eligibleTemplates.length === 1 ? eligibleTemplates[0].id : null;
-  }, [settings.templateId, eligibleTemplates]);
+  const resolveKind = useCallback(
+    (explicitId: string | null) => {
+      if (explicitId && eligibleTemplates.some((tp) => tp.id === explicitId)) return explicitId;
+      return eligibleTemplates.length === 1 ? eligibleTemplates[0].id : null;
+    },
+    [eligibleTemplates],
+  );
+  const resolvedFirstTemplateId = useMemo(
+    () => resolveKind(settings.firstTemplateId),
+    [resolveKind, settings.firstTemplateId],
+  );
+  const resolvedSecondTemplateId = useMemo(
+    () => resolveKind(settings.secondTemplateId),
+    [resolveKind, settings.secondTemplateId],
+  );
 
   const handleSave = async () => {
     if (!accountId) return;
@@ -172,7 +184,8 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
       {
         account_id: accountId,
         enabled: settings.enabled,
-        template_id: settings.templateId,
+        first_template_id: settings.firstTemplateId,
+        second_template_id: settings.secondTemplateId,
         first_offset_minutes: settings.firstEnabled ? Math.max(1, Math.round(settings.firstHours * 60)) : null,
         second_offset_minutes: settings.secondEnabled ? Math.max(1, Math.round(settings.secondHours * 60)) : null,
         confirm_button_index: settings.confirmButtonIndex,
@@ -223,7 +236,8 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
         />
       </div>
 
-      {resolvedTemplateId === null && (
+      {((settings.firstEnabled && resolvedFirstTemplateId === null) ||
+        (settings.secondEnabled && resolvedSecondTemplateId === null)) && (
         <div className="flex gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <p>{t("noTemplateWarning")}</p>
@@ -231,60 +245,80 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
       )}
 
       <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">{t("templateTitle")}</h3>
-        <select
-          value={settings.templateId ?? ""}
-          onChange={(e) => setSettings((prev) => ({ ...prev, templateId: e.target.value || null }))}
-          disabled={!canEdit}
-          className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary"
-        >
-          <option value="">{t("templateAuto")}</option>
-          {templates.map((tp) => (
-            <option key={tp.id} value={tp.id} disabled={tp.status !== "APPROVED" || !isReminderShapedTemplate(tp)}>
-              {tp.name}
-              {tp.status !== "APPROVED" ? ` (${tp.status})` : !isReminderShapedTemplate(tp) ? ` (${t("templateWrongShape")})` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">{t("offsetsTitle")}</h3>
-        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-          <Switch
-            checked={settings.firstEnabled}
-            onCheckedChange={(v) => setSettings((prev) => ({ ...prev, firstEnabled: v }))}
-            disabled={!canEdit}
-          />
-          <span className="w-28 text-sm text-foreground">{t("firstOffsetLabel")}</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={settings.firstHours}
-            onChange={(e) => setSettings((prev) => ({ ...prev, firstHours: Number(e.target.value) }))}
-            disabled={!canEdit || !settings.firstEnabled}
-            className="h-8 w-20 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-          <span className="text-xs text-muted-foreground">{t("hoursBeforeSuffix")}</span>
+
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={settings.firstEnabled}
+              onCheckedChange={(v) => setSettings((prev) => ({ ...prev, firstEnabled: v }))}
+              disabled={!canEdit}
+            />
+            <span className="w-28 text-sm text-foreground">{t("firstOffsetLabel")}</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={settings.firstHours}
+              onChange={(e) => setSettings((prev) => ({ ...prev, firstHours: Number(e.target.value) }))}
+              disabled={!canEdit || !settings.firstEnabled}
+              className="h-8 w-20 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <span className="text-xs text-muted-foreground">{t("hoursBeforeSuffix")}</span>
+          </div>
+          <div className="pl-[172px]">
+            <select
+              value={settings.firstTemplateId ?? ""}
+              onChange={(e) => setSettings((prev) => ({ ...prev, firstTemplateId: e.target.value || null }))}
+              disabled={!canEdit || !settings.firstEnabled}
+              className="h-8 w-full rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
+            >
+              <option value="">{t("templateAuto")}</option>
+              {templates.map((tp) => (
+                <option key={tp.id} value={tp.id} disabled={tp.status !== "APPROVED" || !isReminderShapedTemplate(tp)}>
+                  {tp.name}
+                  {tp.status !== "APPROVED" ? ` (${tp.status})` : !isReminderShapedTemplate(tp) ? ` (${t("templateWrongShape")})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-          <Switch
-            checked={settings.secondEnabled}
-            onCheckedChange={(v) => setSettings((prev) => ({ ...prev, secondEnabled: v }))}
-            disabled={!canEdit}
-          />
-          <span className="w-28 text-sm text-foreground">{t("secondOffsetLabel")}</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={settings.secondHours}
-            onChange={(e) => setSettings((prev) => ({ ...prev, secondHours: Number(e.target.value) }))}
-            disabled={!canEdit || !settings.secondEnabled}
-            className="h-8 w-20 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
-          />
-          <span className="text-xs text-muted-foreground">{t("hoursBeforeSuffix")}</span>
+
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={settings.secondEnabled}
+              onCheckedChange={(v) => setSettings((prev) => ({ ...prev, secondEnabled: v }))}
+              disabled={!canEdit}
+            />
+            <span className="w-28 text-sm text-foreground">{t("secondOffsetLabel")}</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={settings.secondHours}
+              onChange={(e) => setSettings((prev) => ({ ...prev, secondHours: Number(e.target.value) }))}
+              disabled={!canEdit || !settings.secondEnabled}
+              className="h-8 w-20 rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <span className="text-xs text-muted-foreground">{t("hoursBeforeSuffix")}</span>
+          </div>
+          <div className="pl-[172px]">
+            <select
+              value={settings.secondTemplateId ?? ""}
+              onChange={(e) => setSettings((prev) => ({ ...prev, secondTemplateId: e.target.value || null }))}
+              disabled={!canEdit || !settings.secondEnabled}
+              className="h-8 w-full rounded-md border border-border bg-muted px-2 text-sm text-foreground outline-none focus:border-primary"
+            >
+              <option value="">{t("templateAuto")}</option>
+              {templates.map((tp) => (
+                <option key={tp.id} value={tp.id} disabled={tp.status !== "APPROVED" || !isReminderShapedTemplate(tp)}>
+                  {tp.name}
+                  {tp.status !== "APPROVED" ? ` (${tp.status})` : !isReminderShapedTemplate(tp) ? ` (${t("templateWrongShape")})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

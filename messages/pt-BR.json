@@ -680,7 +680,6 @@
       "enabledDesc": "Envia um lembrete pelo WhatsApp antes de cada compromisso, usando um template aprovado.",
       "noTemplateWarning": "Nenhum template de Utilidade aprovado com o formato esperado: 3 variáveis no corpo (nome, data, horário) e pelo menos 2 botões de resposta rápida. Crie e aprove esse template, ou escolha um abaixo, antes que os lembretes comecem a sair.",
       "toastSameButton": "Confirmar e Remarcar não podem ser o mesmo botão.",
-      "templateTitle": "Template do lembrete",
       "templateAuto": "Detectar automaticamente",
       "templateWrongShape": "formato incompatível",
       "offsetsTitle": "Antecedência",

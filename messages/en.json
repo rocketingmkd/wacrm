@@ -679,7 +679,6 @@
       "enabledTitle": "Automatic reminders",
       "enabledDesc": "Sends a WhatsApp reminder before each appointment, using an approved template.",
       "noTemplateWarning": "No approved Utility template matches the expected shape (3 body variables — name, date, time — and at least 2 quick-reply buttons). Create and approve that template, or pick one below, before reminders can go out.",
-      "templateTitle": "Reminder template",
       "templateAuto": "Auto-detect",
       "templateWrongShape": "wrong shape",
       "offsetsTitle": "Lead time",

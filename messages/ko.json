@@ -678,7 +678,6 @@
       "enabledTitle": "자동 리마인더",
       "enabledDesc": "승인된 템플릿을 사용해 약속 전에 WhatsApp으로 리마인더를 보냅니다.",
       "noTemplateWarning": "예상 형식(본문 변수 3개 — 이름, 날짜, 시간 — 와 빠른 답장 버튼 2개 이상)에 맞는 승인된 유틸리티 템플릿이 없습니다. 리마인더가 발송되려면 해당 템플릿을 만들어 승인받거나 아래에서 선택하세요.",
-      "templateTitle": "리마인더 템플릿",
       "templateAuto": "자동 감지",
       "templateWrongShape": "형식 불일치",
       "offsetsTitle": "발송 시점",

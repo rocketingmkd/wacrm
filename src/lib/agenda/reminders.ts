@@ -7,7 +7,7 @@ import { moveDealStage, dispatchDealStageChanged } from '@/lib/deals/move-stage'
 import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
 
 /**
- * The appointment-reminder engine (migration 061). Deliberately has no
+ * The appointment-reminder engine (migrations 061/062). Deliberately has no
  * concept of a persisted "next run time": it derives what's due
  * straight from `deals.scheduled_at` on every cron tick, and
  * `agenda_reminders` (the ledger table) exists only to make one
@@ -35,7 +35,11 @@ export type ReminderKind = 'first' | 'second'
 export interface ReminderSettings {
   account_id: string
   enabled: boolean
-  template_id: string | null
+  /** Distinct templates on purpose, not just timing — the first
+   *  reminder is a confirmation request, the second a plain heads-up,
+   *  so they carry different copy (migration 062). */
+  first_template_id: string | null
+  second_template_id: string | null
   first_offset_minutes: number | null
   second_offset_minutes: number | null
   confirm_button_index: number
@@ -155,8 +159,11 @@ async function processAccountReminders(
   const config = await loadAgendaConfig(db, settings.account_id)
   if (!config) return { processed, failed }
 
-  const template = await resolveTemplate(db, settings)
-  if (!template) return { processed, failed }
+  const templates: Record<ReminderKind, MessageTemplate | null> = {
+    first: await resolveTemplate(db, settings, 'first'),
+    second: await resolveTemplate(db, settings, 'second'),
+  }
+  if (!templates.first && !templates.second) return { processed, failed }
 
   const { data: waConfig } = await db
     .from('whatsapp_config')
@@ -184,6 +191,11 @@ async function processAccountReminders(
     if (!deal.contact_id) continue
     const kinds = dueReminderKinds(deal, settings, now)
     for (const kind of kinds) {
+      const template = templates[kind]
+      // No template configured/resolvable for this specific kind yet —
+      // leave it pending (no ledger row written), it'll be picked up
+      // once the account finishes configuring the Lembretes tab.
+      if (!template) continue
       const outcome = await sendOneReminder(db, { settings, template, deal, kind, ownerUserId })
       if (outcome === 'sent') processed++
       else if (outcome === 'failed') failed++
@@ -195,12 +207,14 @@ async function processAccountReminders(
 async function resolveTemplate(
   db: SupabaseClient,
   settings: ReminderSettings,
+  kind: ReminderKind,
 ): Promise<MessageTemplate | null> {
-  if (settings.template_id) {
+  const explicitId = kind === 'first' ? settings.first_template_id : settings.second_template_id
+  if (explicitId) {
     const { data } = await db
       .from('message_templates')
       .select('*')
-      .eq('id', settings.template_id)
+      .eq('id', explicitId)
       .eq('account_id', settings.account_id)
       .eq('status', 'APPROVED')
       .maybeSingle()
@@ -216,7 +230,9 @@ async function resolveTemplate(
 
   const matches = ((candidates ?? []) as MessageTemplate[]).filter(isReminderShapedTemplate)
   // Ambiguous (0 or >1 candidates) → refuse to guess which one to send.
-  // The Lembretes tab surfaces this as "escolha um template" instead.
+  // Works during the transition (only one template exists yet) but
+  // once both kinds have their own approved template, both must be
+  // picked explicitly — the Lembretes tab surfaces that as a warning.
   return matches.length === 1 ? matches[0] : null
 }
 
