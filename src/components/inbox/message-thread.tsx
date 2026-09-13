@@ -194,6 +194,11 @@ export function MessageThread({
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  // Keyed by template name so a sent template message can show the same
+  // buttons the customer received — `messages` only stores `template_name`,
+  // not the button set, so the bubble looks it up here at render time.
+  // Ambiguous when two languages share a name (rare); first row wins.
+  const [templatesByName, setTemplatesByName] = useState<Map<string, MessageTemplate>>(new Map());
   // Purely visual spin state for the manual-refresh button. The actual
   // refetch is fire-and-forget through `onRefresh` (which bumps the
   // parent's resyncToken); the 700ms spin is just feedback so the click
@@ -235,6 +240,33 @@ export function MessageThread({
           return;
         }
         setProfiles((data as Profile[]) ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Template rows, for rendering a sent template message's buttons.
+  // Fetched once (not scoped to `status` — a message may reference a
+  // template that's since been edited/unapproved, and we still want to
+  // show what was actually sent).
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("message_templates")
+      .select("*")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch templates:", error);
+          return;
+        }
+        const byName = new Map<string, MessageTemplate>();
+        for (const row of (data as MessageTemplate[]) ?? []) {
+          if (!byName.has(row.name)) byName.set(row.name, row);
+        }
+        setTemplatesByName(byName);
       });
     return () => {
       cancelled = true;
@@ -1176,6 +1208,11 @@ export function MessageThread({
                             currentUserId={user?.id}
                             onToggleReaction={handlePillToggle}
                             isFirstInGroup={isFirstInGroup}
+                            templateButtons={
+                              msg.template_name
+                                ? templatesByName.get(msg.template_name)?.buttons
+                                : undefined
+                            }
                           />
                         </MessageActions>
                       </div>

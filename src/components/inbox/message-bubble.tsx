@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { Message, MessageReaction } from "@/types";
+import type { Message, MessageReaction, TemplateButton } from "@/types";
 import {
   Clock,
   Check,
@@ -14,6 +14,10 @@ import {
   ImageOff,
   CornerDownLeft,
   Sparkles,
+  Reply,
+  ExternalLink,
+  Phone,
+  Copy,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -36,6 +40,10 @@ interface MessageBubbleProps {
    * renders a normal (tailed) bubble instead of a silently-wrong one.
    */
   isFirstInGroup?: boolean;
+  /** Buttons of the template this message was sent from, if any — looked
+   *  up by the caller (message-thread) from `message_templates`, since
+   *  `messages` only stores `template_name`. */
+  templateButtons?: TemplateButton[];
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
@@ -127,7 +135,55 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
-function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof useTranslations> }) {
+/**
+ * Read-only render of a template's buttons, WhatsApp-style — mirrors
+ * `InteractivePreview`'s row-of-buttons treatment so a template send
+ * and an interactive send look consistent in the thread. Non-clickable:
+ * this is a record of what the customer received, not a live control.
+ */
+function TemplateButtonRow({ buttons }: { buttons: TemplateButton[] }) {
+  const iconFor = (button: TemplateButton) => {
+    switch (button.type) {
+      case "URL":
+        return ExternalLink;
+      case "PHONE_NUMBER":
+        return Phone;
+      case "COPY_CODE":
+        return Copy;
+      default:
+        return Reply;
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col overflow-hidden rounded-md border border-current/15">
+      {buttons.map((button, i) => {
+        const Icon = iconFor(button);
+        return (
+          <button
+            key={i}
+            type="button"
+            disabled
+            className="flex items-center justify-center gap-1.5 border-t border-current/15 bg-current/5 py-2 text-sm font-medium text-current first:border-t-0"
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{button.text}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageContent({
+  message,
+  t,
+  templateButtons,
+}: {
+  message: Message;
+  t: ReturnType<typeof useTranslations>;
+  templateButtons?: TemplateButton[];
+}) {
   switch (message.content_type) {
     case "text":
       return (
@@ -213,6 +269,9 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
               {message.content_text}
             </p>
           )}
+          {templateButtons && templateButtons.length > 0 && (
+            <TemplateButtonRow buttons={templateButtons} />
+          )}
         </div>
       );
 
@@ -273,6 +332,7 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
   isFirstInGroup = true,
+  templateButtons,
 }: MessageBubbleProps) {
   const t = useTranslations("Inbox.bubble");
 
@@ -317,7 +377,7 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} t={t} />
+        <MessageContent message={message} t={t} templateButtons={templateButtons} />
         <div
           className={cn(
             "mt-1 flex items-center gap-1",
