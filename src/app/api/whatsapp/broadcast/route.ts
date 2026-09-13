@@ -56,6 +56,14 @@ interface NewRecipient {
   /** Body variable values, one per {{N}}. Legacy field. */
   params?: string[]
   /**
+   * Template body with `params` already substituted in — persisted
+   * verbatim as `messages.content_text` so the bubble shows real text
+   * instead of an empty template card. Optional so legacy callers that
+   * predate this field don't break; the send still goes through, it
+   * just renders with no body text.
+   */
+  content_text?: string
+  /**
    * Structured per-send values (header text variable, media URL
    * override, URL/COPY_CODE button values). When set, takes
    * precedence over `params` for the body too — see
@@ -167,6 +175,7 @@ export async function POST(request: Request) {
         const result = await sendMessageToConversation(supabase, accountId, {
           conversationId,
           messageType: 'template',
+          contentText: recipient.content_text,
           templateName: template_name,
           templateLanguage: template_language || 'pt_BR',
           templateMessageParams: recipient.messageParams,

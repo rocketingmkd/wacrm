@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Contact, MessageTemplate } from '@/types';
+import { renderTemplateBody } from '@/lib/whatsapp/template-render';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
@@ -459,18 +460,26 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
         const apiRecipients = batch
           .filter((r) => r.contact?.phone)
-          .map((r) => ({
-            phone: r.contact!.phone as string,
-            contact_id: r.contact!.id,
-            params: r.contact
+          .map((r) => {
+            const params = r.contact
               ? resolveVariables(
                   payload.variables,
                   r.contact,
                   customValueIndex.get(r.contact.id),
                 )
-              : [],
-            ...(messageParams ? { messageParams } : {}),
-          }));
+              : [];
+            return {
+              phone: r.contact!.phone as string,
+              contact_id: r.contact!.id,
+              params,
+              // Rendered so the message actually shows in the contact's
+              // thread — sendMessageToConversation persists whatever
+              // content_text it's given as-is, it doesn't re-render the
+              // template body itself.
+              content_text: renderTemplateBody(payload.template.body_text, params),
+              ...(messageParams ? { messageParams } : {}),
+            };
+          });
 
         if (apiRecipients.length === 0) continue;
 
