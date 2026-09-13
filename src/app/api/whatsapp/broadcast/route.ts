@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
-import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
-import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils'
+  sendMessageToConversation,
+  findOrCreateConversation,
+  SendMessageError,
+} from '@/lib/whatsapp/send-message'
+import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
+import { findOrCreateContact, ContactError } from '@/lib/api/v1/contacts'
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -32,34 +30,36 @@ interface BroadcastResult {
 /**
  * Two input shapes are accepted:
  *
- *   NEW (preferred — supports per-recipient variable substitution):
+ *   NEW (preferred — supports per-recipient variable substitution AND
+ *   carries the contact so the send lands in that contact's inbox
+ *   thread):
  *     {
- *       recipients: Array<{ phone: string; params: string[] }>,
+ *       recipients: Array<{ phone: string; contact_id?: string; params: string[] }>,
  *       template_name, template_language
  *     }
  *
- *   LEGACY (all phones receive the same params — kept so existing
- *   callers don't break):
+ *   LEGACY (all phones receive the same params, no contact_id — kept
+ *   so existing callers don't break; the contact is found/created by
+ *   phone instead):
  *     {
  *       phone_numbers: string[],
  *       template_params: string[],
  *       template_name, template_language
  *     }
- *
- * Previous implementation only supported the legacy shape, and the
- * sending hook was forced to ship every batch with `templateParams[0]`
- * — meaning every recipient got contact-0's personalization. The new
- * shape is what actually fixes that.
  */
 interface NewRecipient {
   phone: string
+  /** Resolved client-side (the audience is always a `contacts` row) —
+   *  lets each send reuse that contact's conversation instead of
+   *  sending "into the void" the way the old raw Meta-API call did. */
+  contact_id?: string
   /** Body variable values, one per {{N}}. Legacy field. */
   params?: string[]
   /**
    * Structured per-send values (header text variable, media URL
    * override, URL/COPY_CODE button values). When set, takes
    * precedence over `params` for the body too — see
-   * sendTemplateMessage for the merge rules.
+   * sendMessageToConversation for the merge rules.
    */
   messageParams?: SendTimeParams
 }
@@ -89,7 +89,8 @@ export async function POST(request: Request) {
       template_params,
     } = body
 
-    // Normalize to a list of {phone, params} regardless of shape.
+    // Normalize to a list of {phone, contact_id?, params} regardless
+    // of shape.
     let recipients: NewRecipient[]
     if (Array.isArray(newRecipients) && newRecipients.length > 0) {
       recipients = newRecipients
@@ -118,47 +119,6 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: config, error: configError } = await supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-      .single()
-
-    if (configError || !config) {
-      return NextResponse.json(
-        {
-          error:
-            'WhatsApp not configured. Please set up your WhatsApp integration first.',
-        },
-        { status: 400 }
-      )
-    }
-
-    const accessToken = decrypt(config.access_token)
-
-    // Load the template row once so sendTemplateMessage can build
-    // header + button components on each iteration. Loading inside
-    // the loop would N+1 against Supabase for every recipient.
-    // Guard against a malformed local row crashing every send in
-    // the loop with the same opaque TypeError — fail loudly once.
-    const { data: rawTemplateRow } = await supabase
-      .from('message_templates')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('name', template_name)
-      .eq('language', template_language || 'pt_BR')
-      .maybeSingle()
-    if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
-      return NextResponse.json(
-        {
-          error:
-            'Template row is malformed locally — run "Sync from Meta" in Settings to repair it before broadcasting.',
-        },
-        { status: 500 },
-      )
-    }
-    const templateRow = rawTemplateRow ?? null
-
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
@@ -176,55 +136,64 @@ export async function POST(request: Request) {
         continue
       }
 
-      // Retry with phone variants on "not in allowed list" so numbers
-      // that differ only in a trunk-prefix 0 still reach recipients.
-      const variants = phoneVariants(sanitized)
-      let sentMessageId: string | null = null
-      let lastError: string | null = null
+      try {
+        // Legacy `phone_numbers` callers have no contact_id — find or
+        // create the contact by phone, same dedupe the webhook and
+        // the public API use, so every broadcast recipient still maps
+        // to exactly one contact/conversation.
+        const contactId =
+          recipient.contact_id ??
+          (
+            await findOrCreateContact(supabase, accountId, userId, {
+              phone: sanitized,
+            })
+          ).id
 
-      for (const variant of variants) {
-        try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
-            to: variant,
-            templateName: template_name,
-            language: template_language || 'pt_BR',
-            template: templateRow ?? undefined,
-            messageParams: recipient.messageParams,
-            params: recipient.params ?? [],
-          })
-          sentMessageId = result.messageId
-          lastError = null
-          break
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
-            lastError = errorMessage
-            break
-          }
-          lastError = errorMessage
-          // retry with next variant
+        const conversationId = await findOrCreateConversation(
+          supabase,
+          accountId,
+          userId,
+          contactId,
+        )
+        if (!conversationId) {
+          throw new Error('Failed to open a conversation for this contact')
         }
-      }
 
-      if (sentMessageId) {
+        // Delegate to the shared send core (validates, sends to Meta
+        // with phone-variant + BSUID retry, persists into `messages`,
+        // updates the conversation preview, pauses active flow runs) —
+        // the exact same path a manually-typed message takes, so a
+        // broadcasted template shows up in the contact's thread too.
+        const result = await sendMessageToConversation(supabase, accountId, {
+          conversationId,
+          messageType: 'template',
+          templateName: template_name,
+          templateLanguage: template_language || 'pt_BR',
+          templateMessageParams: recipient.messageParams,
+          templateParams: recipient.params ?? [],
+        })
+
         results.push({
           phone: recipient.phone,
           status: 'sent',
-          whatsapp_message_id: sentMessageId,
+          whatsapp_message_id: result.whatsappMessageId,
         })
         sentCount++
-      } else {
+      } catch (error) {
+        const errorMessage =
+          error instanceof SendMessageError || error instanceof ContactError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : 'Unknown error'
         console.error(
           `Failed to send broadcast to ${recipient.phone}:`,
-          lastError
+          errorMessage
         )
         results.push({
           phone: recipient.phone,
           status: 'failed',
-          error: lastError || 'Unknown error',
+          error: errorMessage,
         })
         failedCount++
       }

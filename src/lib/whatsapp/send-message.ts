@@ -180,6 +180,48 @@ export function validateSendMessageParams(params: {
   }
 }
 
+/**
+ * Return the contact's conversation id in this account, creating one if
+ * it doesn't exist yet. Shared by every caller that targets a contact
+ * rather than an existing conversation (dashboard "Send to contact",
+ * broadcast fan-out) so an inbound-then-outbound (or outbound-first)
+ * sequence always converges on a single thread per contact. Runs under
+ * the caller's RLS — the conversations_insert policy requires account
+ * agent membership, which the caller already is.
+ */
+export async function findOrCreateConversation(
+  db: SupabaseClient,
+  accountId: string,
+  userId: string,
+  contactId: string,
+): Promise<string | null> {
+  const { data: existing } = await db
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .maybeSingle();
+
+  if (existing) return existing.id;
+
+  const { data: created, error } = await db
+    .from('conversations')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      contact_id: contactId,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Error creating conversation for contact send:', error.message);
+    return null;
+  }
+
+  return created.id;
+}
+
 export async function sendMessageToConversation(
   db: SupabaseClient,
   accountId: string,
