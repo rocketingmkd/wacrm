@@ -131,7 +131,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
   switch (message.content_type) {
     case "text":
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
           {message.content_text}
         </p>
       );
@@ -145,7 +145,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             <MediaUnavailable label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
               {message.content_text}
             </p>
           )}
@@ -165,7 +165,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             <MediaUnavailable label={t("video")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
               {message.content_text}
             </p>
           )}
@@ -209,7 +209,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
             {t("template")}
           </span>
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
               {message.content_text}
             </p>
           )}
@@ -244,14 +244,14 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
               <CornerDownLeft className="h-3 w-3" />
               {t("buttonReply")}
             </span>
-            <p className="whitespace-pre-wrap break-words text-sm">
+            <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
               {message.content_text || t("interactiveReply")}
             </p>
           </div>
         );
       }
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
           {message.content_text || t("interactiveReply")}
         </p>
       );
@@ -259,7 +259,7 @@ function MessageContent({ message, t }: { message: Message, t: ReturnType<typeof
 
     default:
       return (
-        <p className="whitespace-pre-wrap break-words text-sm">
+        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
           {message.content_text || t("unsupported")}
         </p>
       );
