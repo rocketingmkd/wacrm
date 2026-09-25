@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Send, Loader2, Users, Save, Coins } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Users, Save, Coins, CalendarClock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { estimateMetaCost, formatBRL } from '@/lib/whatsapp/meta-pricing';
 
@@ -31,9 +31,22 @@ interface Step4Props {
   audience: AudienceConfig;
   onSend: () => void;
   onSaveDraft?: () => void;
+  /** Persists the broadcast as `scheduled` for the given local datetime
+   *  instead of sending immediately — see /api/broadcasts/cron. */
+  onSchedule?: (scheduledAtIso: string) => void;
   onBack: () => void;
   isProcessing: boolean;
   progress: number;
+}
+
+/** `datetime-local` wants "YYYY-MM-DDTHH:mm" in the browser's own
+ *  timezone — no UTC conversion, that happens when we read the value
+ *  back out via `new Date(value).toISOString()`. */
+function nowForDatetimeLocal(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function Step4ScheduleSend({
@@ -43,6 +56,7 @@ export function Step4ScheduleSend({
   audience,
   onSend,
   onSaveDraft,
+  onSchedule,
   onBack,
   isProcessing,
   progress,
@@ -51,6 +65,9 @@ export function Step4ScheduleSend({
   const [showConfirm, setShowConfirm] = useState(false);
   const [estimatedReach, setEstimatedReach] = useState<number>(0);
   const [loadingReach, setLoadingReach] = useState(true);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const minDatetime = nowForDatetimeLocal();
+  const isFutureSchedule = Boolean(scheduledAt) && scheduledAt > minDatetime;
 
   useEffect(() => {
     async function calculateReach() {
@@ -147,6 +164,29 @@ export function Step4ScheduleSend({
         </div>
       </div>
 
+      {/* Schedule for later — optional. Leaving this empty and hitting
+          "Enviar agora" sends immediately, same as before. */}
+      <div className="rounded-xl border border-border bg-card/50 p-4">
+        <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <CalendarClock className="h-4 w-4 text-primary" />
+          Agendar envio (opcional)
+        </label>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Deixe em branco para enviar agora, ou escolha uma data/hora futura pra disparar
+          sozinho nesse horário.
+        </p>
+        <Input
+          type="datetime-local"
+          value={scheduledAt}
+          min={minDatetime}
+          onChange={(e) => setScheduledAt(e.target.value)}
+          className="border-border bg-muted text-foreground"
+        />
+        {scheduledAt && !isFutureSchedule && (
+          <p className="mt-1.5 text-xs text-red-400">Escolha um horário no futuro.</p>
+        )}
+      </div>
+
       {/* Meta per-message cost estimate — informational only, charged on
           the account's own WhatsApp Business bill, not this CRM's invoice. */}
       {!loadingReach && estimatedReach > 0 && (
@@ -210,11 +250,22 @@ export function Step4ScheduleSend({
             </Button>
           )}
 
+          {onSchedule && (
+            <Button
+              onClick={() => onSchedule(new Date(scheduledAt).toISOString())}
+              disabled={!name.trim() || !isFutureSchedule || isProcessing}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              <CalendarClock className="h-4 w-4" />
+              Agendar envio
+            </Button>
+          )}
+
           <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
           <DialogTrigger
             render={
               <Button
-                disabled={!name.trim() || isProcessing}
+                disabled={!name.trim() || isProcessing || isFutureSchedule}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               />
             }

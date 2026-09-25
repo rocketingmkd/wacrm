@@ -13,8 +13,11 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  FileText,
+  AlertTriangle,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { parseCsvContacts } from '@/lib/broadcasts/csv-contacts';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -91,6 +94,9 @@ export function Step2SelectAudience({
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [csvSkipped, setCsvSkipped] = useState(0);
+  const [csvError, setCsvError] = useState<string | null>(null);
 
   // Tags are used both by the primary "Filter by Tags" audience type
   // AND by the exclude-list below — so always load once on mount.
@@ -212,6 +218,40 @@ export function Step2SelectAudience({
   useEffect(() => {
     fetchEstimatedCount();
   }, [fetchEstimatedCount]);
+
+  async function handleCsvFile(file: File | undefined) {
+    setCsvError(null);
+    if (!file) return;
+
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      setCsvError('Envie um arquivo .csv (exportado do Excel/Google Contatos).');
+      return;
+    }
+
+    const text = await file.text();
+    const { contacts, skipped } = parseCsvContacts(text);
+
+    if (contacts.length === 0) {
+      setCsvFileName(null);
+      setCsvSkipped(0);
+      setCsvError(
+        'Nenhum telefone válido encontrado nesse arquivo. Confira se a coluna se chama "phone" ou "telefone".',
+      );
+      onUpdate({ ...audience, csvContacts: undefined });
+      return;
+    }
+
+    setCsvFileName(file.name);
+    setCsvSkipped(skipped);
+    onUpdate({ ...audience, csvContacts: contacts });
+  }
+
+  function clearCsv() {
+    setCsvFileName(null);
+    setCsvSkipped(0);
+    setCsvError(null);
+    onUpdate({ ...audience, csvContacts: undefined });
+  }
 
   function toggleTag(tagId: string) {
     const current = audience.tagIds ?? [];
@@ -386,6 +426,55 @@ export function Step2SelectAudience({
                 placeholder={t('selectAudience.valuePlaceholder')}
                 className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
               />
+            </div>
+          )}
+        </div>
+      )}
+
+      {audience.type === 'csv' && (
+        <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
+          <p className="text-sm font-medium text-foreground">{t('selectAudience.method.csv')}</p>
+          <p className="text-xs text-muted-foreground">
+            Arquivo .csv com uma coluna de telefone (e opcionalmente nome). Com cabeçalho
+            (<code>phone,name</code> ou <code>telefone,nome</code>) ou sem, nesse caso a
+            primeira coluna é o telefone e a segunda o nome.
+          </p>
+
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted px-4 py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary">
+            <Upload className="h-4 w-4" />
+            {t('selectAudience.method.csv')}
+            <input
+              type="file"
+              accept=".csv,.txt,text/csv"
+              className="hidden"
+              onChange={(e) => handleCsvFile(e.target.files?.[0])}
+            />
+          </label>
+
+          {csvError && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{csvError}</span>
+            </div>
+          )}
+
+          {csvFileName && audience.csvContacts && audience.csvContacts.length > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+              <div className="flex items-center gap-2 text-foreground">
+                <FileText className="h-4 w-4 text-primary" />
+                <span>{csvFileName}</span>
+                <span className="text-xs text-muted-foreground">
+                  ({audience.csvContacts.length} contato{audience.csvContacts.length === 1 ? '' : 's'}
+                  {csvSkipped > 0 ? `, ${csvSkipped} ignorado${csvSkipped === 1 ? '' : 's'} sem telefone` : ''})
+                </span>
+              </div>
+              <button
+                onClick={clearCsv}
+                className="text-muted-foreground hover:text-red-400"
+                aria-label="Remover arquivo"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           )}
         </div>

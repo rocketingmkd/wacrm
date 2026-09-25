@@ -5,6 +5,14 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Contact, MessageTemplate } from '@/types';
 import { renderTemplateBody } from '@/lib/whatsapp/template-render';
+import {
+  resolveVariables,
+  fetchCustomValueIndex,
+  type VariableMapping,
+} from '@/lib/whatsapp/broadcast-variables';
+
+export type { VariableMapping };
+export { resolveVariables };
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
@@ -23,18 +31,6 @@ export interface AudienceConfig {
   excludeTagIds?: string[];
 }
 
-/**
- * Variable mapping — each template placeholder (by key, usually "1",
- * "2", …) is resolved at send time. `field` maps to a built-in contact
- * field (name/phone/email/company); `custom_field` maps to a
- * contact_custom_values.value row keyed by the custom_fields.id stored
- * in `value`.
- */
-export type VariableMapping =
-  | { type: 'static'; value: string }
-  | { type: 'field'; value: string }
-  | { type: 'custom_field'; value: string };
-
 interface BroadcastPayload {
   name: string;
   template: MessageTemplate;
@@ -51,6 +47,18 @@ interface BroadcastPayload {
 
 interface UseBroadcastSendingReturn {
   createAndSendBroadcast: (payload: BroadcastPayload) => Promise<string>;
+  /**
+   * Persists a `broadcasts` row with status `scheduled` plus its
+   * `broadcast_recipients` (status `pending`) — audience resolution
+   * (CSV upsert, tag/custom-field lookup) happens now, same as a
+   * normal send, so it only has to happen once. The actual Meta send
+   * is deferred to the `/api/broadcasts/cron` sweep, which fires when
+   * `scheduled_at` arrives — see src/lib/broadcasts/cron.ts.
+   */
+  scheduleBroadcast: (
+    payload: BroadcastPayload,
+    scheduledAt: string,
+  ) => Promise<string>;
   isProcessing: boolean;
   progress: number;
 }
@@ -75,77 +83,6 @@ interface BroadcastApiResult {
   status: 'sent' | 'failed';
   whatsapp_message_id?: string;
   error?: string;
-}
-
-/** contactId → (customFieldId → value). */
-type CustomValueIndex = Map<string, Map<string, string>>;
-
-/**
- * Per-contact resolution of custom-field placeholders. Static and
- * built-in-field mappings resolve synchronously; custom fields read
- * from a pre-built index to avoid N+1 queries during the send loop.
- */
-export function resolveVariables(
-  variables: Record<string, VariableMapping>,
-  contact: Contact,
-  customValues?: Map<string, string>,
-): string[] {
-  // Keys are typically "1","2",... — numeric-aware sort keeps
-  // {{1}} before {{10}}.
-  const keys = Object.keys(variables).sort((a, b) => {
-    const an = Number(a);
-    const bn = Number(b);
-    if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
-    return a.localeCompare(b);
-  });
-
-  return keys.map((key) => {
-    const v = variables[key];
-    if (v.type === 'static') return v.value;
-
-    if (v.type === 'field') {
-      const fieldMap: Record<string, string | undefined> = {
-        name: contact.name,
-        phone: contact.phone ?? undefined,
-        email: contact.email,
-        company: contact.company,
-      };
-      return fieldMap[v.value] ?? '';
-    }
-
-    // custom_field
-    return customValues?.get(v.value) ?? '';
-  });
-}
-
-/**
- * Bulk-fetch contact_custom_values for a set of contacts. Returns an
- * index keyed by contact_id → field_id → value.
- */
-async function fetchCustomValueIndex(
-  supabase: ReturnType<typeof createClient>,
-  contactIds: string[],
-): Promise<CustomValueIndex> {
-  const index: CustomValueIndex = new Map();
-  if (contactIds.length === 0) return index;
-
-  // Supabase PostgREST caps the .in(...) IN-clause roughly at 1000
-  // values. Page through to stay safe.
-  const PAGE = 500;
-  for (let i = 0; i < contactIds.length; i += PAGE) {
-    const slice = contactIds.slice(i, i + PAGE);
-    const { data } = await supabase
-      .from('contact_custom_values')
-      .select('contact_id, custom_field_id, value')
-      .in('contact_id', slice);
-
-    for (const row of data ?? []) {
-      const bucket = index.get(row.contact_id) ?? new Map<string, string>();
-      bucket.set(row.custom_field_id, row.value ?? '');
-      index.set(row.contact_id, bucket);
-    }
-  }
-  return index;
 }
 
 export function useBroadcastSending(): UseBroadcastSendingReturn {
@@ -321,6 +258,137 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     return data ?? [];
   }
 
+  /**
+   * Shared by createAndSendBroadcast and scheduleBroadcast: resolve the
+   * signed-in user/account, resolve the audience into real contacts
+   * (CSV upsert, tag/custom-field lookup), insert the `broadcasts` row
+   * (status/scheduled_at supplied by the caller) and its
+   * `broadcast_recipients` rows. Everything after this point diverges
+   * — send now vs. leave `pending` for the /api/broadcasts/cron sweep.
+   */
+  async function prepareBroadcast(
+    supabase: ReturnType<typeof createClient>,
+    payload: BroadcastPayload,
+    status: 'sending' | 'scheduled',
+    scheduledAt?: string,
+  ) {
+    // ── Step 0: Resolve current user ──────────────────────────────
+    // broadcasts.user_id is NOT NULL + guarded by RLS
+    // (auth.uid() = user_id). Without this, the INSERT below was
+    // silently failing with 23502 / 42501 — the wizard would
+    // no-op with no feedback.
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) {
+      throw new Error('You are not signed in.');
+    }
+    if (!accountId) {
+      throw new Error('Your profile is not linked to an account.');
+    }
+
+    // ── Step 1: Resolve audience contacts ─────────────────────────
+    setProgress(5);
+    const contacts = await resolveAudience(payload.audience);
+
+    if (contacts.length === 0) {
+      throw new Error('No contacts found for this audience.');
+    }
+
+    // ── Step 2: Create broadcast row ──────────────────────────────
+    setProgress(10);
+    const { data: broadcast, error: broadcastError } = await supabase
+      .from('broadcasts')
+      .insert({
+        user_id: user.id,
+        account_id: accountId,
+        name: payload.name,
+        template_name: payload.template.name,
+        template_language: payload.template.language ?? 'pt_BR',
+        template_variables: payload.variables,
+        audience_filter: {
+          type: payload.audience.type,
+          tagIds: payload.audience.tagIds,
+          customField: payload.audience.customField,
+          excludeTagIds: payload.audience.excludeTagIds,
+        },
+        status,
+        scheduled_at: scheduledAt ?? null,
+        total_recipients: contacts.length,
+        sent_count: 0,
+        delivered_count: 0,
+        read_count: 0,
+        replied_count: 0,
+        failed_count: 0,
+      })
+      .select()
+      .single();
+
+    if (broadcastError || !broadcast) {
+      throw new Error(
+        `Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`,
+      );
+    }
+
+    // ── Step 3: Insert recipient rows ─────────────────────────────
+    setProgress(20);
+    const recipientRows = contacts.map((contact) => ({
+      broadcast_id: broadcast.id,
+      contact_id: contact.id,
+      status: 'pending' as const,
+    }));
+
+    for (let i = 0; i < recipientRows.length; i += INSERT_BATCH_SIZE) {
+      const batch = recipientRows.slice(i, i + INSERT_BATCH_SIZE);
+      const { error: recipientError } = await supabase
+        .from('broadcast_recipients')
+        .insert(batch);
+      if (recipientError) {
+        // Previous impl logged and marched on — the broadcast then ran
+        // with an incomplete recipient set, so webhook status updates
+        // couldn't find some rows and the aggregate counts drifted.
+        // Flip the broadcast to failed so the user sees the problem
+        // immediately, then throw to abort the send loop.
+        await supabase
+          .from('broadcasts')
+          .update({
+            status: 'failed',
+            failed_count: contacts.length,
+          })
+          .eq('id', broadcast.id);
+        throw new Error(
+          `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`,
+        );
+      }
+    }
+
+    return { broadcast };
+  }
+
+  async function scheduleBroadcast(
+    payload: BroadcastPayload,
+    scheduledAt: string,
+  ): Promise<string> {
+    setIsProcessing(true);
+    setProgress(0);
+
+    const supabase = createClient();
+
+    try {
+      const { broadcast } = await prepareBroadcast(
+        supabase,
+        payload,
+        'scheduled',
+        scheduledAt,
+      );
+      setProgress(100);
+      return broadcast.id;
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   async function createAndSendBroadcast(payload: BroadcastPayload): Promise<string> {
     setIsProcessing(true);
     setProgress(0);
@@ -328,95 +396,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     const supabase = createClient();
 
     try {
-      // ── Step 0: Resolve current user ──────────────────────────────
-      // broadcasts.user_id is NOT NULL + guarded by RLS
-      // (auth.uid() = user_id). Without this, the INSERT below was
-      // silently failing with 23502 / 42501 — the wizard would
-      // no-op with no feedback.
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) {
-        throw new Error('You are not signed in.');
-      }
-      if (!accountId) {
-        throw new Error('Your profile is not linked to an account.');
-      }
-
-      // ── Step 1: Resolve audience contacts ─────────────────────────
-      setProgress(5);
-      const contacts = await resolveAudience(payload.audience);
-
-      if (contacts.length === 0) {
-        throw new Error('No contacts found for this audience.');
-      }
-
-      // ── Step 2: Create broadcast row ──────────────────────────────
-      setProgress(10);
-      const { data: broadcast, error: broadcastError } = await supabase
-        .from('broadcasts')
-        .insert({
-          user_id: user.id,
-          account_id: accountId,
-          name: payload.name,
-          template_name: payload.template.name,
-          template_language: payload.template.language ?? 'pt_BR',
-          template_variables: payload.variables,
-          audience_filter: {
-            type: payload.audience.type,
-            tagIds: payload.audience.tagIds,
-            customField: payload.audience.customField,
-            excludeTagIds: payload.audience.excludeTagIds,
-          },
-          status: 'sending',
-          total_recipients: contacts.length,
-          sent_count: 0,
-          delivered_count: 0,
-          read_count: 0,
-          replied_count: 0,
-          failed_count: 0,
-        })
-        .select()
-        .single();
-
-      if (broadcastError || !broadcast) {
-        throw new Error(
-          `Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`,
-        );
-      }
-
-      // ── Step 3: Insert recipient rows ─────────────────────────────
-      setProgress(20);
-      const recipientRows = contacts.map((contact) => ({
-        broadcast_id: broadcast.id,
-        contact_id: contact.id,
-        status: 'pending' as const,
-      }));
-
-      for (let i = 0; i < recipientRows.length; i += INSERT_BATCH_SIZE) {
-        const batch = recipientRows.slice(i, i + INSERT_BATCH_SIZE);
-        const { error: recipientError } = await supabase
-          .from('broadcast_recipients')
-          .insert(batch);
-        if (recipientError) {
-          // Previous impl logged and marched on — the broadcast then ran
-          // with an incomplete recipient set, so webhook status updates
-          // couldn't find some rows and the aggregate counts drifted.
-          // Flip the broadcast to failed so the user sees the problem
-          // immediately, then throw to abort the send loop.
-          await supabase
-            .from('broadcasts')
-            .update({
-              status: 'failed',
-              failed_count: contacts.length,
-            })
-            .eq('id', broadcast.id);
-          throw new Error(
-            `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`,
-          );
-        }
-      }
+      const { broadcast } = await prepareBroadcast(supabase, payload, 'sending');
 
       // ── Step 4: Fetch recipients (joined contact) + preload custom values
       setProgress(30);
@@ -581,5 +561,5 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     }
   }
 
-  return { createAndSendBroadcast, isProcessing, progress };
+  return { createAndSendBroadcast, scheduleBroadcast, isProcessing, progress };
 }
