@@ -21,7 +21,11 @@ import {
 } from '@/lib/auth/account'
 
 interface BroadcastResult {
-  phone: string
+  /** Absent for a contact_id-targeted, BSUID-only recipient (no phone). */
+  phone?: string
+  /** Echoed back so the client can match results without relying on
+   *  `phone`, which a BSUID-only recipient doesn't have. */
+  contact_id?: string
   status: 'sent' | 'failed'
   whatsapp_message_id?: string
   error?: string
@@ -48,7 +52,11 @@ interface BroadcastResult {
  *     }
  */
 interface NewRecipient {
-  phone: string
+  /** Optional when `contact_id` is set — a BSUID-only contact
+   *  (migration 039) has no phone; sendMessageToConversation resolves
+   *  the actual send target from the contact row. Required (and
+   *  validated as E.164) only for the legacy `phone_numbers` path. */
+  phone?: string
   /** Resolved client-side (the audience is always a `contacts` row) —
    *  lets each send reuse that contact's conversation instead of
    *  sending "into the void" the way the old raw Meta-API call did. */
@@ -132,31 +140,38 @@ export async function POST(request: Request) {
     let failedCount = 0
 
     for (const recipient of recipients) {
-      const sanitized = sanitizePhoneForMeta(recipient.phone)
+      // A caller that already resolved a contact_id (every dashboard
+      // broadcast — the audience is always a `contacts` row) may be
+      // targeting a BSUID-only contact (migration 039: identified via
+      // a WhatsApp username, no phone shared). That contact has no
+      // valid E.164 phone to sanitize/validate here, and it doesn't
+      // need one — sendMessageToConversation resolves the real send
+      // target (phone OR wa_user_id) from the contact row itself once
+      // we hand it a conversation. Only the legacy `phone_numbers`
+      // path (no contact_id yet) needs a phone to find-or-create one.
+      let contactId = recipient.contact_id
 
-      if (!isValidE164(sanitized)) {
-        results.push({
-          phone: recipient.phone,
-          status: 'failed',
-          error: 'Invalid phone number format',
-        })
-        failedCount++
-        continue
+      if (!contactId) {
+        const sanitized = sanitizePhoneForMeta(recipient.phone ?? '')
+
+        if (!isValidE164(sanitized)) {
+          results.push({
+            phone: recipient.phone,
+            status: 'failed',
+            error: 'Invalid phone number format',
+          })
+          failedCount++
+          continue
+        }
+
+        contactId = (
+          await findOrCreateContact(supabase, accountId, userId, {
+            phone: sanitized,
+          })
+        ).id
       }
 
       try {
-        // Legacy `phone_numbers` callers have no contact_id — find or
-        // create the contact by phone, same dedupe the webhook and
-        // the public API use, so every broadcast recipient still maps
-        // to exactly one contact/conversation.
-        const contactId =
-          recipient.contact_id ??
-          (
-            await findOrCreateContact(supabase, accountId, userId, {
-              phone: sanitized,
-            })
-          ).id
-
         const conversationId = await findOrCreateConversation(
           supabase,
           accountId,
@@ -184,6 +199,7 @@ export async function POST(request: Request) {
 
         results.push({
           phone: recipient.phone,
+          contact_id: contactId,
           status: 'sent',
           whatsapp_message_id: result.whatsappMessageId,
         })
@@ -196,11 +212,12 @@ export async function POST(request: Request) {
               ? error.message
               : 'Unknown error'
         console.error(
-          `Failed to send broadcast to ${recipient.phone}:`,
+          `Failed to send broadcast to ${recipient.phone ?? contactId}:`,
           errorMessage
         )
         results.push({
           phone: recipient.phone,
+          contact_id: contactId,
           status: 'failed',
           error: errorMessage,
         })

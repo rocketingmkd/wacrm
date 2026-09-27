@@ -79,7 +79,8 @@ function sleep(ms: number) {
 }
 
 interface BroadcastApiResult {
-  phone: string;
+  phone?: string;
+  contact_id?: string;
   status: 'sent' | 'failed';
   whatsapp_message_id?: string;
   error?: string;
@@ -438,8 +439,12 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
         const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
 
+        // A contact with no phone but a `wa_user_id` (migration 039 —
+        // reached only via a WhatsApp username) is still sendable: the
+        // API route resolves the real target from `contact_id` itself.
+        // Only a contact with neither identifier is truly unreachable.
         const apiRecipients = batch
-          .filter((r) => r.contact?.phone)
+          .filter((r) => r.contact?.phone || r.contact?.wa_user_id)
           .map((r) => {
             const params = r.contact
               ? resolveVariables(
@@ -449,7 +454,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 )
               : [];
             return {
-              phone: r.contact!.phone as string,
+              phone: r.contact!.phone ?? undefined,
               contact_id: r.contact!.id,
               params,
               // Rendered so the message actually shows in the contact's
@@ -480,14 +485,18 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             throw new Error(data.error || 'Broadcast API request failed');
           }
 
-          const resultsByPhone = new Map<string, BroadcastApiResult>();
+          // Matched by contact_id, not phone — a BSUID-only contact
+          // (wa_user_id, no phone) would never match a phone-keyed map.
+          const resultsByContactId = new Map<string, BroadcastApiResult>();
           for (const r of (data.results ?? []) as BroadcastApiResult[]) {
-            resultsByPhone.set(r.phone, r);
+            if (r.contact_id) resultsByContactId.set(r.contact_id, r);
           }
 
           for (const recipient of batch) {
-            const phone = recipient.contact?.phone;
-            const result = phone ? resultsByPhone.get(phone) : undefined;
+            const contactId = recipient.contact?.id;
+            const result = contactId
+              ? resultsByContactId.get(contactId)
+              : undefined;
 
             if (!result) {
               failedCount++;
@@ -495,7 +504,8 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 .from('broadcast_recipients')
                 .update({
                   status: 'failed',
-                  error_message: 'No phone number on contact',
+                  error_message:
+                    'Contact has neither a phone number nor a WhatsApp user id',
                 })
                 .eq('id', recipient.id);
               continue;
