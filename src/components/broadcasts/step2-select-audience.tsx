@@ -15,9 +15,10 @@ import {
   X,
   FileText,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { parseCsvContacts } from '@/lib/broadcasts/csv-contacts';
+import { parseXlsxContacts } from '@/lib/broadcasts/xlsx-contacts';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -223,19 +224,30 @@ export function Step2SelectAudience({
     setCsvError(null);
     if (!file) return;
 
-    if (!/\.(csv|txt)$/i.test(file.name)) {
-      setCsvError('Envie um arquivo .csv (exportado do Excel/Google Contatos).');
+    if (!/\.xlsx?$/i.test(file.name)) {
+      setCsvError('Envie uma planilha .xlsx (Excel).');
       return;
     }
 
-    const text = await file.text();
-    const { contacts, skipped } = parseCsvContacts(text);
+    let contacts: { phone: string; name?: string }[];
+    let skipped: number;
+    try {
+      ({ contacts, skipped } = await parseXlsxContacts(file));
+    } catch {
+      setCsvFileName(null);
+      setCsvSkipped(0);
+      setCsvError(
+        'Não consegui ler essa planilha. Confira se é um arquivo .xlsx válido, não corrompido.',
+      );
+      onUpdate({ ...audience, csvContacts: undefined });
+      return;
+    }
 
     if (contacts.length === 0) {
       setCsvFileName(null);
       setCsvSkipped(0);
       setCsvError(
-        'Nenhum telefone válido encontrado nesse arquivo. Confira se a coluna se chama "phone" ou "telefone".',
+        'Nenhum telefone válido encontrado nessa planilha. Confira se a coluna se chama "telefone" ou "phone".',
       );
       onUpdate({ ...audience, csvContacts: undefined });
       return;
@@ -433,11 +445,22 @@ export function Step2SelectAudience({
 
       {audience.type === 'csv' && (
         <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
-          <p className="text-sm font-medium text-foreground">{t('selectAudience.method.csv')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-foreground">{t('selectAudience.method.csv')}</p>
+            <a
+              href="/templates/modelo-lista-de-leads.xlsx"
+              download
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Baixar planilha modelo
+            </a>
+          </div>
           <p className="text-xs text-muted-foreground">
-            Arquivo .csv com uma coluna de telefone (e opcionalmente nome). Com cabeçalho
-            (<code>phone,name</code> ou <code>telefone,nome</code>) ou sem, nesse caso a
-            primeira coluna é o telefone e a segunda o nome.
+            Planilha .xlsx (Excel) com uma coluna de telefone (e opcionalmente nome). Com
+            cabeçalho (<code>telefone,nome</code> ou <code>phone,name</code>) ou sem, nesse
+            caso a primeira coluna é o telefone e a segunda o nome. Use o modelo acima pra
+            evitar que o Excel converta números longos pra notação científica.
           </p>
 
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted px-4 py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary">
@@ -445,7 +468,7 @@ export function Step2SelectAudience({
             {t('selectAudience.method.csv')}
             <input
               type="file"
-              accept=".csv,.txt,text/csv"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               onChange={(e) => handleCsvFile(e.target.files?.[0])}
             />

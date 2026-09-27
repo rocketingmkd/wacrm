@@ -835,13 +835,13 @@
           "all": "All Contacts",
           "tags": "Filter by Tags",
           "customField": "Custom Field",
-          "csv": "Upload CSV"
+          "csv": "Upload spreadsheet"
         },
         "allDesc": "Send to all {count} contacts in your database.",
         "allDescLoading": "Send to all contacts in your database.",
         "tagDesc": "Send to contacts matching specific tags.",
         "customFieldDesc": "Send to contacts matching a custom field rule.",
-        "csvDesc": "Upload a CSV with phone numbers (and optional names).",
+        "csvDesc": "Upload an .xlsx spreadsheet with phone numbers (and optional names).",
         "selectTags": "Select Tags",
         "searchTags": "Search tags...",
         "noTagsFound": "No tags found.",

@@ -835,13 +835,13 @@
           "all": "Todos os contatos",
           "tags": "Filtrar por etiquetas",
           "customField": "Campo personalizado",
-          "csv": "Enviar CSV"
+          "csv": "Enviar planilha"
         },
         "allDesc": "Enviar para todos os {count} contatos da sua base.",
         "allDescLoading": "Enviar para todos os contatos da sua base.",
         "tagDesc": "Enviar para contatos que correspondem a etiquetas específicas.",
         "customFieldDesc": "Enviar para contatos que correspondem a uma regra de campo personalizado.",
-        "csvDesc": "Envie um CSV com números de telefone (e nomes opcionais).",
+        "csvDesc": "Envie uma planilha .xlsx com números de telefone (e nomes opcionais).",
         "selectTags": "Selecionar etiquetas",
         "searchTags": "Buscar etiquetas...",
         "noTagsFound": "Nenhuma etiqueta encontrada.",
