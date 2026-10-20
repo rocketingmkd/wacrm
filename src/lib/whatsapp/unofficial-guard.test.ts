@@ -9,6 +9,7 @@ const session: UnofficialSession = {
   instance_name: 'crm-1',
   status: 'connected',
   enabled: true,
+  allow_cold_open: false,
   max_per_lead: 2,
   daily_limit: 30,
 };
@@ -61,8 +62,17 @@ describe('assertUnofficialSendAllowed', () => {
     expect(codeOf({ ...ok, hasPhone: false })).toBe('unofficial_needs_phone');
   });
 
-  it('rejects contacts that never wrote to us', () => {
+  it('rejects contacts that never wrote to us unless cold open is switched on', () => {
     expect(codeOf({ ...ok, lastCustomerMessageAt: null })).toBe('unofficial_no_history');
+    expect(
+      codeOf({ ...ok, lastCustomerMessageAt: null, session: { ...session, allow_cold_open: true } }),
+    ).toBeNull();
+  });
+
+  it('still applies the limits to cold opens', () => {
+    const cold = { ...ok, lastCustomerMessageAt: null, session: { ...session, allow_cold_open: true } };
+    expect(codeOf({ ...cold, unofficialSinceLastReply: 2 })).toBe('unofficial_lead_limit');
+    expect(codeOf({ ...cold, unofficialLast24h: 30 })).toBe('unofficial_daily_limit');
   });
 
   it('rejects while the 24h window is still open', () => {

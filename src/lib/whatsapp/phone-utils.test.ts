@@ -3,6 +3,7 @@ import {
   isRecipientNotAllowedError,
   isValidE164,
   normalizePhone,
+  normalizeTypedPhone,
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
@@ -162,3 +163,21 @@ describe("isRecipientNotAllowedError", () => {
     expect(isRecipientNotAllowedError("")).toBe(false);
   });
 });
+
+describe('normalizeTypedPhone', () => {
+  it.each([
+    ['(43) 99194-3029', '5543991943029'],
+    ['43991943029', '5543991943029'],
+    ['043 99194-3029', '5543991943029'],
+    ['+55 43 99194-3029', '5543991943029'],
+    ['55 43 99194-3029', '5543991943029'],
+    ['(43) 3324-8576', '554333248576'],
+    ['+1 555 303 6242', '15553036242'],
+  ])('%s -> %s', (input, expected) => {
+    expect(normalizeTypedPhone(input)).toBe(expected)
+  })
+
+  it.each(['', 'abc', '123', '0000'])('rejects %j', (input) => {
+    expect(normalizeTypedPhone(input)).toBeNull()
+  })
+})

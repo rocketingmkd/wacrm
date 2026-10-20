@@ -17,6 +17,7 @@ interface UnofficialState {
     status: Status;
     phone: string | null;
     enabled: boolean;
+    allow_cold_open: boolean;
     risk_accepted_at: string | null;
     max_per_lead: number;
     daily_limit: number;
@@ -233,6 +234,32 @@ export function UnofficialSessionCard() {
                         }
                       />
                     </div>
+                  </div>
+                )}
+
+                {session?.enabled && (
+                  <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                    <div className="pr-3">
+                      <p className="font-medium text-foreground">Abrir conversa com número novo</p>
+                      <p className="text-xs text-muted-foreground">
+                        Permite mandar texto livre, pelo botão Nova conversa, para quem nunca falou
+                        com você. É o uso de maior risco de bloqueio. Os limites por lead e por
+                        dia continuam valendo.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={Boolean(session.allow_cold_open)}
+                      disabled={busy}
+                      onCheckedChange={(allow_cold_open) =>
+                        call(
+                          'PATCH',
+                          { allow_cold_open },
+                          allow_cold_open
+                            ? 'Abertura com número novo liberada.'
+                            : 'Abertura com número novo desligada.',
+                        )
+                      }
+                    />
                   </div>
                 )}
 
