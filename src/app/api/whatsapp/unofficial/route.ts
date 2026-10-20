@@ -30,6 +30,7 @@ type SessionRow = {
   status: 'disconnected' | 'connecting' | 'connected'
   phone: string | null
   enabled: boolean
+  allow_cold_open: boolean
   risk_accepted_at: string | null
   max_per_lead: number
   daily_limit: number
@@ -44,6 +45,7 @@ function publicShape(row: SessionRow | null, qr?: EvolutionQr | null) {
           status: row.status,
           phone: row.phone,
           enabled: row.enabled,
+          allow_cold_open: row.allow_cold_open,
           risk_accepted_at: row.risk_accepted_at,
           max_per_lead: row.max_per_lead,
           daily_limit: row.daily_limit,
@@ -147,9 +149,13 @@ export async function PATCH(request: Request) {
     const body = (await request.json().catch(() => null)) as {
       enabled?: boolean
       accept_risk?: boolean
+      allow_cold_open?: boolean
     } | null
-    if (!body || typeof body.enabled !== 'boolean') {
-      return NextResponse.json({ error: 'enabled (boolean) is required' }, { status: 400 })
+    if (!body || (typeof body.enabled !== 'boolean' && typeof body.allow_cold_open !== 'boolean')) {
+      return NextResponse.json(
+        { error: 'enabled or allow_cold_open (boolean) is required' },
+        { status: 400 },
+      )
     }
 
     const { data: existing } = await supabase
@@ -161,7 +167,17 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'No unofficial session. Connect first.' }, { status: 404 })
     }
 
-    const patch: Record<string, unknown> = { enabled: body.enabled }
+    const patch: Record<string, unknown> = {}
+    if (typeof body.allow_cold_open === 'boolean') {
+      if (body.allow_cold_open && !existing.risk_accepted_at) {
+        return NextResponse.json(
+          { error: 'Accept the risk notice and enable the session first.' },
+          { status: 400 },
+        )
+      }
+      patch.allow_cold_open = body.allow_cold_open
+    }
+    if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
     if (body.enabled) {
       if (existing.status !== 'connected') {
         return NextResponse.json(

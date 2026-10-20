@@ -102,3 +102,22 @@ export function phoneVariants(sanitized: string): string[] {
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)
 }
+
+/**
+ * Turn what an agent types into a sendable E.164 number (digits only).
+ * Brazil is the default market: a 10 or 11 digit number (DDD + number)
+ * gets the 55 country code, and a leading trunk 0 before the DDD is
+ * dropped. Anything already carrying a country code is kept as typed
+ * (so "+1 555 303 6242" stays international). Returns null when the
+ * result is not a plausible E.164 number.
+ */
+export function normalizeTypedPhone(input: string): string | null {
+  let digits = (input ?? '').replace(/\D/g, '')
+  if (!digits) return null
+  const typedPlus = input.trim().startsWith('+')
+  if (!typedPlus) {
+    digits = digits.replace(/^0+/, '')
+    if (digits.length === 10 || digits.length === 11) digits = `55${digits}`
+  }
+  return isValidE164(digits) ? digits : null
+}

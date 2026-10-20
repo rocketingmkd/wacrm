@@ -11,6 +11,7 @@ import {
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { NewConversationDialog } from "@/components/inbox/new-conversation-dialog";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { AiPanel } from "@/components/inbox/ai-panel";
@@ -55,6 +56,7 @@ function InboxPageInner() {
   const deepLinkConvId = searchParams.get("c");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -597,6 +599,15 @@ function InboxPageInner() {
   // before, unchanged.
   const hasActiveConv = !!activeConversation;
 
+  // "Nova conversa" returns a ready conversation: make sure it is in the
+  // list (a brand-new thread has no message yet) and open it.
+  const handleNewConversationStarted = (conv: Conversation) => {
+    setConversations((prev) =>
+      prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev],
+    );
+    handleSelectConversation(conv);
+  };
+
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
       {/* WhatsApp connection banner — in the flex column, not absolute,
@@ -626,6 +637,7 @@ function InboxPageInner() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
+            onNewConversation={() => setNewConversationOpen(true)}
           />
         </div>
 
@@ -696,6 +708,12 @@ function InboxPageInner() {
           </div>
         )}
       </div>
+
+      <NewConversationDialog
+        open={newConversationOpen}
+        onOpenChange={setNewConversationOpen}
+        onStarted={handleNewConversationStarted}
+      />
     </div>
   );
 }

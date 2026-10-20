@@ -12,7 +12,9 @@
 //   - the account's session must be enabled AND connected
 //   - the contact must have a phone number (no BSUID-only contacts)
 //   - the window must really be closed (otherwise use the official API)
-//   - the contact must have written to us before (history)
+//   - the contact must have written to us before (history), unless the
+//     account switched on `allow_cold_open` ("Nova conversa" to a number
+//     that never wrote)
 //   - at most `max_per_lead` unofficial messages since the lead's last reply
 //   - at most `daily_limit` unofficial messages per account per 24h
 // ============================================================
@@ -27,6 +29,7 @@ export interface UnofficialSession {
   instance_name: string;
   status: 'disconnected' | 'connecting' | 'connected';
   enabled: boolean;
+  allow_cold_open: boolean;
   max_per_lead: number;
   daily_limit: number;
 }
@@ -72,14 +75,17 @@ export function assertUnofficialSendAllowed(input: {
       400
     );
   }
-  if (!input.lastCustomerMessageAt) {
+  if (!input.lastCustomerMessageAt && !session.allow_cold_open) {
     throw new SendMessageError(
       'unofficial_no_history',
-      'The unofficial session only reopens conversations with contacts who have written to you before.',
+      'This contact has not written to you before. Enable "open conversations with new numbers" in Settings > WhatsApp > unofficial session to message them.',
       409
     );
   }
-  if (now.getTime() - input.lastCustomerMessageAt.getTime() < WINDOW_MS) {
+  if (
+    input.lastCustomerMessageAt &&
+    now.getTime() - input.lastCustomerMessageAt.getTime() < WINDOW_MS
+  ) {
     throw new SendMessageError(
       'unofficial_window_open',
       'The 24h window is still open, send this through the official API.',
@@ -113,7 +119,7 @@ export async function resolveUnofficialSend(
 ): Promise<UnofficialSession> {
   const { data: session } = await db
     .from('whatsapp_unofficial_sessions')
-    .select('instance_name, status, enabled, max_per_lead, daily_limit')
+    .select('instance_name, status, enabled, allow_cold_open, max_per_lead, daily_limit')
     .eq('account_id', accountId)
     .maybeSingle<UnofficialSession>();
 

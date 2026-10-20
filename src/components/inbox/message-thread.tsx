@@ -277,14 +277,17 @@ export function MessageThread({
   // connected, which unlocks "reopen via não oficial" on a closed window.
   // Read straight from the table: SELECT is open to any account member.
   const [unofficialReady, setUnofficialReady] = useState(false);
+  const [unofficialColdOk, setUnofficialColdOk] = useState(false);
   useEffect(() => {
     let cancelled = false;
     createClient()
       .from("whatsapp_unofficial_sessions")
-      .select("enabled, status")
+      .select("enabled, status, allow_cold_open")
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setUnofficialReady(Boolean(data?.enabled && data?.status === "connected"));
+        if (cancelled) return;
+        setUnofficialReady(Boolean(data?.enabled && data?.status === "connected"));
+        setUnofficialColdOk(Boolean(data?.allow_cold_open));
       });
     return () => {
       cancelled = true;
@@ -293,7 +296,9 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    // A thread with no messages yet (e.g. just opened via "Nova conversa")
+    // has no customer message either, so free text is not allowed.
+    if (!messages.length) return { expired: true, remaining: "Sem mensagens do cliente" };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
@@ -1266,7 +1271,10 @@ export function MessageThread({
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
-        unofficialReady={unofficialReady}
+        unofficialReady={
+          unofficialReady &&
+          (unofficialColdOk || messages.some((m) => m.sender_type === "customer"))
+        }
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}
