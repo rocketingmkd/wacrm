@@ -28,6 +28,8 @@ const pageTitles: Record<string, string> = {
   "/agenda": "agenda",
   "/broadcasts": "broadcasts",
   "/automations": "automations",
+  "/reports": "reports",
+  "/integrations": "integrations",
   "/settings": "settings",
 };
 

@@ -9,6 +9,7 @@ import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import type { PlanFeatures } from "@/lib/billing/plan";
 import {
+  BarChart3,
   Bell,
   Bot,
   CalendarDays,
@@ -17,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Plug,
   Radio,
   Settings,
   Shield,
@@ -28,7 +30,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { AccountRole } from "@/lib/auth/roles";
+import { hasMinRole, type AccountRole } from "@/lib/auth/roles";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -96,6 +98,8 @@ interface NavItem {
    * enforcement; this just avoids advertising a route that would 403.
    */
   feature?: keyof PlanFeatures;
+  /** Minimum account role that sees this item (settings-class pages). */
+  minRole?: AccountRole;
 }
 
 const navSections: { labelKey: string; items: NavItem[] }[] = [
@@ -122,6 +126,8 @@ const navSections: { labelKey: string; items: NavItem[] }[] = [
     labelKey: "sectionManagement",
     items: [
       { href: "/contacts", labelKey: "contacts", icon: Users },
+      { href: "/reports", labelKey: "reports", icon: BarChart3, minRole: "admin" },
+      { href: "/integrations", labelKey: "integrations", icon: Plug, minRole: "admin" },
       { href: "/settings", labelKey: "settings", icon: Settings },
     ],
   },
@@ -143,7 +149,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.feature || planFeatures[item.feature],
+        (item) =>
+          (!item.feature || planFeatures[item.feature]) &&
+          (!item.minRole || (accountRole ? hasMinRole(accountRole, item.minRole) : false)),
       ),
     }))
     .filter((section) => section.items.length > 0);
