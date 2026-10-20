@@ -16,6 +16,9 @@
   },
   "Sidebar": {
     "title": "CRM Template for WhatsApp",
+    "sectionService": "Service",
+    "sectionGrowth": "Growth",
+    "sectionManagement": "Management",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",
@@ -42,6 +45,8 @@
     "menuSignOut": "Sign out"
   },
   "Header": {
+    "whatsappConnected": "WhatsApp connected",
+    "whatsappDisconnected": "WhatsApp disconnected",
     "dashboard": "Dashboard",
     "inbox": "Inbox",
     "notifications": "Notifications",

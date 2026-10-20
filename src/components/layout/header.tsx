@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { WhatsappStatusPill } from "@/components/layout/whatsapp-status-pill";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "dashboard",
@@ -69,12 +70,13 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
+        <h1 className="truncate font-display text-base font-bold text-foreground sm:text-lg">
           {t(titleKey as string)}
         </h1>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <WhatsappStatusPill className="mr-1" />
         <ModeToggle />
 
         <DropdownMenu>

@@ -16,6 +16,9 @@
   },
   "Sidebar": {
     "title": "WhatsApp용 CRM 템플릿",
+    "sectionService": "고객 응대",
+    "sectionGrowth": "성장",
+    "sectionManagement": "관리",
     "dashboard": "대시보드",
     "inbox": "인박스",
     "notifications": "알림",
@@ -42,6 +45,8 @@
     "menuSignOut": "로그아웃"
   },
   "Header": {
+    "whatsappConnected": "WhatsApp 연결됨",
+    "whatsappDisconnected": "WhatsApp 연결 안 됨",
     "dashboard": "대시보드",
     "inbox": "인박스",
     "notifications": "알림",

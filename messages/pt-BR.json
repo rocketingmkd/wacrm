@@ -16,6 +16,9 @@
   },
   "Sidebar": {
     "title": "Rocketing CRM",
+    "sectionService": "Atendimento",
+    "sectionGrowth": "Crescimento",
+    "sectionManagement": "Gestão",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
@@ -42,6 +45,8 @@
     "menuSignOut": "Sair"
   },
   "Header": {
+    "whatsappConnected": "WhatsApp conectado",
+    "whatsappDisconnected": "WhatsApp desconectado",
     "dashboard": "Painel",
     "inbox": "Caixa de entrada",
     "notifications": "Notificações",
