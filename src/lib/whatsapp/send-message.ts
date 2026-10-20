@@ -275,7 +275,7 @@ export async function sendMessageToConversation(
     .single();
 
   if (convError || !conversation) {
-    throw new SendMessageError('not_found', 'Conversation not found', 404);
+    throw new SendMessageError('not_found', 'Conversa não encontrada', 404);
   }
 
   const contact = conversation.contact;
@@ -283,7 +283,7 @@ export async function sendMessageToConversation(
   if (!contact?.phone && !waUserId) {
     throw new SendMessageError(
       'bad_request',
-      'Contact has neither a phone number nor a WhatsApp user id',
+      'O contato não tem telefone nem ID de usuário do WhatsApp',
       400
     );
   }
@@ -298,7 +298,7 @@ export async function sendMessageToConversation(
     if (!isValidE164(sanitizedPhone)) {
       throw new SendMessageError(
         'bad_request',
-        'Invalid phone number format',
+        'Formato de telefone inválido',
         400
       );
     }
@@ -314,7 +314,7 @@ export async function sendMessageToConversation(
   if (configError || !config) {
     throw new SendMessageError(
       'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      'WhatsApp não configurado. Conecte sua conta do WhatsApp primeiro.',
       400
     );
   }
@@ -525,10 +525,10 @@ export async function sendMessageToConversation(
       err instanceof Error ? err.message : 'Unknown Meta API error';
     if (provider === 'evolution') {
       console.error('[send-message] unofficial send failed:', message);
-      throw new SendMessageError('unofficial_error', `Unofficial session error: ${message}`, 502);
+      throw new SendMessageError('unofficial_error', `Erro da sessão não oficial: ${message}`, 502);
     }
     console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+    throw new SendMessageError('meta_error', `Erro da API da Meta: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {

@@ -1,10 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Hand, Undo2, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
+import { Hand } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 // ------------------------------------------------------------
@@ -14,22 +11,19 @@ import { useAuth } from "@/hooks/use-auth";
 //
 // Keyed by accountId (a multi-account user switching workspaces must not
 // see the previous account's status), and only *successful* fetches are
-// cached — a transient failure returns a default without poisoning the
-// cache, so it retries on the next thread open rather than hiding the
-// banner for the whole session.
+// cached: a transient failure returns a default without poisoning the
+// cache, so it retries on the next thread open.
 //
-// Multi-agent note: this only answers "does the account have ANY agent
-// that could auto-reply" — which specific agent is on duty for a given
-// conversation (`conversations.active_ai_agent_id`) isn't surfaced here
-// yet, so the banner's copy stays generic ("the AI") rather than naming
-// the agent. Naming it is a follow-up, not required for correctness.
+// This only answers "does the account have ANY agent that could
+// auto-reply". Which specific agent is on duty for a conversation is
+// resolved server-side.
 // ------------------------------------------------------------
 interface AiAccountStatus {
   autoReplyOn: boolean;
 }
 const statusCache = new Map<string, AiAccountStatus>();
 
-async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus> {
+export async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus> {
   const cached = statusCache.get(accountId);
   if (cached) return cached;
   try {
@@ -38,14 +32,9 @@ async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus>
     const j = await res.json();
     const agents = Array.isArray(j?.agents) ? j.agents : [];
     const status = {
-      // AI auto-reply is "live" for the account when the receptionist
-      // is active with the inbound bot enabled. `auto_reply_enabled`
-      // is a receptionist-only concept (migration 053 — a DB
-      // constraint guarantees no other agent can have it true), so
-      // "any agent" and "the receptionist" are equivalent here; this
-      // still checks every row rather than filtering to the
-      // receptionist client-side, since which one applies to a given
-      // thread is resolved server-side per conversation anyway.
+      // Auto-reply is "live" when the receptionist is active with the
+      // inbound bot enabled (`auto_reply_enabled` is receptionist-only,
+      // guaranteed by a DB constraint, migration 053).
       autoReplyOn: agents.some(
         (a: { is_active?: boolean; auto_reply_enabled?: boolean }) =>
           a?.is_active && a?.auto_reply_enabled,
@@ -58,191 +47,42 @@ async function fetchAiAccountStatus(accountId: string): Promise<AiAccountStatus>
   }
 }
 
-interface AiThreadBannerProps {
-  conversationId: string;
-  /** `conversations.ai_autoreply_disabled` — bot paused on this thread. */
-  disabled: boolean;
-  /** `conversations.ai_handoff_summary` — note the bot left on handoff. */
-  handoffSummary?: string | null;
-  /** Current assignee; when a human owns the thread the bot won't run,
-   *  so the "AI active" banner is suppressed. */
-  assignedAgentId?: string | null;
-  /** The acting agent — "Take over" assigns the thread to them. */
-  currentUserId?: string | null;
-  /** Called after a successful toggle so the parent can patch its local
-   *  conversation state (the realtime UPDATE also arrives, but this keeps
-   *  the banner instant). */
-  onChange?: (patch: {
-    ai_autoreply_disabled: boolean;
-    assigned_agent_id?: string | null;
-  }) => void;
-}
-
-/**
- * Inbox banner that surfaces + controls the AI auto-reply bot per
- * conversation:
- *   - bot active here → "AI is replying automatically" + [Take over]
- *   - bot paused here → the handoff note (if any) + [Resume AI]
- * Renders nothing when the account has no auto-reply configured, or when
- * the bot is active but a human already owns the thread (nothing to do).
- */
-export function AiThreadBanner({
-  conversationId,
-  disabled,
-  handoffSummary,
-  assignedAgentId,
-  currentUserId,
-  onChange,
-}: AiThreadBannerProps) {
-  const t = useTranslations("Inbox.aiBanner");
+/** Whether the account has AI auto-reply set up (cached per account). */
+export function useAiAutoReplyAvailable(): boolean | null {
   const { accountId } = useAuth();
-  const [autoReplyOn, setAutoReplyOn] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Optimistic local mirror of the pause flag so the banner flips
-  // instantly on click; re-seeds whenever the thread (or its server
-  // state via realtime) changes.
-  const [paused, setPaused] = useState(disabled);
-  useEffect(() => setPaused(disabled), [conversationId, disabled]);
-
+  const [on, setOn] = useState<boolean | null>(null);
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
-    fetchAiAccountStatus(accountId).then((s) => alive && setAutoReplyOn(s.autoReplyOn));
+    fetchAiAccountStatus(accountId).then((s) => alive && setOn(s.autoReplyOn));
     return () => {
       alive = false;
     };
   }, [accountId]);
+  return on;
+}
 
-  const toggle = useCallback(
-    async (paused: boolean) => {
-      setBusy(true);
-      try {
-        const res = await fetch(`/api/ai/autoreply/${conversationId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // "Take over" also assigns the thread to the acting agent.
-          body: JSON.stringify({ paused, assign_to_me: paused }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          toast.error(j?.error ?? t("updateError"));
-          return;
-        }
-        setPaused(paused);
-        onChange?.({
-          ai_autoreply_disabled: paused,
-          // Take over assigns to the acting agent; resume releases only
-          // the caller's own assignment. The realtime UPDATE reconciles
-          // the exact value either way.
-          ...(paused
-            ? currentUserId
-              ? { assigned_agent_id: currentUserId }
-              : {}
-            : { assigned_agent_id: null }),
-        });
-        toast.success(paused ? t("tookOver") : t("resumed"));
-      } catch {
-        toast.error(t("networkError"));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [conversationId, currentUserId, onChange, t],
-  );
+interface AiThreadBannerProps {
+  /** AI auto-reply is paused on this thread (owned by the thread header). */
+  paused: boolean;
+  /** `conversations.ai_handoff_summary`: note the bot left on handoff. */
+  handoffSummary?: string | null;
+}
 
-  // A thread the bot handed off (it left a summary) always shows the
-  // banner, even on an account whose agents don't do blanket auto-reply
-  // — e.g. an agent activated only by a Flow. Without this the handoff
-  // was completely silent here: no banner, no note, nothing.
-  const handedOff = paused && !!handoffSummary;
-
-  // Account has no auto-reply and this isn't a post-handoff thread →
-  // nothing to show. (Still loading → nothing, unless handed off.)
-  if (!autoReplyOn && !handedOff) return null;
-
-  // Paused here (a human took over, or the model handed off).
-  if (paused) {
-    return (
-      <Banner tone="muted">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">{t("pausedTitle")}</p>
-          {handoffSummary && (
-            <p className="truncate text-muted-foreground" title={handoffSummary}>
-              {handoffSummary}
-            </p>
-          )}
-        </div>
-        <BannerButton onClick={() => toggle(false)} busy={busy} icon={Undo2}>
-          {t("resume")}
-        </BannerButton>
-      </Banner>
-    );
-  }
-
-  // Active, but a human already owns it → the bot won't fire; no banner.
-  if (assignedAgentId) return null;
-
-  // Active on this thread.
+/**
+ * Note shown under the header only when the bot handed the conversation
+ * to a human and left a summary. The on/off control itself lives in the
+ * header ("IA ativa" switch), so this renders nothing otherwise.
+ */
+export function AiThreadBanner({ paused, handoffSummary }: AiThreadBannerProps) {
+  if (!paused || !handoffSummary) return null;
   return (
-    <Banner tone="primary">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-primary" />
-        <span className="truncate font-medium text-foreground">
-          {t("activeText")}
-        </span>
+    <div className="flex items-start gap-2 border-b border-border bg-muted/40 px-3 py-2 text-xs sm:px-4">
+      <Hand className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">A IA transferiu esta conversa para um humano</p>
+        <p className="text-muted-foreground">{handoffSummary}</p>
       </div>
-      <BannerButton onClick={() => toggle(true)} busy={busy} icon={Hand}>
-        {t("takeOver")}
-      </BannerButton>
-    </Banner>
-  );
-}
-
-function Banner({
-  tone,
-  children,
-}: {
-  tone: "primary" | "muted";
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 border-b px-3 py-2 text-xs sm:px-4",
-        tone === "primary"
-          ? "border-primary/20 bg-primary/5"
-          : "border-border bg-muted/40",
-      )}
-    >
-      {children}
     </div>
-  );
-}
-
-function BannerButton({
-  onClick,
-  busy,
-  icon: Icon,
-  children,
-}: {
-  onClick: () => void;
-  busy: boolean;
-  icon: typeof Hand;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
-    >
-      {busy ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
-      ) : (
-        <Icon className="h-3 w-3" />
-      )}
-      {children}
-    </button>
   );
 }

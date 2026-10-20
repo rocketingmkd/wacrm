@@ -14,8 +14,6 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { NewConversationDialog } from "@/components/inbox/new-conversation-dialog";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { AiPanel } from "@/components/inbox/ai-panel";
-import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,7 +23,7 @@ import { cn } from "@/lib/utils";
 // that showing both at once would crowd the thread, so opening one
 // replaces the other (tab-like), rather than each being an independent
 // show/hide toggle.
-type RightPanel = "contact" | "ai" | null;
+type RightPanel = "contact" | null;
 
 // Remembers the agent's panel choice across reloads and sessions
 // (device-scoped, like the theme prefs). Stores "contact" | "ai" |
@@ -47,7 +45,6 @@ function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { planFeatures } = useAuth();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -61,11 +58,6 @@ function InboxPageInner() {
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  // Draft text the Gerente IA panel pushes into the thread's composer.
-  // `nonce` changes per push so the same text re-inserts.
-  const [composerInsert, setComposerInsert] = useState<
-    { text: string; nonce: number } | null
-  >(null);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -97,7 +89,7 @@ function InboxPageInner() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
-      if (stored === "contact" || stored === "ai") setRightPanel(stored);
+      if (stored === "contact") setRightPanel(stored);
       else if (stored === "closed") setRightPanel(null);
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.
@@ -115,14 +107,6 @@ function InboxPageInner() {
   const handleToggleContactPanel = useCallback(() => {
     setRightPanel((prev) => {
       const next = prev === "contact" ? null : "contact";
-      persistRightPanel(next);
-      return next;
-    });
-  }, [persistRightPanel]);
-
-  const handleToggleAiPanel = useCallback(() => {
-    setRightPanel((prev) => {
-      const next = prev === "ai" ? null : "ai";
       persistRightPanel(next);
       return next;
     });
@@ -671,40 +655,19 @@ function InboxPageInner() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={rightPanel === "contact"}
             onToggleContactPanel={handleToggleContactPanel}
-            aiPanelOpen={rightPanel === "ai"}
-            onToggleAiPanel={planFeatures.aiCopilot ? handleToggleAiPanel : undefined}
-            composerInsert={composerInsert}
             onDealsChanged={() => setDealsToken((n) => n + 1)}
           />
         </div>
 
-        {/* Right panel: Contact sidebar or Gerente IA — desktop only, and
-            only when the agent hasn't collapsed it via the thread-header
-            toggles (#258). The two share this one slot (see `RightPanel`
-            above), so only one ever renders. On mobile it's always hidden
-            (the `lg:block` below), so the toggles — themselves desktop-only
-            — never affect it. */}
+        {/* Right panel: contact sidebar. Desktop only, and only when the
+            agent hasn't collapsed it via the thread-header toggle (#258).
+            On mobile it's always hidden (the `lg:block` below). */}
         {rightPanel && (
           <div className="hidden lg:block">
-            {rightPanel === "ai" && planFeatures.aiCopilot ? (
-              <AiPanel
-                contact={activeContact}
-                conversation={activeConversation}
-                messages={messages}
-                onInsertDraft={(text) =>
-                  setComposerInsert({ text, nonce: Date.now() })
-                }
-              />
-            ) : (
-              // Falls back here for "contact", and also for a stale
-              // "ai" persisted in localStorage from before a downgrade
-              // to a plan without Gerente IA (src/lib/billing/plan.ts)
-              // — never render AiPanel without the feature.
-              <ContactSidebar
-                contact={activeContact}
-                refreshToken={dealsToken}
-              />
-            )}
+            <ContactSidebar
+              contact={activeContact}
+              refreshToken={dealsToken}
+            />
           </div>
         )}
       </div>

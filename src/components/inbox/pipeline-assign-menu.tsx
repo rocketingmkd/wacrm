@@ -195,7 +195,7 @@ export function PipelineAssignMenu({
         )}
       >
         <GitBranch className="h-3 w-3" />
-        <span className="hidden max-w-32 truncate sm:inline">{label}</span>
+        <span className="hidden max-w-32 truncate 2xl:inline">{label}</span>
         <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="border-border bg-popover">

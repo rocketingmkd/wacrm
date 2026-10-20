@@ -27,9 +27,9 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
-  Bot,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,6 +51,8 @@ import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { PipelineAssignMenu } from "./pipeline-assign-menu";
 import { AiThreadBanner } from "./ai-thread-banner";
+import { AiHeaderSwitch } from "./ai-header-switch";
+import { CsatButton } from "./csat-button";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-render";
 import { toast } from "sonner";
@@ -105,14 +107,7 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
-  /**
-   * Desktop-only Gerente IA panel toggle — same shape as the contact-panel
-   * toggle above, since the two share one slot on the page (see
-   * `RightPanel` in `inbox/page.tsx`).
-   */
-  aiPanelOpen?: boolean;
-  onToggleAiPanel?: () => void;
-  /** Draft text pushed from the Gerente IA panel into the composer. */
+  /** Draft text pushed into the composer from outside the thread. */
   composerInsert?: { text: string; nonce: number } | null;
   /**
    * Fired when the header's pipeline dropdown adds or removes a deal for
@@ -126,7 +121,7 @@ function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslatio
   const date = new Date(dateStr);
   if (isToday(date)) return t("today");
   if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
+  return format(date, "d 'de' MMMM 'de' yyyy", { locale: ptBR });
 }
 
 function groupMessagesByDate(messages: Message[]) {
@@ -178,8 +173,6 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
-  aiPanelOpen,
-  onToggleAiPanel,
   composerInsert,
   onDealsChanged,
 }: MessageThreadProps) {
@@ -188,6 +181,15 @@ export function MessageThread({
   const tQuote = useTranslations("Inbox.replyQuote");
 
   const { user } = useAuth();
+  // Optimistic override of `conversation.ai_autoreply_disabled` after the
+  // agent flips the header switch. It only applies while the server value
+  // is still the one it was based on, so a realtime update (or another
+  // agent's change) wins as soon as it arrives.
+  const [aiOverride, setAiOverride] = useState<{
+    id: string;
+    base: boolean;
+    paused: boolean;
+  } | null>(null);
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -935,6 +937,11 @@ export function MessageThread({
     (s) => s.value === conversation.status
   );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
+  const serverAiPaused = conversation.ai_autoreply_disabled ?? false;
+  const aiPaused =
+    aiOverride && aiOverride.id === conversation.id && aiOverride.base === serverAiPaused
+      ? aiOverride.paused
+      : serverAiPaused;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
     ? (currentAssignee?.full_name ?? t("assigned"))
@@ -952,8 +959,8 @@ export function MessageThread({
     <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-border bg-card px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 basis-56 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -989,7 +996,21 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1 sm:gap-2">
+          {/* "IA ativa": pause or resume the AI auto-reply on this thread. */}
+          <AiHeaderSwitch
+            conversationId={conversation.id}
+            paused={aiPaused}
+            onPausedChange={(paused) => {
+              setAiOverride({ id: conversation.id, base: serverAiPaused, paused });
+              // Taking over assigns the thread to the acting agent; resuming
+              // releases it, same as the old banner did.
+              onAssignChange(conversation.id, paused ? (user?.id ?? null) : null);
+            }}
+          />
+          {/* "Enviar avaliação": asks the customer to rate the service. */}
+          <CsatButton conversationId={conversation.id} windowOpen={!sessionInfo.expired} />
+
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
               smaller laptops; this lets agents reclaim it when they just
@@ -1014,24 +1035,6 @@ export function MessageThread({
               ) : (
                 <PanelRightOpen className="h-4 w-4" />
               )}
-            </button>
-          )}
-
-          {/* Gerente IA panel toggle — desktop only, same slot as the
-              contact panel above (only one of the two is ever open). */}
-          {onToggleAiPanel && (
-            <button
-              type="button"
-              onClick={onToggleAiPanel}
-              aria-label={aiPanelOpen ? t("hideAiPanel") : t("showAiPanel")}
-              title={aiPanelOpen ? t("hideAi") : t("showAi")}
-              aria-pressed={aiPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                aiPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              <Bot className="h-4 w-4" />
             </button>
           )}
 
@@ -1091,7 +1094,7 @@ export function MessageThread({
               )}
             >
               <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
+              <span className="hidden max-w-24 truncate 2xl:inline">{assignLabel}</span>
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -1250,21 +1253,9 @@ export function MessageThread({
         )}
       </div>
 
-      {/* AI auto-reply banner — take over an active bot, or resume it
-          after a handoff. Renders nothing unless the account has
-          auto-reply configured. */}
-      <AiThreadBanner
-        conversationId={conversation.id}
-        disabled={conversation.ai_autoreply_disabled ?? false}
-        handoffSummary={conversation.ai_handoff_summary}
-        assignedAgentId={assignedAgentId}
-        currentUserId={user?.id}
-        onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
-            onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
-          }
-        }}
-      />
+      {/* Note left by the AI when it handed the thread to a human. The
+          on/off control is the "IA ativa" switch in the header. */}
+      <AiThreadBanner paused={aiPaused} handoffSummary={conversation.ai_handoff_summary} />
 
       {/* Composer */}
       <MessageComposer

@@ -103,7 +103,7 @@ export async function POST() {
     const { supabase, accountId } = await requireWrite('admin')
     if (!isEvolutionConfigured()) {
       return NextResponse.json(
-        { error: 'Evolution API is not configured on this server.' },
+        { error: 'A Evolution API não está configurada neste servidor.' },
         { status: 503 },
       )
     }
@@ -153,7 +153,7 @@ export async function PATCH(request: Request) {
     } | null
     if (!body || (typeof body.enabled !== 'boolean' && typeof body.allow_cold_open !== 'boolean')) {
       return NextResponse.json(
-        { error: 'enabled or allow_cold_open (boolean) is required' },
+        { error: 'Informe enabled ou allow_cold_open (booleano).' },
         { status: 400 },
       )
     }
@@ -164,14 +164,14 @@ export async function PATCH(request: Request) {
       .eq('account_id', accountId)
       .maybeSingle<SessionRow>()
     if (!existing) {
-      return NextResponse.json({ error: 'No unofficial session. Connect first.' }, { status: 404 })
+      return NextResponse.json({ error: 'Não há sessão não oficial. Conecte primeiro.' }, { status: 404 })
     }
 
     const patch: Record<string, unknown> = {}
     if (typeof body.allow_cold_open === 'boolean') {
       if (body.allow_cold_open && !existing.risk_accepted_at) {
         return NextResponse.json(
-          { error: 'Accept the risk notice and enable the session first.' },
+          { error: 'Aceite o aviso de risco e ative a sessão primeiro.' },
           { status: 400 },
         )
       }
@@ -181,14 +181,14 @@ export async function PATCH(request: Request) {
     if (body.enabled) {
       if (existing.status !== 'connected') {
         return NextResponse.json(
-          { error: 'Connect the session (scan the QR code) before enabling it.' },
+          { error: 'Conecte a sessão (leia o QR code) antes de ativá-la.' },
           { status: 409 },
         )
       }
       if (!existing.risk_accepted_at) {
         if (!body.accept_risk) {
           return NextResponse.json(
-            { error: 'The risk notice must be accepted to enable the unofficial session.' },
+            { error: 'É preciso aceitar o aviso de risco para ativar a sessão não oficial.' },
             { status: 400 },
           )
         }

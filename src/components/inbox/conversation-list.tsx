@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X, MessageSquarePlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import {
@@ -252,6 +253,7 @@ export function ConversationList({
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
+          <div className="flex w-full flex-wrap items-center gap-0.5">
           {FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -259,7 +261,7 @@ export function ConversationList({
               onClick={() => setFilter(opt.value)}
               aria-pressed={filter === opt.value}
               className={cn(
-                "inline-flex h-7 items-center rounded-full px-2.5 text-xs font-medium transition-colors",
+                "inline-flex h-7 shrink-0 items-center rounded-full px-1 text-[11px] font-medium transition-colors",
                 filter === opt.value
                   ? "bg-primary-soft text-primary shadow-[inset_0_0_0_1px_var(--primary-soft-2)]"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -268,6 +270,7 @@ export function ConversationList({
               {opt.label}
             </button>
           ))}
+          </div>
 
           {tags.length > 0 && (
             <DropdownMenu>
@@ -453,6 +456,7 @@ function ConversationItem({
   const timeAgo = conversation.last_message_at
     ? formatDistanceToNow(new Date(conversation.last_message_at), {
         addSuffix: false,
+        locale: ptBR,
       })
     : "";
 

@@ -50,35 +50,35 @@ export function assertUnofficialSendAllowed(input: {
   if (input.messageType !== 'text' && !['image', 'video', 'document', 'audio'].includes(input.messageType)) {
     throw new SendMessageError(
       'unofficial_unsupported_type',
-      'Only text and media can be sent through the unofficial session.',
+      'Pela sessão não oficial só dá para enviar texto e mídia.',
       400
     );
   }
   if (!session || !session.enabled) {
     throw new SendMessageError(
       'unofficial_disabled',
-      'The unofficial session is not enabled for this account.',
+      'A sessão não oficial não está ativada nesta conta.',
       409
     );
   }
   if (session.status !== 'connected') {
     throw new SendMessageError(
       'unofficial_not_connected',
-      'The unofficial session is not connected. Scan the QR code again in Settings.',
+      'A sessão não oficial está desconectada. Leia o QR code de novo em Configurações.',
       409
     );
   }
   if (!input.hasPhone) {
     throw new SendMessageError(
       'unofficial_needs_phone',
-      'This contact has no phone number, so it cannot be reached through the unofficial session.',
+      'Este contato não tem telefone, então não dá para alcançá-lo pela sessão não oficial.',
       400
     );
   }
   if (!input.lastCustomerMessageAt && !session.allow_cold_open) {
     throw new SendMessageError(
       'unofficial_no_history',
-      'This contact has not written to you before. Enable "open conversations with new numbers" in Settings > WhatsApp > unofficial session to message them.',
+      'Este contato nunca escreveu para você. Ative "Abrir conversa com número novo" em Configurações, WhatsApp, sessão não oficial, para falar com ele.',
       409
     );
   }
@@ -88,21 +88,21 @@ export function assertUnofficialSendAllowed(input: {
   ) {
     throw new SendMessageError(
       'unofficial_window_open',
-      'The 24h window is still open, send this through the official API.',
+      'A janela de 24h ainda está aberta, envie pela API oficial.',
       409
     );
   }
   if (input.unofficialSinceLastReply >= session.max_per_lead) {
     throw new SendMessageError(
       'unofficial_lead_limit',
-      `Limit reached: ${session.max_per_lead} unofficial message(s) per lead until they reply.`,
+      `Limite atingido: ${session.max_per_lead} mensagem(ns) não oficial(is) por lead até ele responder.`,
       429
     );
   }
   if (input.unofficialLast24h >= session.daily_limit) {
     throw new SendMessageError(
       'unofficial_daily_limit',
-      `Daily limit of ${session.daily_limit} unofficial messages reached for this account.`,
+      `Limite diário de ${session.daily_limit} mensagens não oficiais atingido nesta conta.`,
       429
     );
   }
