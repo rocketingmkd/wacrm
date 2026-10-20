@@ -15,6 +15,7 @@
     "createAccount": "Criar conta"
   },
   "Sidebar": {
+    "connection": "Conexão",
     "reports": "Relatórios",
     "integrations": "Integrações",
     "title": "Rocketing CRM",
@@ -47,6 +48,7 @@
     "menuSignOut": "Sair"
   },
   "Header": {
+    "connection": "Conexão",
     "reports": "Relatórios",
     "integrations": "Integrações",
     "whatsappConnected": "WhatsApp conectado",

@@ -36,7 +36,12 @@ const STATUS_LABEL: Record<Status, string> = {
  * conversation when the 24h window is closed and for groups, never for
  * broadcasts. Off by default; turning it on needs the risk notice.
  */
-export function UnofficialSessionCard() {
+export function UnofficialSessionCard({
+  officialConnected = true,
+}: {
+  /** The official API is connected (the unofficial session pairs with the same number). */
+  officialConnected?: boolean;
+} = {}) {
   const [state, setState] = useState<UnofficialState | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [open, setOpen] = useState(false);
@@ -106,7 +111,10 @@ export function UnofficialSessionCard() {
     }
   };
 
-  if (forbidden || !state) return null;
+  if (forbidden) return null;
+  if (!state) {
+    return <div className="h-[74px] animate-pulse rounded-xl border border-border bg-card" />;
+  }
 
   const session = state.session;
   const status: Status = session?.status ?? 'disconnected';
@@ -118,35 +126,7 @@ export function UnofficialSessionCard() {
         ? `${STATUS_LABEL[status]} · desligada`
         : 'Desligada';
 
-  return (
-    <div className="mt-3 max-w-2xl">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-      >
-        <span
-          className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-            session?.enabled ? 'bg-amber-500/15' : 'bg-muted',
-          )}
-        >
-          <MessageSquareWarning
-            className={cn('h-5 w-5', session?.enabled ? 'text-amber-400' : 'text-muted-foreground')}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">Sessão não oficial (reabertura e grupos)</p>
-          <p className="truncate text-xs text-muted-foreground">{summary}</p>
-        </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-popover-foreground">Sessão não oficial</DialogTitle>
-          </DialogHeader>
+  const content = (
           <div className="space-y-4 text-sm">
             <p className="text-muted-foreground">
               Serve só para reabrir uma conversa quando a janela de 24h está fechada e para grupos.
@@ -277,6 +257,53 @@ export function UnofficialSessionCard() {
               </>
             )}
           </div>
+  );
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+      >
+        <span
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+            session?.enabled ? 'bg-amber-500/15' : 'bg-muted',
+          )}
+        >
+          <MessageSquareWarning
+            className={cn('h-5 w-5', session?.enabled ? 'text-amber-400' : 'text-muted-foreground')}
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">API Não oficial</p>
+          <p className="truncate text-xs text-muted-foreground">{summary}</p>
+        </div>
+        <span
+          className={cn(
+            'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+            session?.enabled
+              ? 'bg-emerald-500/15 text-emerald-500'
+              : 'bg-muted text-muted-foreground',
+          )}
+        >
+          {!state.available ? 'Indisponível' : session?.enabled ? 'Ativa' : 'Desligada'}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">API Não oficial</DialogTitle>
+          </DialogHeader>
+          {!officialConnected && (
+            <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Conecte primeiro a API Oficial. A sessão não oficial usa o mesmo número, em Coexistência.
+            </p>
+          )}
+          {content}
         </DialogContent>
       </Dialog>
     </div>

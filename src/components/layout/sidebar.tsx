@@ -22,6 +22,7 @@ import {
   Radio,
   Settings,
   Shield,
+  Smartphone,
   User,
   UserCog,
   Users,
@@ -128,6 +129,7 @@ const navSections: { labelKey: string; items: NavItem[] }[] = [
       { href: "/contacts", labelKey: "contacts", icon: Users },
       { href: "/reports", labelKey: "reports", icon: BarChart3, minRole: "admin" },
       { href: "/integrations", labelKey: "integrations", icon: Plug, minRole: "admin" },
+      { href: "/connection", labelKey: "connection", icon: Smartphone },
       { href: "/settings", labelKey: "settings", icon: Settings },
     ],
   },
@@ -249,7 +251,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
 
         {/* Main navigation, grouped in labelled sections */}
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-3">
           {visibleSections.map((section) => (
             <div key={section.labelKey}>
               <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
@@ -277,7 +279,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         href={item.href}
                         className={cn(
                           // Taller on mobile so fingers can hit the row reliably (44px or more).
-                          "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-colors",
+                          "relative flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] font-medium transition-colors",
                           isActive
                             ? "bg-primary-soft text-foreground shadow-[inset_0_0_0_1px_var(--primary-soft-2),0_0_22px_-10px_var(--primary)]"
                             : "text-muted-foreground hover:bg-card-2 hover:text-foreground",
@@ -409,7 +411,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               <DropdownMenuItem
                 render={
                   <Link
-                    href="/settings?tab=whatsapp"
+                    href="/connection"
                     onClick={onClose}
                     className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
                   />

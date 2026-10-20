@@ -15,6 +15,7 @@
     "createAccount": "Create account"
   },
   "Sidebar": {
+    "connection": "Connection",
     "reports": "Reports",
     "integrations": "Integrations",
     "title": "CRM Template for WhatsApp",
@@ -47,6 +48,7 @@
     "menuSignOut": "Sign out"
   },
   "Header": {
+    "connection": "Connection",
     "reports": "Reports",
     "integrations": "Integrations",
     "whatsappConnected": "WhatsApp connected",

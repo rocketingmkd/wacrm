@@ -553,68 +553,10 @@ export function WhatsAppConfig() {
   const showResetBanner = resetReason === 'token_corrupted';
   const embeddedSignupConfigured = Boolean(EMBEDDED_SIGNUP_APP_ID && EMBEDDED_SIGNUP_CONFIG_ID);
 
-  return (
-    <section className="animate-in fade-in-50 duration-200">
-      <Script
-        src="https://connect.facebook.net/pt_BR/sdk.js"
-        strategy="afterInteractive"
-        onLoad={() => {
-          if (EMBEDDED_SIGNUP_APP_ID) {
-            window.FB?.init({
-              appId: EMBEDDED_SIGNUP_APP_ID,
-              xfbml: false,
-              version: EMBEDDED_SIGNUP_GRAPH_VERSION,
-            });
-          }
-        }}
-      />
-      <SettingsPanelHead
-        title={t("title")}
-        description={t("description")}
-      />
-
-      {/* Summary card — always visible; clicking it opens the popup with
-          every connection detail (status, Coexistence sync, registration
-          diagnostics, connect/test/reset actions). Keeps this section
-          skimmable instead of a wall of stacked alerts. */}
-      <div className="max-w-2xl">
-        <button
-          type="button"
-          onClick={() => setDetailsOpen(true)}
-          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
-        >
-          <span
-            className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-              connectionStatus === 'connected' ? 'bg-emerald-500/15' : 'bg-red-500/15',
-            )}
-          >
-            <PlugZap
-              className={cn(
-                'h-5 w-5',
-                connectionStatus === 'connected' ? 'text-emerald-400' : 'text-red-400',
-              )}
-            />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">WhatsApp</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {connectionStatus === 'connected'
-                ? phoneInfo?.display_phone_number || phoneInfo?.verified_name || t('connectedDesc')
-                : t('notConnected')}
-            </p>
-          </div>
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-      </div>
-
-      {connectionStatus === 'connected' && <UnofficialSessionCard />}
-
-      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-popover-foreground">WhatsApp</DialogTitle>
-          </DialogHeader>
+  // Every connection detail (status, Coexistence sync, registration
+  // diagnostics, connect/test/reset actions). Shown in a dialog on the
+  // old Settings card and inline on the Conexão page.
+  const details = (
           <div className="space-y-6">
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
@@ -911,6 +853,79 @@ export function WhatsAppConfig() {
           )}
         </div>
           </div>
+  );
+
+  return (
+    <section className="animate-in fade-in-50 duration-200">
+      <Script
+        src="https://connect.facebook.net/pt_BR/sdk.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          if (EMBEDDED_SIGNUP_APP_ID) {
+            window.FB?.init({
+              appId: EMBEDDED_SIGNUP_APP_ID,
+              xfbml: false,
+              version: EMBEDDED_SIGNUP_GRAPH_VERSION,
+            });
+          }
+        }}
+      />
+      <SettingsPanelHead
+        title={t("title")}
+        description={t("description")}
+      />
+
+      {/* Two compact cards. Clicking one opens its configuration popup, so
+          the page stays clean. */}
+      <div className="grid items-start gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(true)}
+          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+        >
+          <span
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+              connectionStatus === 'connected' ? 'bg-emerald-500/15' : 'bg-red-500/15',
+            )}
+          >
+            <PlugZap
+              className={cn(
+                'h-5 w-5',
+                connectionStatus === 'connected' ? 'text-emerald-400' : 'text-red-400',
+              )}
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">API Oficial</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {connectionStatus === 'connected'
+                ? phoneInfo?.display_phone_number || phoneInfo?.verified_name || t('connectedDesc')
+                : t('notConnected')}
+            </p>
+          </div>
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+              connectionStatus === 'connected'
+                ? 'bg-emerald-500/15 text-emerald-500'
+                : 'bg-red-500/15 text-red-400',
+            )}
+          >
+            {connectionStatus === 'connected' ? 'Conectado' : 'Desconectado'}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+
+        <UnofficialSessionCard officialConnected={connectionStatus === 'connected'} />
+      </div>
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">API Oficial</DialogTitle>
+          </DialogHeader>
+          {details}
         </DialogContent>
       </Dialog>
     </section>

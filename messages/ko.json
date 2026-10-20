@@ -15,6 +15,7 @@
     "createAccount": "계정 만들기"
   },
   "Sidebar": {
+    "connection": "연결",
     "reports": "보고서",
     "integrations": "연동",
     "title": "WhatsApp용 CRM 템플릿",
@@ -47,6 +48,7 @@
     "menuSignOut": "로그아웃"
   },
   "Header": {
+    "connection": "연결",
     "reports": "보고서",
     "integrations": "연동",
     "whatsappConnected": "WhatsApp 연결됨",

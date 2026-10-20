@@ -39,7 +39,7 @@ export function WhatsappStatusPill({ className }: { className?: string }) {
 
   return (
     <Link
-      href="/settings?tab=whatsapp"
+      href="/connection"
       className={cn(
         "hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-card-2 sm:inline-flex",
         connected ? "text-primary" : "text-destructive",
