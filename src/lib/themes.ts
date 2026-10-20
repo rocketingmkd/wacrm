@@ -14,8 +14,8 @@
  */
 
 export const THEME_IDS = [
-  "violet",
   "emerald",
+  "violet",
   "cobalt",
   "amber",
   "rose",
@@ -23,9 +23,11 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "emerald";
 
-export const STORAGE_KEY = "wacrm.theme";
+// v2: the RocketingZAP redesign made green the default; a new key resets any
+// accent saved under the old default once, mode is untouched.
+export const STORAGE_KEY = "wacrm.theme.v2";
 
 /**
  * MODE — the light/dark dimension, orthogonal to the accent theme.
@@ -70,14 +72,14 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
   {
     id: "violet",
     name: "Violet",
-    tagline: "The default — confident, slightly playful.",
+    tagline: "Confident, slightly playful.",
     swatch: "oklch(0.526 0.247 293)",
   },
   {
     id: "emerald",
     name: "Emerald",
-    tagline: "Growth-coded, nods at messaging without copying WhatsApp green.",
-    swatch: "oklch(0.62 0.16 162)",
+    tagline: "The default: WhatsApp-inspired green.",
+    swatch: "#16a34a",
   },
   {
     id: "cobalt",
