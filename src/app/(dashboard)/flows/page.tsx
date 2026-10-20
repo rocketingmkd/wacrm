@@ -7,7 +7,6 @@ import {
   Workflow,
   Plus,
   Trash2,
-  Pencil,
   Loader2,
   MessageSquare,
   PlayCircle,
@@ -33,6 +32,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-header";
+import { AddCard } from "@/components/ui/add-card";
 import type { FlowTriggerType } from "@/lib/flows/types";
 
 /**
@@ -201,28 +202,27 @@ export default function FlowsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-foreground">{t("title")}</h1>
-            <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-              {t("beta")}
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("description")}
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="criar fluxos"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          {t("newFlow")}
-        </GatedButton>
-      </header>
+    <div className="mx-auto w-full max-w-6xl space-y-8">
+      <PageHeader
+        icon={Workflow}
+        title={t("title")}
+        badge={
+          <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+            {t("beta")}
+          </span>
+        }
+        description={t("description")}
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="criar fluxos"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            {t("newFlow")}
+          </GatedButton>
+        }
+      />
 
       {flows.length === 0 ? (
         <EmptyState
@@ -231,7 +231,7 @@ export default function FlowsPage() {
           t={t}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {flows.map((flow) => (
             <FlowCard
               key={flow.id}
@@ -241,6 +241,13 @@ export default function FlowsPage() {
               t={t}
             />
           ))}
+          {canCreate && (
+            <AddCard
+              title={t("newFlow")}
+              description="Comece de um modelo pronto ou em branco."
+              onClick={() => setCreateOpen(true)}
+            />
+          )}
         </div>
       )}
 
@@ -376,51 +383,64 @@ function FlowCard({
         ? Archive
         : PauseCircle;
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-border">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Workflow className="h-4 w-4 shrink-0 text-primary" />
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {flow.name}
+    // The whole card opens the editor on click; keyboard users get the real
+    // button on the name (no nested interactive roles).
+    <div
+      onClick={onEdit}
+      className={cn(
+        "flex min-h-[190px] cursor-pointer flex-col rounded-2xl border bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-glow)] focus-within:ring-2 focus-within:ring-ring",
+        flow.status === "active" ? "border-primary/30" : "border-border",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
+          <Workflow className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-display text-[15px] font-bold text-foreground">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="max-w-full truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {flow.name}
+            </button>
           </h3>
+          <Badge
+            variant="outline"
+            className={cn("mt-1 gap-1 text-[10px]", STATUS_COLORS[flow.status])}
+          >
+            <StatusIcon className="h-3 w-3" />
+            {STATUS_LABELS(t)[flow.status]}
+          </Badge>
         </div>
-        <Badge
-          variant="outline"
-          className={cn(
-            "shrink-0 gap-1 text-[10px]",
-            STATUS_COLORS[flow.status],
-          )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          aria-label={t("delete")}
+          title={t("delete")}
+          className="shrink-0 text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
         >
-          <StatusIcon className="h-3 w-3" />
-          {STATUS_LABELS(t)[flow.status]}
-        </Badge>
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
 
-      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+      <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
         {flow.description || triggerSummary}
       </p>
 
-      <div className="mt-4 flex items-center gap-3 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex items-center gap-3 pt-4 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">
-          <MessageSquare className="h-3 w-3" />
+          <MessageSquare className="h-3.5 w-3.5" />
           {t("runCount", { count: flow.execution_count })}
         </span>
-      </div>
-
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-3">
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          <Pencil className="h-3.5 w-3.5" />
-          {t("edit")}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onDelete}
-          className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          {t("delete")}
-        </Button>
       </div>
     </div>
   );

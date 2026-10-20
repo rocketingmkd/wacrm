@@ -43,6 +43,8 @@ import {
 import { AUTOMATION_TEMPLATES, type TemplateSlug } from "@/lib/automations/templates"
 import { triggerPillClass, formatRelative } from "@/lib/automations/trigger-meta"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/layout/page-header"
+import { AddCard } from "@/components/ui/add-card"
 
 const TEMPLATE_ORDER: TemplateSlug[] = [
   "welcome_message",
@@ -159,24 +161,23 @@ export default function AutomationsPage() {
   const showTemplates = automations.length < 3
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("subtitle")}
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="criar automações"
-          onClick={() => router.push("/automations/new")}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          {t("create")}
-        </GatedButton>
-      </div>
+    <div className="mx-auto w-full max-w-6xl space-y-8">
+      <PageHeader
+        icon={Zap}
+        title={t("title")}
+        description={t("subtitle")}
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="criar automações"
+            onClick={() => router.push("/automations/new")}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            {t("create")}
+          </GatedButton>
+        }
+      />
 
       {showTemplates && (
         <section>
@@ -214,7 +215,7 @@ export default function AutomationsPage() {
           </p>
         </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {automations.map((a) => (
             <AutomationCard
               key={a.id}
@@ -227,6 +228,15 @@ export default function AutomationsPage() {
               t={t}
             />
           ))}
+          {canCreate && (
+            <li className="min-w-0">
+              <AddCard
+                title={t("create")}
+                description="Gatilho, condições e ações em poucos cliques."
+                onClick={() => router.push("/automations/new")}
+              />
+            </li>
+          )}
         </ul>
       )}
 
@@ -282,87 +292,103 @@ function AutomationCard({
   const pillClass = triggerPillClass(automation.trigger_type)
   const triggerLabel = tBuilder(`triggers.${automation.trigger_type}.label`)
   return (
-    <li className="rounded-xl border border-border bg-card transition-colors hover:border-border">
-      <div className="flex items-center gap-4 p-4">
-        <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10"
-          aria-hidden
-        >
-          <Zap className="h-5 w-5 text-primary" />
-        </div>
-
-        <button
-          type="button"
-          onClick={onEdit}
-          className="min-w-0 flex-1 text-left"
-        >
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-semibold text-foreground">
-              {automation.name}
-            </span>
-            {automation.is_active && (
-              <span className="relative flex h-2 w-2" aria-label="active">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-            )}
-          </div>
-          {automation.description && (
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{automation.description}</p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    <li className="min-w-0">
+      {/* The whole card opens the editor on click; keyboard users get the
+          real button on the name (no nested interactive roles). */}
+      <div
+        onClick={onEdit}
+        className={cn(
+          "flex h-full min-h-[190px] cursor-pointer flex-col rounded-2xl border bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-glow)] focus-within:ring-2 focus-within:ring-ring",
+          automation.is_active ? "border-primary/30" : "border-border",
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <span
+            className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary"
+            aria-hidden
+          >
+            <Zap className="size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-display text-[15px] font-bold text-foreground">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                }}
+                className="max-w-full truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+              >
+                {automation.name}
+              </button>
+            </h3>
             <span
               className={cn(
-                "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                "mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                 pillClass,
               )}
             >
               {triggerLabel}
             </span>
-            <span className="tabular-nums">
-              {automation.execution_count === 1
-                ? t("runs", { count: automation.execution_count })
-                : t("runsPlural", { count: automation.execution_count })}
-            </span>
-            <span aria-hidden>·</span>
-            <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
           </div>
-        </button>
+          <div
+            className="flex shrink-0 items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <Switch
+              checked={automation.is_active}
+              onCheckedChange={(v) => onToggle(!!v)}
+              aria-label={automation.is_active ? t("deactivate") : t("activate")}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Abrir menu"
+                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onEdit}>
+                  <Pencil className="h-4 w-4" />
+                  {t("edit")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="h-4 w-4" />
+                  {t("duplicate")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onLogs}>
+                  <FileText className="h-4 w-4" />
+                  {t("viewLogs")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash2 className="h-4 w-4" />
+                  {t("delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
 
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={automation.is_active}
-            onCheckedChange={(v) => onToggle(!!v)}
-            aria-label={automation.is_active ? t("deactivate") : t("activate")}
-          />
+        <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
+          {automation.description || "Sem descrição."}
+        </p>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Abrir menu"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[popup-open]:bg-muted"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
-                {t("edit")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDuplicate}>
-                <Copy className="h-4 w-4" />
-                {t("duplicate")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onLogs}>
-                <FileText className="h-4 w-4" />
-                {t("viewLogs")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-                {t("delete")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-4 text-xs text-muted-foreground">
+          {automation.is_active && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-500">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              Ativa
+            </span>
+          )}
+          <span className="tabular-nums">
+            {automation.execution_count === 1
+              ? t("runs", { count: automation.execution_count })
+              : t("runsPlural", { count: automation.execution_count })}
+          </span>
+          <span aria-hidden>·</span>
+          <span>{t("lastRun", { time: formatRelative(automation.last_executed_at) })}</span>
         </div>
       </div>
     </li>
