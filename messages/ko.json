@@ -48,6 +48,8 @@
     "menuSignOut": "로그아웃"
   },
   "Header": {
+    "flows": "플로우",
+    "aiAgents": "AI 에이전트",
     "connection": "연결",
     "reports": "보고서",
     "integrations": "연동",

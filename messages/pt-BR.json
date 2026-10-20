@@ -48,6 +48,8 @@
     "menuSignOut": "Sair"
   },
   "Header": {
+    "flows": "Fluxos",
+    "aiAgents": "Agentes de IA",
     "connection": "Conexão",
     "reports": "Relatórios",
     "integrations": "Integrações",

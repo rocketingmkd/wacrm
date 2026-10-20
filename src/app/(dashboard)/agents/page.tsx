@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Bot, Sparkles, KeyRound, Users, BarChart3, GitBranch } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
@@ -11,105 +11,88 @@ import { AiKanbanConfig } from '@/components/settings/ai-kanban-config';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 
-type Tab = 'playground' | 'key' | 'agents' | 'usage' | 'kanban';
+type Tab = 'agents' | 'playground' | 'kanban' | 'usage' | 'key';
+
+// Pill-style tab strip, centered. The `group-data-horizontal/tabs:` prefix
+// matches the base component's own height rule so ours replaces it.
+const LIST_CLASS =
+  'max-w-full justify-start overflow-x-auto overflow-y-hidden [scrollbar-width:none] rounded-full border border-border bg-card p-1 gap-1 shadow-[var(--shadow-card)] group-data-horizontal/tabs:h-11';
+const TRIGGER_CLASS =
+  'rounded-full px-4 group-data-horizontal/tabs:h-9 data-active:bg-primary-soft data-active:text-primary data-active:shadow-[inset_0_0_0_1px_var(--primary-soft-2)]';
 
 export default function AgentsPage() {
   const { accountRole } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
-  const [tab, setTab] = useState<Tab>('playground');
-  const [decided, setDecided] = useState(false);
-
-  // Land first-time users where they actually need to go: no key yet →
-  // "Chave de API"; key set but no agent yet → "Agentes"; otherwise the
-  // Playground, for returning users who already have something to test.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [providerRes, agentsRes] = await Promise.all([
-          fetch('/api/ai/provider'),
-          fetch('/api/ai/agents'),
-        ]);
-        const providerData = await providerRes.json().catch(() => ({}));
-        const agentsData = await agentsRes.json().catch(() => ({}));
-        const hasKey = Boolean(providerData?.configured);
-        const hasAgents = Array.isArray(agentsData?.agents) && agentsData.agents.length > 0;
-        if (!cancelled) {
-          setTab(!hasKey ? 'key' : !hasAgents ? 'agents' : 'playground');
-        }
-      } catch {
-        if (!cancelled) setTab('key');
-      } finally {
-        if (!cancelled) setDecided(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // The agent cards are the first thing you see. When there is no API key
+  // yet, that tab shows a banner that sends you to "Chave de API".
+  const [tab, setTab] = useState<Tab>('agents');
 
   return (
-    <div>
-      <div className="flex items-center gap-2">
-        <Bot className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+    <div className="mx-auto w-full max-w-6xl">
+      <header className="text-center">
+        <span className="mx-auto mb-3 grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
+          <Bot className="size-6" />
+        </span>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-foreground">
           Agentes de IA
         </h1>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Configure sua chave de API uma vez, construa quantos agentes quiser em cima dela, e teste
-        no playground antes de eles responderem aos clientes na caixa de entrada.
-      </p>
+        <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
+          Configure sua chave de API uma vez, construa quantos agentes quiser em cima dela, e teste
+          no playground antes de eles responderem aos clientes na caixa de entrada.
+        </p>
+      </header>
 
-      {decided && (
-        <Tabs
-          value={tab}
-          onValueChange={(v) => setTab(v as Tab)}
-          className="mt-6"
-        >
-          <TabsList>
-            <TabsTrigger value="playground">
-              <Sparkles className="mr-1.5 h-4 w-4" /> Playground
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mt-6">
+        <div className="flex justify-center">
+          <TabsList className={LIST_CLASS}>
+            <TabsTrigger value="agents" className={TRIGGER_CLASS}>
+              <Users className="h-4 w-4" /> Agentes
             </TabsTrigger>
-            <TabsTrigger value="agents">
-              <Users className="mr-1.5 h-4 w-4" /> Agentes
+            <TabsTrigger value="playground" className={TRIGGER_CLASS}>
+              <Sparkles className="h-4 w-4" /> Playground
             </TabsTrigger>
-            <TabsTrigger value="kanban">
-              <GitBranch className="mr-1.5 h-4 w-4" /> Kanban
+            <TabsTrigger value="kanban" className={TRIGGER_CLASS}>
+              <GitBranch className="h-4 w-4" /> Kanban
             </TabsTrigger>
             {canViewUsage && (
-              <TabsTrigger value="usage">
-                <BarChart3 className="mr-1.5 h-4 w-4" /> Uso
+              <TabsTrigger value="usage" className={TRIGGER_CLASS}>
+                <BarChart3 className="h-4 w-4" /> Uso
               </TabsTrigger>
             )}
-            <TabsTrigger value="key">
-              <KeyRound className="mr-1.5 h-4 w-4" /> Chave de API
+            <TabsTrigger value="key" className={TRIGGER_CLASS}>
+              <KeyRound className="h-4 w-4" /> Chave de API
             </TabsTrigger>
           </TabsList>
+        </div>
 
-          <TabsContent value="playground" className="mt-4">
+        <TabsContent value="agents" className="mt-8">
+          <AiAgentsManager onNeedProviderConfig={() => setTab('key')} />
+        </TabsContent>
+
+        <TabsContent value="playground" className="mt-8">
+          <div className="mx-auto max-w-4xl">
             <AiPlayground onGoToSetup={() => setTab('agents')} />
-          </TabsContent>
+          </div>
+        </TabsContent>
 
-          <TabsContent value="agents" className="mt-4">
-            <AiAgentsManager onNeedProviderConfig={() => setTab('key')} />
-          </TabsContent>
-
-          <TabsContent value="kanban" className="mt-4">
+        <TabsContent value="kanban" className="mt-8">
+          <div className="mx-auto max-w-3xl">
             <AiKanbanConfig />
+          </div>
+        </TabsContent>
+
+        {canViewUsage && (
+          <TabsContent value="usage" className="mt-8">
+            <AiUsageCard />
           </TabsContent>
+        )}
 
-          {canViewUsage && (
-            <TabsContent value="usage" className="mt-4">
-              <AiUsageCard />
-            </TabsContent>
-          )}
-
-          <TabsContent value="key" className="mt-4">
+        <TabsContent value="key" className="mt-8">
+          <div className="mx-auto max-w-3xl">
             <AiProviderConfig onSaved={() => setTab('agents')} />
-          </TabsContent>
-        </Tabs>
-      )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

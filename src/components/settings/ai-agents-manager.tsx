@@ -12,6 +12,7 @@ import {
   Bot,
   KeyRound,
   Sparkles,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
@@ -36,7 +37,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SettingsPanelHead } from './settings-panel-head';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import { AiKnowledgeCard } from './ai-knowledge';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import { slugifyAgentName } from '@/lib/ai/slug';
@@ -441,28 +449,29 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
       : agents.length === 0
     : false;
 
+  // Receptionist first, then alphabetical.
+  const sortedAgents = [...agents].sort(
+    (x, y) =>
+      Number(y.is_receptionist) - Number(x.is_receptionist) ||
+      x.name.localeCompare(y.name, 'pt-BR'),
+  );
+
   return (
     <div>
-      <SettingsPanelHead
-        title="Agentes de IA"
-        description="Cada agente tem seu próprio prompt, modelo e base de conhecimento — todos usam a mesma chave de API. O recepcionista atende toda conversa nova e pode transferir para os demais, ou para um humano."
-        action={
-          canEdit && (
-            <Button onClick={openCreate} disabled={!providerConfigured}>
-              <Plus className="mr-1 h-4 w-4" /> Novo agente
-            </Button>
-          )
-        }
-      />
+      <p className="mx-auto mb-6 max-w-2xl text-center text-sm text-muted-foreground">
+        Cada agente tem seu próprio prompt, modelo e base de conhecimento, e todos usam a mesma
+        chave de API. O recepcionista atende toda conversa nova e pode transferir para os demais,
+        ou para um humano.
+      </p>
 
       {!canEdit && (
-        <p className="mb-4 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        <p className="mx-auto mb-5 max-w-2xl rounded-xl border border-border bg-muted/40 px-4 py-2.5 text-center text-sm text-muted-foreground">
           Apenas administradores podem configurar agentes de IA.
         </p>
       )}
 
       {canEdit && !providerConfigured && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
+        <div className="mx-auto mb-5 flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-600 dark:text-amber-400">
           <span className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 shrink-0" /> Configure sua chave de API antes de criar um
             agente.
@@ -480,102 +489,150 @@ export function AiAgentsManager({ onNeedProviderConfig }: { onNeedProviderConfig
         </div>
       )}
 
-      {agents.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          Nenhum agente ainda. Crie o primeiro — ele vira o recepcionista automaticamente (dá pra
-          trocar ou remover depois).
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {agents.map((a) => (
-            <li
-              key={a.id}
+      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {sortedAgents.map((a) => (
+          <li key={a.id} className="min-w-0">
+            {/* The whole card opens the editor on click; keyboard users get the
+                real button on the agent name (no nested interactive roles). */}
+            <div
               onClick={() => canEdit && void openEdit(a.id)}
-              className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 cursor-pointer"
+              className={cn(
+                'group flex h-full min-h-[190px] flex-col rounded-2xl border bg-card p-5 text-left shadow-[var(--shadow-card)] transition-all focus-within:ring-2 focus-within:ring-ring',
+                canEdit && 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[var(--shadow-glow)]',
+                a.is_receptionist
+                  ? 'border-primary/40 bg-gradient-to-br from-primary-soft to-card'
+                  : 'border-border',
+              )}
             >
-              <Bot className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="truncate text-sm font-medium text-foreground">
-                    {a.name}
-                  </span>
-                  {a.is_receptionist && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Star className="h-3 w-3" /> Recepcionista
-                    </Badge>
-                  )}
-                  {a.is_active ? (
-                    <Badge variant="outline" className="text-emerald-500">
-                      Ativo
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Inativo
-                    </Badge>
-                  )}
-                  {a.auto_reply_enabled && (
-                    <Badge variant="outline">Resposta automática</Badge>
-                  )}
-                  {a.auto_reply_max_per_conversation != null && (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      máx. {a.auto_reply_max_per_conversation}/conversa
-                    </Badge>
-                  )}
+              <div className="flex items-start gap-3">
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary">
+                  <Bot className="size-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate font-display text-[15px] font-bold text-foreground">
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openEdit(a.id);
+                        }}
+                        className="max-w-full truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+                      >
+                        {a.name}
+                      </button>
+                    ) : (
+                      a.name
+                    )}
+                  </h3>
+                  <p className="truncate text-xs text-muted-foreground">@{a.slug}</p>
                 </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {a.description || `slug: ${a.slug}`}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-                {canEdit && (
-                  a.is_receptionist ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-xs text-muted-foreground"
-                      onClick={() => void demote(a.id)}
-                      title="Nenhum agente ficará como recepcionista até você promover outro"
-                    >
-                      Remover recepcionista
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 gap-1 px-2 text-xs text-muted-foreground"
-                      onClick={() => void promote(a.id)}
-                      title="Passa a atender toda conversa nova automaticamente"
-                    >
-                      <Star className="h-3.5 w-3.5" /> Tornar recepcionista
-                    </Button>
-                  )
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => void openEdit(a.id)}
-                  disabled={!canEdit}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => void remove(a.id, a.is_receptionist)}
-                  disabled={!canEdit || deletingId === a.id}
-                  className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  title="Excluir"
-                >
-                  {deletingId === a.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
+                <span
+                  className={cn(
+                    'mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                    a.is_active
+                      ? 'bg-emerald-500/15 text-emerald-500'
+                      : 'bg-muted text-muted-foreground',
                   )}
-                </Button>
+                >
+                  <span
+                    className={cn(
+                      'size-1.5 rounded-full',
+                      a.is_active ? 'bg-emerald-500' : 'bg-muted-foreground/60',
+                    )}
+                  />
+                  {a.is_active ? 'Ativo' : 'Inativo'}
+                </span>
+                {canEdit && (
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        aria-label={`Ações do agente ${a.name}`}
+                        className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-52">
+                        <DropdownMenuItem onClick={() => void openEdit(a.id)}>
+                          <Pencil className="size-4" /> Editar
+                        </DropdownMenuItem>
+                        {a.is_receptionist ? (
+                          <DropdownMenuItem onClick={() => void demote(a.id)}>
+                            <Star className="size-4" /> Remover recepcionista
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => void promote(a.id)}>
+                            <Star className="size-4" /> Tornar recepcionista
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => void remove(a.id, a.is_receptionist)}
+                          disabled={deletingId === a.id}
+                          className="text-red-400 focus:text-red-300"
+                        >
+                          {deletingId === a.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
               </div>
-            </li>
-          ))}
-        </ul>
+
+              <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
+                {a.description || 'Sem descrição. Clique para configurar o prompt e a base de conhecimento.'}
+              </p>
+
+              <div className="mt-auto flex flex-wrap gap-1.5 pt-4">
+                {a.is_receptionist && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Star className="h-3 w-3" /> Recepcionista
+                  </Badge>
+                )}
+                {a.auto_reply_enabled && <Badge variant="outline">Resposta automática</Badge>}
+                {a.auto_reply_max_per_conversation != null && (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    máx. {a.auto_reply_max_per_conversation}/conversa
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+
+        {canEdit && (
+          <li className="min-w-0">
+            <button
+              type="button"
+              onClick={openCreate}
+              disabled={!providerConfigured}
+              className="grid h-full min-h-[190px] w-full place-items-center rounded-2xl border-2 border-dashed border-border bg-card/40 p-5 text-center transition-colors hover:border-primary/50 hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:bg-card/40"
+            >
+              <span className="flex flex-col items-center">
+                <span className="grid size-12 place-items-center rounded-full bg-primary-soft text-primary">
+                  <Plus className="size-5" />
+                </span>
+                <span className="mt-3 font-display text-[15px] font-bold text-foreground">
+                  Novo agente
+                </span>
+                <span className="mt-1 max-w-[16rem] text-xs text-muted-foreground">
+                  {agents.length === 0
+                    ? 'O primeiro vira o recepcionista automaticamente (dá para trocar depois).'
+                    : 'Com prompt, modelo e base de conhecimento próprios.'}
+                </span>
+              </span>
+            </button>
+          </li>
+        )}
+      </ul>
+
+      {agents.length === 0 && !canEdit && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">Nenhum agente ainda.</p>
       )}
 
       <Dialog open={!!draft} onOpenChange={(o) => !o && setDraft(null)}>

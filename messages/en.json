@@ -48,6 +48,8 @@
     "menuSignOut": "Sign out"
   },
   "Header": {
+    "flows": "Flows",
+    "aiAgents": "AI Agents",
     "connection": "Connection",
     "reports": "Reports",
     "integrations": "Integrations",
