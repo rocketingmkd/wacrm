@@ -408,6 +408,14 @@ export function MessageBubble({
               )}
             </span>
           )}
+          {message.transport === 'evolution' && (
+            <span
+              className="inline-flex items-center rounded-full bg-amber-500/25 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-amber-200"
+              title="Enviada pela sessão não oficial para reabrir a conversa"
+            >
+              via não oficial
+            </span>
+          )}
           {/* Fixed WhatsApp metadata gray — reads fine against both the
               green outbound and white/slate inbound bubble, so it doesn't
               need to branch on isAgent the way the old primary-tinted

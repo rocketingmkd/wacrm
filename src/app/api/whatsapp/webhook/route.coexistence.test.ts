@@ -117,6 +117,8 @@ function makeSupabaseMock() {
       eqs.push([col, val])
       return b
     })
+    b.not = vi.fn(chain)
+    b.gt = vi.fn(chain)
     b.order = vi.fn(chain)
     b.limit = vi.fn(chain)
     b.insert = vi.fn((p: Record<string, unknown>) => {
@@ -267,6 +269,31 @@ describe('Coexistence webhook topics', () => {
       expect(conversationUpdates[0].patch).toMatchObject({
         last_message_text: 'Oi, cliente! Aqui é a loja.',
       })
+    })
+
+    it('links an echo to the unofficial (Evolution) message already stored instead of inserting a twin', async () => {
+      // The thenable select resolves to an array here: one matching
+      // evolution row sent moments ago whose id is not yet a wamid.
+      existingMessageRow = [{ id: 'msg-evo-1' }] as unknown as Record<string, unknown>
+      const res = await postWebhook('smb_message_echoes', {
+        metadata: { display_phone_number: BUSINESS_PHONE, phone_number_id: 'PNID-1' },
+        message_echoes: [
+          {
+            from: BUSINESS_PHONE,
+            to: CUSTOMER_PHONE,
+            id: 'wamid-echo-evo',
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: 'text',
+            text: { body: 'Oi, tudo bem?' },
+          },
+        ],
+      })
+
+      expect(res.status).toBe(200)
+      expect(messageInserts).toHaveLength(0)
+      expect(messageUpdates).toHaveLength(1)
+      expect(messageUpdates[0].patch).toEqual({ message_id: 'wamid-echo-evo' })
+      expect(messageUpdates[0].eqs).toContainEqual(['id', 'msg-evo-1'])
     })
 
     it('patches the original row on a revoke echo instead of inserting', async () => {

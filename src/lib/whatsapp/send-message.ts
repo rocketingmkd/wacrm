@@ -21,14 +21,14 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import type { MediaKind } from '@/lib/whatsapp/meta-api';
 import {
-  sendTextMessage,
-  sendTemplateMessage,
-  sendMediaMessage,
-  sendInteractiveButtons,
-  sendInteractiveList,
-  type MediaKind,
-} from '@/lib/whatsapp/meta-api';
+  createEvolutionTransport,
+  createOfficialTransport,
+  type TransportProvider,
+  type WhatsAppTransport,
+} from '@/lib/whatsapp/transport';
+import { resolveUnofficialSend } from '@/lib/whatsapp/unofficial-guard';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
@@ -84,6 +84,12 @@ export interface SendMessageParams {
   /** Structured payload for `messageType === 'interactive'`. */
   interactivePayload?: InteractiveMessagePayload | null;
   replyToMessageId?: string | null;
+  /**
+   * `official` (default) = Meta Cloud API. `evolution` = the account's
+   * unofficial session, only to reopen a closed 24h window; guarded by
+   * `resolveUnofficialSend` (text/media only, limits, history).
+   */
+  transport?: TransportProvider;
 }
 
 export interface SendMessageResult {
@@ -240,6 +246,7 @@ export async function sendMessageToConversation(
     interactivePayload,
     replyToMessageId,
   } = params;
+  const provider: TransportProvider = params.transport ?? 'official';
 
   if (!conversationId) {
     throw new SendMessageError(
@@ -313,6 +320,18 @@ export async function sendMessageToConversation(
   }
 
   const accessToken = decrypt(config.access_token);
+  let transport: WhatsAppTransport = createOfficialTransport({
+    phoneNumberId: config.phone_number_id,
+    accessToken,
+  });
+  if (provider === 'evolution') {
+    const session = await resolveUnofficialSend(db, accountId, {
+      conversationId,
+      messageType,
+      hasPhone: Boolean(sanitizedPhone),
+    });
+    transport = createEvolutionTransport({ instanceName: session.instance_name });
+  }
 
   // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
   if (isLegacyFormat(config.access_token)) {
@@ -392,9 +411,7 @@ export async function sendMessageToConversation(
     const to = candidate.kind === 'phone' ? candidate.value : sanitizedPhone ?? '';
     const recipientUserId = candidate.kind === 'user_id' ? candidate.value : undefined;
     if (messageType === 'template') {
-      const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await transport.sendTemplate({
         to,
         recipientUserId,
         templateName: templateName!,
@@ -407,9 +424,7 @@ export async function sendMessageToConversation(
       return result.messageId;
     }
     if (isMediaKind) {
-      const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await transport.sendMedia({
         to,
         recipientUserId,
         kind: messageType as MediaKind,
@@ -423,9 +438,7 @@ export async function sendMessageToConversation(
     if (messageType === 'interactive') {
       const p = interactivePayload!;
       if (p.kind === 'buttons') {
-        const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await transport.sendInteractiveButtons({
           to,
           recipientUserId,
           bodyText: p.body,
@@ -436,9 +449,7 @@ export async function sendMessageToConversation(
         });
         return result.messageId;
       }
-      const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await transport.sendInteractiveList({
         to,
         recipientUserId,
         bodyText: p.body,
@@ -450,9 +461,7 @@ export async function sendMessageToConversation(
       });
       return result.messageId;
     }
-    const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const result = await transport.sendText({
       to,
       recipientUserId,
       text: contentText!,
@@ -473,10 +482,16 @@ export async function sendMessageToConversation(
   let workingPhone = sanitizedPhone;
   try {
     const candidates: SendCandidate[] = [];
-    if (waUserId) candidates.push({ kind: 'user_id', value: waUserId });
-    if (sanitizedPhone) {
-      for (const variant of phoneVariants(sanitizedPhone)) {
-        candidates.push({ kind: 'phone', value: variant });
+    if (provider === 'evolution') {
+      // One shot, exact number: no BSUID and no variant guessing, since
+      // a wrong guess would message a stranger from the unofficial path.
+      candidates.push({ kind: 'phone', value: sanitizedPhone! });
+    } else {
+      if (waUserId) candidates.push({ kind: 'user_id', value: waUserId });
+      if (sanitizedPhone) {
+        for (const variant of phoneVariants(sanitizedPhone)) {
+          candidates.push({ kind: 'phone', value: variant });
+        }
       }
     }
 
@@ -508,6 +523,10 @@ export async function sendMessageToConversation(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'Unknown Meta API error';
+    if (provider === 'evolution') {
+      console.error('[send-message] unofficial send failed:', message);
+      throw new SendMessageError('unofficial_error', `Unofficial session error: ${message}`, 502);
+    }
     console.error('[send-message] Meta send failed for all variants:', message);
     throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
   }
@@ -542,6 +561,7 @@ export async function sendMessageToConversation(
       interactive_payload:
         messageType === 'interactive' ? interactivePayload : null,
       message_id: waMessageId,
+      transport: provider,
       status: 'sent',
       reply_to_message_id: replyToMessageId || null,
     })

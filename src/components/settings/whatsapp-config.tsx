@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { SettingsPanelHead } from './settings-panel-head';
+import { UnofficialSessionCard } from './unofficial-session-card';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
@@ -606,6 +607,8 @@ export function WhatsAppConfig() {
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
       </div>
+
+      {connectionStatus === 'connected' && <UnofficialSessionCard />}
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-lg">

@@ -112,7 +112,9 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
-  onSend: (text: string, replyToId?: string) => void;
+  onSend: (text: string, replyToId?: string, transport?: "official" | "evolution") => void;
+  /** The account has an enabled, connected unofficial (Evolution) session. */
+  unofficialReady?: boolean;
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
@@ -139,6 +141,7 @@ export function MessageComposer({
   conversationId,
   sessionExpired,
   onSend,
+  unofficialReady = false,
   onSendMedia,
   onSendInteractive,
   onOpenTemplates,
@@ -150,6 +153,11 @@ export function MessageComposer({
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // Reopening a closed window through the unofficial session is opt-in
+  // per conversation: the agent has to click the banner button first.
+  const [reopenConvId, setReopenConvId] = useState<string | null>(null);
+  const reopenMode = unofficialReady && sessionExpired && reopenConvId === conversationId;
+  const textLocked = sessionExpired && !reopenMode;
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -237,11 +245,11 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending || textLocked) return;
 
     setSending(true);
     try {
-      onSend(trimmed, replyTo?.id);
+      onSend(trimmed, replyTo?.id, reopenMode ? "evolution" : undefined);
       setText("");
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
@@ -249,7 +257,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, textLocked, reopenMode, onSend, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -566,6 +574,17 @@ export function MessageComposer({
           <p className="text-xs text-amber-400">
             {t("sessionExpiredHint")}
           </p>
+          {unofficialReady && !reopenMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-amber-400 hover:text-amber-300"
+              onClick={() => setReopenConvId(conversationId)}
+              title="Envia uma mensagem livre pela sessão não oficial. Só funciona com quem já falou com você e tem limite por lead."
+            >
+              Reabrir via não oficial
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -749,11 +768,13 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? t("readOnlyPlaceholder")
+                : reopenMode
+                  ? "Mensagem de reabertura (via não oficial)"
                 : sessionExpired
                   ? t("sessionExpiredPlaceholder")
                   : t("typeMessagePlaceholder")
             }
-            disabled={sessionExpired || readOnly}
+            disabled={textLocked || readOnly}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
@@ -761,7 +782,8 @@ export function MessageComposer({
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
               "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              (textLocked || readOnly) && "cursor-not-allowed opacity-50",
+              reopenMode && "border-amber-500/50"
             )}
           />
 
@@ -769,7 +791,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="enviar mensagens"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || textLocked || sending}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >

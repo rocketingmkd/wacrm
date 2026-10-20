@@ -526,6 +526,51 @@ async function resolveWhatsAppConfig(
 const ECHO_ALLOWED_CONTENT_TYPES = new Set(['text', 'image', 'document', 'audio', 'video'])
 
 /**
+ * Match an echo to a message we sent through the Evolution session in
+ * the last few minutes (same conversation, same content, id not yet a
+ * wamid) and adopt the echo's wamid on it. Returns true when linked.
+ * Evolution ids are not wamids, so id equality can't be used.
+ */
+async function linkEchoToUnofficialMessage(
+  conversationId: string,
+  echoId: string,
+  contentType: string,
+  contentText: string | null
+): Promise<boolean> {
+  // Best effort: any failure falls back to the normal insert path
+  // (a visible duplicate beats a dropped echo).
+  try {
+    const since = new Date(Date.now() - 3 * 60 * 1000).toISOString()
+    let query = supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .eq('transport', 'evolution')
+      .eq('content_type', contentType)
+      .not('message_id', 'like', 'wamid.%')
+      .gt('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(1)
+    if (contentText) query = query.eq('content_text', contentText)
+    const { data } = await query
+    const match = Array.isArray(data) ? data[0] : null
+    if (!match) return false
+    const { error } = await supabaseAdmin()
+      .from('messages')
+      .update({ message_id: echoId })
+      .eq('id', match.id)
+    if (error) {
+      console.error('[coexistence] linking echo to unofficial message failed:', error)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[coexistence] echo/unofficial match failed:', err)
+    return false
+  }
+}
+
+/**
  * smb_message_echoes — messages the customer sent from their own
  * WhatsApp Business app (or a linked device) after Coexistence
  * onboarding. Mirrored into `messages` as sender_type='agent' with
@@ -597,6 +642,15 @@ async function handleMessageEchoes(value: SmbMessageEchoesValue) {
         accessToken
       )
       const contentType = ECHO_ALLOWED_CONTENT_TYPES.has(echo.type) ? echo.type : 'text'
+
+      // A message sent through the unofficial (Evolution) session is a
+      // linked device of the same number, so Meta echoes it back here.
+      // The CRM already stored it at send time under the Evolution id,
+      // so link the echo to that row (its id becomes the wamid, which
+      // later revoke/edit echoes reference) instead of inserting a twin.
+      if (await linkEchoToUnofficialMessage(convResult.conversation.id, echo.id, contentType, contentText)) {
+        continue
+      }
 
       const { error: insertError } = await supabaseAdmin().from('messages').insert({
         conversation_id: convResult.conversation.id,

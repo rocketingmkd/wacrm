@@ -64,7 +64,12 @@ export async function POST(request: Request) {
       template_message_params,
       interactive_payload,
       reply_to_message_id,
+      transport,
     } = body
+
+    if (transport !== undefined && transport !== 'official' && transport !== 'evolution') {
+      return NextResponse.json({ error: 'Invalid transport' }, { status: 400 })
+    }
 
     if ((!conversationIdInput && !contact_id) || !message_type) {
       return NextResponse.json(
@@ -171,6 +176,7 @@ export async function POST(request: Request) {
         templateMessageParams: template_message_params,
         interactivePayload: interactive_payload,
         replyToMessageId: reply_to_message_id,
+        transport,
       })
 
       return NextResponse.json({

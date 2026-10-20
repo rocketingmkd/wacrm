@@ -279,6 +279,12 @@ export interface Message {
    * is visible in the thread. Migration 056.
    */
   ai_agent_name?: string;
+  /**
+   * Which path sent an outbound message: the Meta Cloud API (default)
+   * or the account's unofficial Evolution session (reopening a closed
+   * 24h window). Drives the "via não oficial" badge. Migration 064.
+   */
+  transport?: 'official' | 'evolution';
 }
 
 export type ReactionActor = 'customer' | 'agent';

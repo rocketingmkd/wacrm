@@ -273,6 +273,24 @@ export function MessageThread({
     };
   }, []);
 
+  // Whether the account's unofficial (Evolution) session is enabled and
+  // connected, which unlocks "reopen via não oficial" on a closed window.
+  // Read straight from the table: SELECT is open to any account member.
+  const [unofficialReady, setUnofficialReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .from("whatsapp_unofficial_sessions")
+      .select("enabled, status")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setUnofficialReady(Boolean(data?.enabled && data?.status === "connected"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
     if (!messages.length) return { expired: false, remaining: "" };
@@ -493,7 +511,7 @@ export function MessageThread({
   }, [messages]);
 
   const handleSend = useCallback(
-    async (text: string, replyToId?: string) => {
+    async (text: string, replyToId?: string, transport?: "official" | "evolution") => {
       if (!conversation) return;
 
       const tempId = `temp-${Date.now()}`;
@@ -508,6 +526,7 @@ export function MessageThread({
         status: "sending",
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
+        transport,
       };
       onNewMessage(optimisticMsg);
       setReplyTo(null);
@@ -521,6 +540,7 @@ export function MessageThread({
             message_type: "text",
             content_text: text,
             reply_to_message_id: replyToId,
+            transport,
           }),
         });
 
@@ -1246,6 +1266,7 @@ export function MessageThread({
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
+        unofficialReady={unofficialReady}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}
