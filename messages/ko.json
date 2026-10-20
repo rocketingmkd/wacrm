@@ -17,6 +17,7 @@
   "Sidebar": {
     "connection": "연결",
     "reports": "보고서",
+    "traffic": "트래픽 출처",
     "integrations": "연동",
     "title": "WhatsApp용 CRM 템플릿",
     "sectionService": "고객 응대",
@@ -52,6 +53,7 @@
     "aiAgents": "AI 에이전트",
     "connection": "연결",
     "reports": "보고서",
+    "traffic": "트래픽 출처",
     "integrations": "연동",
     "whatsappConnected": "WhatsApp 연결됨",
     "whatsappDisconnected": "WhatsApp 연결 안 됨",

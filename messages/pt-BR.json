@@ -17,6 +17,7 @@
   "Sidebar": {
     "connection": "Conexão",
     "reports": "Relatórios",
+    "traffic": "Origem do tráfego",
     "integrations": "Integrações",
     "title": "Rocketing CRM",
     "sectionService": "Atendimento",
@@ -52,6 +53,7 @@
     "aiAgents": "Agentes de IA",
     "connection": "Conexão",
     "reports": "Relatórios",
+    "traffic": "Origem do tráfego",
     "integrations": "Integrações",
     "whatsappConnected": "WhatsApp conectado",
     "whatsappDisconnected": "WhatsApp desconectado",

@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import type { PlanFeatures } from "@/lib/billing/plan";
 import {
   BarChart3,
+  Megaphone,
   Bell,
   Bot,
   CalendarDays,
@@ -128,6 +129,7 @@ const navSections: { labelKey: string; items: NavItem[] }[] = [
     items: [
       { href: "/contacts", labelKey: "contacts", icon: Users },
       { href: "/reports", labelKey: "reports", icon: BarChart3, minRole: "admin" },
+      { href: "/traffic", labelKey: "traffic", icon: Megaphone, minRole: "admin" },
       { href: "/integrations", labelKey: "integrations", icon: Plug, minRole: "admin" },
       { href: "/connection", labelKey: "connection", icon: Smartphone },
       { href: "/settings", labelKey: "settings", icon: Settings },

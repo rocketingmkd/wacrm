@@ -17,6 +17,7 @@
   "Sidebar": {
     "connection": "Connection",
     "reports": "Reports",
+    "traffic": "Traffic sources",
     "integrations": "Integrations",
     "title": "CRM Template for WhatsApp",
     "sectionService": "Service",
@@ -52,6 +53,7 @@
     "aiAgents": "AI Agents",
     "connection": "Connection",
     "reports": "Reports",
+    "traffic": "Traffic sources",
     "integrations": "Integrations",
     "whatsappConnected": "WhatsApp connected",
     "whatsappDisconnected": "WhatsApp disconnected",

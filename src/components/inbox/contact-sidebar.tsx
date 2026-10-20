@@ -24,12 +24,22 @@ import {
   DollarSign,
   StickyNote,
   Plus,
+  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
+import { SOURCE_LABELS, type AttributionSource } from "@/lib/tracking/attribution";
+
+interface LeadOrigin {
+  source: AttributionSource;
+  headline: string | null;
+  utm_campaign: string | null;
+  ad_id: string | null;
+  first_seen_at: string;
+}
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -50,6 +60,7 @@ export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [origin, setOrigin] = useState<LeadOrigin | null>(null);
 
   // "Add to pipeline" shortcut. Only the account's first pipeline is
   // offered here — same simplifying assumption as elsewhere in the
@@ -68,7 +79,7 @@ export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
     const supabase = createClient();
 
     // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    const [dealsRes, notesRes, tagsRes, originRes] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -83,7 +94,13 @@ export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contact.id),
+      supabase
+        .from("lead_attribution")
+        .select("source, headline, utm_campaign, ad_id, first_seen_at")
+        .eq("contact_id", contact.id)
+        .maybeSingle(),
     ]);
+    setOrigin((originRes.data as LeadOrigin | null) ?? null);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (notesRes.data) setNotes(notesRes.data);
@@ -237,6 +254,30 @@ export function ContactSidebar({ contact, refreshToken }: ContactSidebarProps) {
               </div>
             )}
           </div>
+
+          {/* Where this lead came from (ad campaign), when known */}
+          {origin && (
+            <>
+              <div className="my-4 border-t border-border" />
+              <div>
+                <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <Megaphone className="h-3 w-3" />
+                  Origem
+                </div>
+                <div className="mt-2 rounded-lg bg-muted px-3 py-2">
+                  <p className="text-sm font-medium text-foreground">
+                    {SOURCE_LABELS[origin.source] ?? origin.source}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {origin.utm_campaign || origin.headline || origin.ad_id || "Sem campanha informada"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {format(new Date(origin.first_seen_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

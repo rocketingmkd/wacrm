@@ -15,6 +15,8 @@ import {
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
 import { isReminderButtonReply, handleReminderButtonTap } from '@/lib/agenda/reminder-replies'
+import { recordLeadAttribution } from '@/lib/tracking/record'
+import { stripSessionCode } from '@/lib/tracking/attribution'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -78,6 +80,19 @@ interface WhatsAppMessage {
   button?: { text: string; payload: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * Click to WhatsApp ad data. Meta sends it on the message that opens
+   * the conversation from an ad (no opt-in needed).
+   */
+  referral?: {
+    source_url?: string
+    source_id?: string
+    source_type?: string
+    body?: string
+    headline?: string
+    media_type?: string
+    ctwa_clid?: string
+  }
 }
 
 interface WhatsAppWebhookEntry {
@@ -1244,8 +1259,18 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
-    await parseMessageContent(message, accessToken)
+  const {
+    contentText: rawContentText,
+    mediaUrl,
+    mediaType,
+    interactiveReplyId,
+  } = await parseMessageContent(message, accessToken)
+  // The landing page script appends a tracking code ("[#A1B2C3D4]") to the
+  // pre-filled text. It's only for attribution, so agents and the AI never
+  // see it; a message made of nothing but the code is kept as sent.
+  const contentText = rawContentText
+    ? stripSessionCode(rawContentText) || rawContentText
+    : rawContentText
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
@@ -1318,6 +1343,19 @@ async function processMessage(
     console.error('Error inserting message:', msgError)
     return
   }
+
+  // Where did this lead come from? Click to WhatsApp referral or the
+  // code the landing page script put in the pre-filled text. First touch
+  // wins; never throws.
+  await recordLeadAttribution({
+    db: supabaseAdmin(),
+    accountId,
+    contactId: contactRecord.id,
+    conversationId: conversation.id,
+    referral: message.referral,
+    messageText: rawContentText ?? message.text?.body,
+    seenAt: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+  })
 
   // Update conversation
   const { error: convError } = await supabaseAdmin()

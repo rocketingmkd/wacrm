@@ -32,8 +32,11 @@ const contactInserts: Array<Record<string, unknown>> = []
 const conversationInserts: Array<Record<string, unknown>> = []
 const conversationUpdates: Array<{ eqs: [string, unknown][]; patch: Record<string, unknown> }> = []
 const configUpdates: Array<{ eqs: [string, unknown][]; patch: Record<string, unknown> }> = []
+const attributionUpserts: Array<Record<string, unknown>> = []
 
 let configRow: Record<string, unknown> | null = null
+// Landing page session the tracking code in an inbound message points to.
+let trackingSessionRow: Record<string, unknown> | null = null
 // Controls the dedup check inside handleHistorySync — non-null simulates a
 // message already stored (from live Cloud API traffic or a redelivered chunk).
 let existingMessageRow: Record<string, unknown> | null = null
@@ -56,6 +59,9 @@ function makeSupabaseMock() {
       }
       if (table === 'conversations') {
         return { data: existingConversationRow ? [existingConversationRow] : [], error: null }
+      }
+      if (table === 'tracking_sessions') {
+        return { data: trackingSessionRow, error: null }
       }
       return { data: null, error: null }
     }
@@ -125,6 +131,10 @@ function makeSupabaseMock() {
       mode = 'insert'
       payload = p
       return b
+    })
+    b.upsert = vi.fn((p: Record<string, unknown>) => {
+      if (table === 'lead_attribution') attributionUpserts.push(p)
+      return Promise.resolve({ error: null })
     })
     b.update = vi.fn((p: Record<string, unknown>) => {
       mode = 'update'
@@ -214,6 +224,8 @@ describe('Coexistence webhook topics', () => {
     conversationInserts.length = 0
     conversationUpdates.length = 0
     configUpdates.length = 0
+    attributionUpserts.length = 0
+    trackingSessionRow = null
     existingMessageRow = null
     existingConversationRow = null
     configRow = {
@@ -519,5 +531,98 @@ describe('Coexistence webhook topics', () => {
       const update = configUpdates.find((u) => u.patch.status === 'connected')
       expect(update).toBeDefined()
     })
+  })
+})
+
+describe('Lead attribution on inbound messages', () => {
+  beforeEach(() => {
+    messageInserts.length = 0
+    contactInserts.length = 0
+    conversationInserts.length = 0
+    conversationUpdates.length = 0
+    attributionUpserts.length = 0
+    trackingSessionRow = null
+    existingMessageRow = null
+    existingConversationRow = null
+    configRow = {
+      id: 'cfg-1',
+      account_id: 'acct-1',
+      user_id: 'user-1',
+      phone_number_id: 'PNID-1',
+      waba_id: 'waba-1',
+      access_token: encrypt('plaintext-token'),
+      contacts_synced_at: null,
+      history_synced_at: null,
+    }
+    supabaseMock = makeSupabaseMock()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function inbound(message: Record<string, unknown>) {
+    return postWebhook('messages', {
+      messaging_product: 'whatsapp',
+      metadata: { display_phone_number: BUSINESS_PHONE, phone_number_id: 'PNID-1' },
+      contacts: [{ profile: { name: 'Ana Lead' }, wa_id: CUSTOMER_PHONE }],
+      messages: [
+        {
+          id: 'wamid-in-1',
+          from: CUSTOMER_PHONE,
+          timestamp: String(Math.floor(Date.now() / 1000)),
+          type: 'text',
+          ...message,
+        },
+      ],
+    })
+  }
+
+  it('stores the Click to WhatsApp ad that opened the conversation', async () => {
+    const res = await inbound({
+      text: { body: 'Oi, vi o anúncio' },
+      referral: {
+        source_id: 'AD-123',
+        source_type: 'ad',
+        ctwa_clid: 'CLID-ABC',
+        headline: 'Oferta de outubro',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    expect(attributionUpserts).toHaveLength(1)
+    expect(attributionUpserts[0]).toMatchObject({
+      account_id: 'acct-1',
+      contact_id: 'contact-new',
+      conversation_id: 'conv-new',
+      source: 'meta_ctwa',
+      ad_id: 'AD-123',
+      ctwa_clid: 'CLID-ABC',
+      headline: 'Oferta de outubro',
+    })
+    expect(messageInserts[0]).toMatchObject({ content_text: 'Oi, vi o anúncio' })
+  })
+
+  it('links a landing page lead through the code and hides the code from the stored text', async () => {
+    trackingSessionRow = { utm_source: 'google', utm_campaign: 'pesquisa-marca', gclid: 'GCL-1' }
+    const res = await inbound({ text: { body: 'Quero saber mais\n[#ABCD2345]' } })
+
+    expect(res.status).toBe(200)
+    expect(attributionUpserts).toHaveLength(1)
+    expect(attributionUpserts[0]).toMatchObject({
+      source: 'google',
+      session_code: 'ABCD2345',
+      utm_campaign: 'pesquisa-marca',
+      gclid: 'GCL-1',
+    })
+    expect(messageInserts[0]).toMatchObject({ content_text: 'Quero saber mais' })
+  })
+
+  it('records nothing for an organic message', async () => {
+    const res = await inbound({ text: { body: 'Boa tarde' } })
+
+    expect(res.status).toBe(200)
+    expect(attributionUpserts).toHaveLength(0)
+    expect(messageInserts[0]).toMatchObject({ content_text: 'Boa tarde' })
   })
 })
