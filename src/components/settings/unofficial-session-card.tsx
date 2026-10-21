@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, ChevronRight, Loader2, MessageSquareWarning, UsersRound } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Loader2, MessageSquareWarning } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -30,117 +30,6 @@ const STATUS_LABEL: Record<Status, string> = {
   connecting: 'Aguardando leitura do QR',
   connected: 'Conectado',
 };
-
-interface GroupRow {
-  jid: string;
-  name: string;
-  tracked: boolean;
-}
-
-/**
- * Which WhatsApp groups of the paired number the CRM follows. Loaded on
- * demand: it asks the Evolution server for the groups the number is in.
- * Groups that are not ticked are ignored; unticking keeps the history.
- */
-function GroupsPicker() {
-  const [groups, setGroups] = useState<GroupRow[] | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/whatsapp/unofficial/groups');
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || 'Não foi possível listar os grupos.');
-        return;
-      }
-      const rows: GroupRow[] = data.groups ?? [];
-      setGroups(rows);
-      setPicked(new Set(rows.filter((g) => g.tracked).map((g) => g.jid)));
-    } catch {
-      toast.error('Falha de rede.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/whatsapp/unofficial/groups', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jids: [...picked] }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || 'Não foi possível salvar os grupos.');
-        return;
-      }
-      toast.success(
-        data.tracked > 0 ? `Acompanhando ${data.tracked} grupo(s).` : 'Nenhum grupo acompanhado.',
-      );
-      await load();
-    } catch {
-      toast.error('Falha de rede.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggle = (jid: string) =>
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(jid)) next.delete(jid);
-      else next.add(jid);
-      return next;
-    });
-
-  return (
-    <div className="space-y-3 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="flex items-center gap-1.5 font-medium text-foreground">
-            <UsersRound className="size-4" /> Grupos
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Escolha os grupos que aparecem na caixa de entrada. Os outros são ignorados.
-          </p>
-        </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading || saving}>
-          {loading && <Loader2 className="size-4 animate-spin" />}
-          {groups ? 'Atualizar' : 'Escolher grupos'}
-        </Button>
-      </div>
-
-      {groups && (
-        <>
-          {groups.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Este número não está em nenhum grupo.</p>
-          ) : (
-            <ul className="max-h-56 space-y-1 overflow-y-auto">
-              {groups.map((g) => (
-                <li key={g.jid}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50">
-                    <input type="checkbox" checked={picked.has(g.jid)} onChange={() => toggle(g.jid)} />
-                    <span className="truncate">{g.name}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Button size="sm" onClick={save} disabled={saving || loading}>
-            {saving && <Loader2 className="size-4 animate-spin" />}
-            Salvar grupos
-          </Button>
-        </>
-      )}
-    </div>
-  );
-}
 
 /**
  * Opt-in Evolution (unofficial) session. Used only to reopen a
@@ -240,8 +129,9 @@ export function UnofficialSessionCard({
   const content = (
           <div className="space-y-4 text-sm">
             <p className="text-muted-foreground">
-              Serve só para reabrir uma conversa quando a janela de 24h está fechada e para grupos.
-              Disparos em massa continuam 100% pela API oficial.
+              Serve para reabrir uma conversa quando a janela de 24h está fechada e para receber os
+              grupos do número, que aparecem sozinhos na caixa de entrada. Disparos em massa
+              continuam 100% pela API oficial.
             </p>
 
             <Alert className="border-amber-500/40 bg-amber-500/10">
@@ -353,8 +243,6 @@ export function UnofficialSessionCard({
                     />
                   </div>
                 )}
-
-                {session?.enabled && <GroupsPicker />}
 
                 {session && (
                   <Button

@@ -141,9 +141,8 @@ describe('parseGroupUpsert', () => {
 
 type Row = Record<string, unknown>;
 
-function fakeDb(seed: { whatsapp_groups?: Row[] } = {}) {
+function fakeDb() {
   const tables: Record<string, Row[]> = {
-    whatsapp_groups: seed.whatsapp_groups ?? [],
     contacts: [],
     conversations: [],
     messages: [],
@@ -215,18 +214,11 @@ const base: ParsedGroupMessage = {
 };
 
 describe('storeGroupMessage', () => {
-  it('ignores a group the admin did not choose and creates nothing', async () => {
-    const { db, tables } = fakeDb();
-    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('ignored');
-    expect(tables.contacts).toHaveLength(0);
-    expect(tables.messages).toHaveLength(0);
-  });
+  const named = (name: string | null) => vi.fn(async () => name);
 
-  it('creates the group contact + conversation and stores who spoke', async () => {
-    const { db, tables } = fakeDb({
-      whatsapp_groups: [{ account_id: 'acc-1', group_jid: GROUP, name: 'Clientes VIP' }],
-    });
-    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('stored');
+  it('creates the group contact + conversation on first sight and stores who spoke', async () => {
+    const { db, tables } = fakeDb();
+    expect(await storeGroupMessage(db, 'acc-1', base, named('Clientes VIP'))).toBe('stored');
 
     expect(tables.contacts).toHaveLength(1);
     expect(tables.contacts[0]).toMatchObject({
@@ -253,41 +245,48 @@ describe('storeGroupMessage', () => {
     });
   });
 
+  it('asks Evolution for the subject only when the group is first seen', async () => {
+    const { db } = fakeDb();
+    const lookup = named('Clientes VIP');
+    await storeGroupMessage(db, 'acc-1', base, lookup);
+    await storeGroupMessage(db, 'acc-1', { ...base, messageId: 'MSG-2' }, lookup);
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a placeholder name and fixes it once the subject is known', async () => {
+    const { db, tables } = fakeDb();
+    await storeGroupMessage(db, 'acc-1', base, named(null));
+    expect(tables.contacts[0].name).toBe('Grupo 120363025246125486');
+
+    await storeGroupMessage(db, 'acc-1', { ...base, messageId: 'MSG-2' }, named('Clientes VIP'));
+    expect(tables.contacts).toHaveLength(1);
+    expect(tables.contacts[0].name).toBe('Clientes VIP');
+  });
+
+  it('works without a name lookup at all', async () => {
+    const { db, tables } = fakeDb();
+    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('stored');
+    expect(tables.contacts[0].name).toBe('Grupo 120363025246125486');
+  });
+
   it('skips a message id already stored (retry or echo of our own send)', async () => {
-    const { db, tables } = fakeDb({
-      whatsapp_groups: [{ account_id: 'acc-1', group_jid: GROUP, name: 'Clientes VIP' }],
-    });
-    await storeGroupMessage(db, 'acc-1', base);
-    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('duplicate');
+    const { db, tables } = fakeDb();
+    await storeGroupMessage(db, 'acc-1', base, named('Clientes VIP'));
+    expect(await storeGroupMessage(db, 'acc-1', base, named('Clientes VIP'))).toBe('duplicate');
     expect(tables.messages).toHaveLength(1);
     expect(tables.conversations[0].unread_count).toBe(1);
   });
 
   it('stores a message sent from the phone as an agent message without raising unread', async () => {
-    const { db, tables } = fakeDb({
-      whatsapp_groups: [{ account_id: 'acc-1', group_jid: GROUP, name: 'Clientes VIP' }],
-    });
-    await storeGroupMessage(db, 'acc-1', base);
-    await storeGroupMessage(db, 'acc-1', {
-      ...base,
-      messageId: 'MSG-2',
-      fromMe: true,
-      senderName: null,
-      senderPhone: null,
-      text: 'combinado',
-    });
+    const { db, tables } = fakeDb();
+    await storeGroupMessage(db, 'acc-1', base, named('Clientes VIP'));
+    await storeGroupMessage(
+      db,
+      'acc-1',
+      { ...base, messageId: 'MSG-2', fromMe: true, senderName: null, senderPhone: null, text: 'combinado' },
+      named('Clientes VIP'),
+    );
     expect(tables.messages[1]).toMatchObject({ sender_type: 'agent', origin: 'whatsapp_app', status: 'sent' });
     expect(tables.conversations[0]).toMatchObject({ last_message_text: 'combinado', unread_count: 1 });
-  });
-
-  it('keeps the contact name in sync with the followed group name', async () => {
-    const { db, tables } = fakeDb({
-      whatsapp_groups: [{ account_id: 'acc-1', group_jid: GROUP, name: 'Nome antigo' }],
-    });
-    await storeGroupMessage(db, 'acc-1', base);
-    tables.whatsapp_groups[0].name = 'Nome novo';
-    await storeGroupMessage(db, 'acc-1', { ...base, messageId: 'MSG-3' });
-    expect(tables.contacts).toHaveLength(1);
-    expect(tables.contacts[0].name).toBe('Nome novo');
   });
 });

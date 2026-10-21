@@ -10,10 +10,12 @@ import {
   isEvolutionConfigured,
   type EvolutionQr,
 } from '@/lib/whatsapp/evolution-api'
+import { ensureEvolutionWebhook } from '@/lib/whatsapp/evolution-webhook-setup'
 
 /**
  * /api/whatsapp/unofficial: the account's Evolution (unofficial)
- * WhatsApp session, used only to reopen conversations and for groups.
+ * WhatsApp session: reopens conversations whose 24h window is closed and
+ * receives group messages (webhook registered when it is activated).
  * Admin only. The Evolution URL/key are server env, never exposed.
  *
  *   GET     status (reconciled against Evolution) + QR while pairing
@@ -35,6 +37,7 @@ type SessionRow = {
   max_per_lead: number
   daily_limit: number
   connected_at: string | null
+  webhook_set_at: string | null
 }
 
 function publicShape(row: SessionRow | null, qr?: EvolutionQr | null) {
@@ -67,6 +70,12 @@ export async function GET() {
 
     if (!row || !isEvolutionConfigured()) {
       return NextResponse.json(publicShape(row ?? null))
+    }
+
+    // Sessions activated before groups existed never had the inbound
+    // webhook registered; do it once, on the next load of the card.
+    if (row.enabled && row.status === 'connected' && !row.webhook_set_at) {
+      await ensureEvolutionWebhook(supabase, accountId, row.instance_name)
     }
 
     // Reconcile with the real state: the phone can be unpaired from the
@@ -204,6 +213,11 @@ export async function PATCH(request: Request) {
       .select('*')
       .single<SessionRow>()
     if (error) throw error
+    // Groups arrive through the Evolution webhook: point it at the CRM
+    // whenever the session is switched on.
+    if (body.enabled === true && isEvolutionConfigured()) {
+      await ensureEvolutionWebhook(supabase, accountId, row.instance_name)
+    }
     return NextResponse.json(publicShape(row))
   } catch (err) {
     return toErrorResponse(err)

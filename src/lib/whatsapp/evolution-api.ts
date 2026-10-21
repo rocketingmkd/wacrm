@@ -121,21 +121,16 @@ export async function getInstancePhone(args: { instanceName: string }): Promise<
   return digits || null;
 }
 
-export interface EvolutionGroup {
-  /** Group JID, e.g. 120363025246125486@g.us */
-  id: string;
-  subject: string;
-}
-
-/** Every group the paired number is in (participants not requested). */
-export async function fetchAllGroups(args: { instanceName: string }): Promise<EvolutionGroup[]> {
-  const raw = await call<Array<{ id?: string; subject?: string }>>(
+/** Subject (name) of one group, or null when Evolution can't tell. */
+export async function fetchGroupSubject(args: {
+  instanceName: string;
+  groupJid: string;
+}): Promise<string | null> {
+  const raw = await call<{ subject?: string }>(
     'GET',
-    `/group/fetchAllGroups/${encodeURIComponent(args.instanceName)}?getParticipants=false`,
+    `/group/findGroupInfos/${encodeURIComponent(args.instanceName)}?groupJid=${encodeURIComponent(args.groupJid)}`,
   );
-  return (Array.isArray(raw) ? raw : [])
-    .filter((g): g is { id: string; subject?: string } => typeof g.id === 'string' && g.id.endsWith('@g.us'))
-    .map((g) => ({ id: g.id, subject: g.subject?.trim() || g.id.split('@')[0] }));
+  return raw.subject?.trim() || null;
 }
 
 /**

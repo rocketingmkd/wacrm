@@ -1,9 +1,10 @@
 // ============================================================
 // Inbound WhatsApp group messages, delivered by the Evolution webhook.
 //
-// The official Cloud API never delivers group traffic, so a group lives
-// in the CRM only because the admin picked it (whatsapp_groups) and the
-// Evolution session forwards its messages here. A group is NOT a lead:
+// The official Cloud API never delivers group traffic, so groups reach the
+// CRM through the Evolution session. Every group of the paired number
+// shows up on its own, like in WhatsApp itself: the first message creates
+// the group's contact + conversation. A group is NOT a lead:
 // this path stores the message and bumps the conversation, and
 // deliberately skips flows, automations, AI auto-reply, CSAT, lead
 // attribution and the public message.received webhook, so nothing can
@@ -164,14 +165,21 @@ export function parseGroupUpsert(body: unknown): ParsedGroupMessage[] {
 
 // ---- storing --------------------------------------------------------
 
-export type GroupStoreResult = 'stored' | 'duplicate' | 'ignored';
+/** Looks up a group's subject; null when unknown. Never throws. */
+export type GroupNameLookup = (groupJid: string) => Promise<string | null>;
+
+export type GroupStoreResult = 'stored' | 'duplicate';
+
+/** Placeholder name until Evolution tells us the real group subject. */
+const fallbackGroupName = (groupJid: string) => `Grupo ${groupJid.split('@')[0]}`;
+const isFallbackName = (name: string | null | undefined) => !name || /^Grupo \d{10,}$/.test(name);
 
 async function findOrCreateGroupContact(
   db: SupabaseClient,
   accountId: string,
   ownerUserId: string,
   groupJid: string,
-  name: string,
+  getGroupName: GroupNameLookup,
 ): Promise<string> {
   const find = async () => {
     const { data } = await db
@@ -185,15 +193,21 @@ async function findOrCreateGroupContact(
 
   const existing = await find();
   if (existing) {
-    if (name && existing.name !== name) {
-      await db
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
+    // A group created before its subject was known (lookup failed) gets
+    // its real name on a later message.
+    if (isFallbackName(existing.name)) {
+      const name = await getGroupName(groupJid);
+      if (name && name !== existing.name) {
+        await db
+          .from('contacts')
+          .update({ name, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      }
     }
     return existing.id;
   }
 
+  const name = (await getGroupName(groupJid)) ?? fallbackGroupName(groupJid);
   const { data: created, error } = await db
     .from('contacts')
     .insert({
@@ -249,26 +263,19 @@ async function findOrCreateGroupConversation(
 }
 
 /**
- * Store one group message for `accountId`. Ignored when the group is not
- * one the admin chose to follow; skipped when this message id is already
- * in the conversation (Evolution retries, and the echo of a message the
- * CRM itself sent).
+ * Store one group message for `accountId`, creating the group's contact
+ * and conversation on first sight. Skipped when this message id is
+ * already in the conversation (Evolution retries, and the echo of a
+ * message the CRM itself sent).
  */
 export async function storeGroupMessage(
   db: SupabaseClient,
   accountId: string,
   msg: ParsedGroupMessage,
+  getGroupName: GroupNameLookup = async () => null,
 ): Promise<GroupStoreResult> {
-  const { data: group } = await db
-    .from('whatsapp_groups')
-    .select('name')
-    .eq('account_id', accountId)
-    .eq('group_jid', msg.groupJid)
-    .maybeSingle<{ name: string }>();
-  if (!group) return 'ignored';
-
   const ownerUserId = await resolveAuditUserId(db, accountId);
-  const contactId = await findOrCreateGroupContact(db, accountId, ownerUserId, msg.groupJid, group.name);
+  const contactId = await findOrCreateGroupContact(db, accountId, ownerUserId, msg.groupJid, getGroupName);
   const conversation = await findOrCreateGroupConversation(db, accountId, ownerUserId, contactId);
 
   const { data: dup } = await db

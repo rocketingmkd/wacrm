@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { fetchGroupSubject } from '@/lib/whatsapp/evolution-api'
 import {
   isValidWebhookSecret,
   parseGroupUpsert,
@@ -10,13 +11,13 @@ import {
  * POST /api/whatsapp/evolution/webhook
  *
  * Inbound events from the account's Evolution (unofficial) session. Today
- * it only stores messages of the WhatsApp groups the admin chose to follow
- * (migration 070); anything else (1:1 chats, groups not followed) is
- * acknowledged and dropped, since 1:1 traffic keeps arriving through the
- * official webhook.
+ * it only stores WhatsApp group messages (migration 070): every group of
+ * the paired number lands in the inbox on its own. 1:1 chats are
+ * acknowledged and dropped, since they keep arriving through the official
+ * webhook.
  *
  * Auth: Evolution sends the per-instance secret in `x-evolution-secret`
- * (registered by /api/whatsapp/unofficial/groups, derived from
+ * (registered when the session is activated, derived from
  * ENCRYPTION_KEY). A bad secret is a 401; every other outcome is a 200 so
  * Evolution never retries a message we deliberately ignored.
  */
@@ -40,10 +41,18 @@ export async function POST(request: Request) {
     .maybeSingle<{ account_id: string; enabled: boolean }>()
   if (!session?.enabled) return NextResponse.json({ ok: true, ignored: 'session-off' })
 
+  // The webhook payload carries no group subject; ask Evolution (only
+  // when a group is first seen).
+  const getGroupName = (groupJid: string) =>
+    fetchGroupSubject({ instanceName: instance, groupJid }).catch((err) => {
+      console.warn('[evolution-webhook] group subject lookup failed:', err instanceof Error ? err.message : err)
+      return null
+    })
+
   let stored = 0
   for (const msg of messages) {
     try {
-      if ((await storeGroupMessage(db, session.account_id, msg)) === 'stored') stored += 1
+      if ((await storeGroupMessage(db, session.account_id, msg, getGroupName)) === 'stored') stored += 1
     } catch (err) {
       console.error('[evolution-webhook] failed to store group message:', err)
     }
