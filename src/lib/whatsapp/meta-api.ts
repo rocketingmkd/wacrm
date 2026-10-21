@@ -1282,3 +1282,33 @@ export async function reportAutomaticEventToCapi(
   const data = await response.json()
   return { eventsReceived: data.events_received ?? 0 }
 }
+
+/**
+ * Sends ready-made events to the Conversions API of a dataset (Pixel).
+ * `testEventCode` makes Meta treat them as test events, visible only in
+ * Events Manager > Test events.
+ */
+export async function sendCapiEvents(args: {
+  datasetId: string
+  accessToken: string
+  events: Record<string, unknown>[]
+  testEventCode?: string | null
+}): Promise<{ eventsReceived: number }> {
+  const { datasetId, accessToken, events, testEventCode } = args
+  const response = await fetch(`${META_API_BASE}/${encodeURIComponent(datasetId)}/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      data: events,
+      ...(testEventCode ? { test_event_code: testEventCode } : {}),
+    }),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { eventsReceived: data.events_received ?? 0 }
+}

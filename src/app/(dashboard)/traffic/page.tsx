@@ -19,6 +19,7 @@ import {
   Download,
   Loader2,
   Megaphone,
+  Send,
   Trophy,
   UserPlus,
   UserX,
@@ -38,6 +39,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/metric-card";
+import { ConversionsPanel } from "@/components/tracking/conversions-panel";
 
 const PERIODS: { value: ReportPeriod; label: string }[] = [
   { value: "today", label: "Hoje" },
@@ -200,6 +202,7 @@ export default function TrafficPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [showInstall, setShowInstall] = useState(false);
+  const [showConversions, setShowConversions] = useState(false);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{
     key: string;
@@ -336,6 +339,10 @@ export default function TrafficPage() {
             <Code2 className="size-4" />
             Como rastrear
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowConversions((v) => !v)}>
+            <Send className="size-4" />
+            Enviar conversões
+          </Button>
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={!data || loading}>
             <Download className="size-4" />
             Exportar CSV
@@ -346,6 +353,15 @@ export default function TrafficPage() {
       {showInstall && (
         <Panel title="Como rastrear os anúncios" subtitle="Configure uma vez; vale para todas as campanhas.">
           <InstallPanel />
+        </Panel>
+      )}
+
+      {showConversions && (
+        <Panel
+          title="Enviar conversões para os anúncios"
+          subtitle="Devolve à Meta as vendas que vieram dos anúncios."
+        >
+          <ConversionsPanel />
         </Panel>
       )}
 
