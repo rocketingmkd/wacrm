@@ -370,6 +370,13 @@ export function MessageBubble({
             )}
           />
         )}
+        {!isAgent && message.sender_name && (
+          // Group messages: who spoke. Several people share sender_type
+          // 'customer', so the name is shown on every bubble.
+          <p className="mb-0.5 truncate text-[12px] font-semibold text-primary">
+            {message.sender_name}
+          </p>
+        )}
         {reply && (
           <ReplyQuote
             authorLabel={reply.authorLabel}

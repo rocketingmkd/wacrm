@@ -97,7 +97,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     let contacts: Contact[] = [];
 
     if (audience.type === 'all') {
-      const { data, error } = await supabase.from('contacts').select('*');
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('is_group', false);
       if (error) throw new Error(`Failed to fetch contacts: ${error.message}`);
       contacts = data ?? [];
     } else if (
@@ -120,6 +123,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         const { data, error } = await supabase
           .from('contacts')
           .select('*')
+          .eq('is_group', false)
           .in('id', uniqueContactIds);
         if (error) throw new Error(`Failed to fetch contacts: ${error.message}`);
         contacts = data ?? [];

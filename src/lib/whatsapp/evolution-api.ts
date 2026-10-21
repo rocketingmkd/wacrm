@@ -121,6 +121,44 @@ export async function getInstancePhone(args: { instanceName: string }): Promise<
   return digits || null;
 }
 
+export interface EvolutionGroup {
+  /** Group JID, e.g. 120363025246125486@g.us */
+  id: string;
+  subject: string;
+}
+
+/** Every group the paired number is in (participants not requested). */
+export async function fetchAllGroups(args: { instanceName: string }): Promise<EvolutionGroup[]> {
+  const raw = await call<Array<{ id?: string; subject?: string }>>(
+    'GET',
+    `/group/fetchAllGroups/${encodeURIComponent(args.instanceName)}?getParticipants=false`,
+  );
+  return (Array.isArray(raw) ? raw : [])
+    .filter((g): g is { id: string; subject?: string } => typeof g.id === 'string' && g.id.endsWith('@g.us'))
+    .map((g) => ({ id: g.id, subject: g.subject?.trim() || g.id.split('@')[0] }));
+}
+
+/**
+ * Point the instance's inbound events at the CRM. Idempotent: Evolution
+ * replaces the instance's webhook config on every call.
+ */
+export async function setWebhook(args: {
+  instanceName: string;
+  url: string;
+  headers: Record<string, string>;
+}): Promise<void> {
+  await call('POST', `/webhook/set/${encodeURIComponent(args.instanceName)}`, {
+    webhook: {
+      enabled: true,
+      url: args.url,
+      headers: args.headers,
+      byEvents: false,
+      base64: false,
+      events: ['MESSAGES_UPSERT'],
+    },
+  });
+}
+
 export async function logoutInstance(args: { instanceName: string }): Promise<void> {
   await call('DELETE', `/instance/logout/${encodeURIComponent(args.instanceName)}`);
 }

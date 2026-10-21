@@ -201,7 +201,8 @@ export function Step2SelectAudience({
         // "All" — fetch the total, then subtract exclude set if any.
         const { count } = await supabase
           .from('contacts')
-          .select('*', { count: 'exact', head: true });
+          .select('*', { count: 'exact', head: true })
+          .eq('is_group', false);
         const total = count ?? 0;
         setEstimatedCount(excludeSet ? Math.max(0, total - excludeSet.size) : total);
       }

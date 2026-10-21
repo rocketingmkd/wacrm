@@ -9,7 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, MessageSquarePlus } from "lucide-react";
+import { Search, ChevronDown, X, MessageSquarePlus, UsersRound } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
@@ -482,6 +482,8 @@ function ConversationItem({
             alt={displayName}
             className="h-10 w-10 rounded-full object-cover"
           />
+        ) : contact?.is_group ? (
+          <UsersRound className="h-5 w-5" aria-label="Grupo" />
         ) : (
           initials
         )}

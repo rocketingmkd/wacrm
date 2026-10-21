@@ -114,6 +114,10 @@ export interface Contact {
   /** Customer's optional WhatsApp username/display handle, if adopted.
    *  Migration 039. */
   wa_username?: string | null;
+  /** True for a WhatsApp group followed through the Evolution session
+   *  (migration 070). `group_jid` is its JID. */
+  is_group?: boolean;
+  group_jid?: string | null;
   name?: string;
   email?: string;
   company?: string;
@@ -285,6 +289,12 @@ export interface Message {
    * 24h window). Drives the "via não oficial" badge. Migration 064.
    */
   transport?: 'official' | 'evolution';
+  /**
+   * WhatsApp group messages only (migration 070): who spoke. Null on
+   * 1:1 messages and on messages sent from the paired phone.
+   */
+  sender_name?: string | null;
+  sender_phone?: string | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';

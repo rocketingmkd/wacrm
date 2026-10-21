@@ -157,6 +157,7 @@ export default function ContactsPage() {
       let query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
+        .eq('is_group', false)
         .order('created_at', { ascending: false })
         .range(from, to);
 
