@@ -181,13 +181,12 @@ export function ConversationList({
   }, [tags]);
 
   const filtered = useMemo(() => {
-    // Groups live only in their own tab; every other tab is 1:1 chats.
-    let result = conversations.filter((c) =>
-      filter === "groups" ? Boolean(c.contact?.is_group) : !c.contact?.is_group,
-    );
+    // Groups show up in every tab (like WhatsApp); the Groups tab only
+    // narrows the list down to them.
+    let result = conversations;
 
     if (filter === "groups") {
-      // no status filter: the tab shows every group
+      result = result.filter((c) => Boolean(c.contact?.is_group));
     } else if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
     } else if (filter !== "all") {
