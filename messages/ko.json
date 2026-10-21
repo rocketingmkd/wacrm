@@ -46,6 +46,7 @@
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
+    "menuPlatform": "플랫폼",
     "menuSignOut": "로그아웃"
   },
   "Header": {

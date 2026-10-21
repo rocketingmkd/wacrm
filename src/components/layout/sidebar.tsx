@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
@@ -23,6 +24,7 @@ import {
   Radio,
   Settings,
   Shield,
+  ShieldCheck,
   Smartphone,
   User,
   UserCog,
@@ -159,6 +161,21 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       ),
     }))
     .filter((section) => section.items.length > 0);
+  // Staff-only shortcut to /platform. The server (requirePlatformAdmin
+  // in the /platform layout) is the real gate; this only decides
+  // whether to show the link, so it fails closed on any error.
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    createClient()
+      .rpc("is_platform_admin")
+      .then(({ data, error }) => {
+        if (!cancelled) setIsPlatformAdmin(!error && data === true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -422,6 +439,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 <Settings className="size-4" />
                 {t("menuSettings")}
               </DropdownMenuItem>
+              {isPlatformAdmin ? (
+                <DropdownMenuItem
+                  render={
+                    <Link
+                      href="/platform"
+                      onClick={onClose}
+                      className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+                    />
+                  }
+                >
+                  <ShieldCheck className="size-4" />
+                  {t("menuPlatform")}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem
                 onClick={signOut}
