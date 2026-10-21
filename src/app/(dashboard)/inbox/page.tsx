@@ -576,6 +576,19 @@ function InboxPageInner() {
     [activeConversation]
   );
 
+  // The contact behind a conversation was deleted (right-click menu): the
+  // thread is gone with it, so drop it from the list and close it if open.
+  const handleConversationDeleted = useCallback(
+    (conversationId: string) => {
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      if (activeConversation?.id === conversationId) {
+        setActiveConversation(null);
+        setMessages([]);
+      }
+    },
+    [activeConversation?.id]
+  );
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -622,6 +635,7 @@ function InboxPageInner() {
             onConversationsLoaded={handleConversationsLoaded}
             resyncToken={resyncToken}
             onNewConversation={() => setNewConversationOpen(true)}
+            onConversationDeleted={handleConversationDeleted}
           />
         </div>
 

@@ -149,7 +149,7 @@ export async function setWebhook(args: {
       headers: args.headers,
       byEvents: false,
       base64: false,
-      events: ['MESSAGES_UPSERT'],
+      events: ['MESSAGES_UPSERT', 'GROUPS_UPSERT', 'GROUP_PARTICIPANTS_UPDATE'],
     },
   });
 }

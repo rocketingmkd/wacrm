@@ -130,7 +130,7 @@ function extractContent(
 export function parseGroupUpsert(body: unknown): ParsedGroupMessage[] {
   if (!body || typeof body !== 'object') return [];
   const root = body as { event?: string; instance?: string; data?: unknown };
-  const event = (root.event ?? '').toLowerCase().replace(/_/g, '.');
+  const event = (root.event ?? '').toLowerCase().replace(/[_-]/g, '.');
   if (event !== 'messages.upsert' || !root.instance) return [];
 
   const items = Array.isArray(root.data) ? root.data : [root.data];
@@ -163,12 +163,56 @@ export function parseGroupUpsert(body: unknown): ParsedGroupMessage[] {
   return out;
 }
 
+export interface ParsedGroupJoin {
+  instance: string;
+  groupJid: string;
+  /** Group subject when the event carries it. */
+  subject: string | null;
+}
+
+/**
+ * Events that mean "the paired number is now in this group":
+ *  - groups.upsert: sent when the number is added to (or creates) a group;
+ *  - group-participants.update with action "add" naming the paired
+ *    number (`ownPhone`, digits only). Other people joining are not our
+ *    business.
+ */
+export function parseGroupJoins(body: unknown, ownPhone: string | null): ParsedGroupJoin[] {
+  if (!body || typeof body !== 'object') return [];
+  const root = body as { event?: string; instance?: string; data?: unknown };
+  if (!root.instance) return [];
+  const event = (root.event ?? '').toLowerCase().replace(/[_-]/g, '.');
+  const items = Array.isArray(root.data) ? root.data : [root.data];
+  const out: ParsedGroupJoin[] = [];
+
+  if (event === 'groups.upsert') {
+    for (const item of items) {
+      const g = item as { id?: string; subject?: string } | undefined;
+      if (g?.id?.endsWith('@g.us')) {
+        out.push({ instance: root.instance, groupJid: g.id, subject: g.subject?.trim() || null });
+      }
+    }
+  } else if (event === 'group.participants.update' && ownPhone) {
+    for (const item of items) {
+      const g = item as { id?: string; action?: string; participants?: unknown[] } | undefined;
+      if (!g?.id?.endsWith('@g.us') || g.action !== 'add') continue;
+      const addedUs = (g.participants ?? []).some((p) => {
+        const obj = p as { id?: string; phoneNumber?: string } | null;
+        const jid = typeof p === 'string' ? p : obj?.phoneNumber ?? obj?.id;
+        return phoneFromJid(jid) === ownPhone;
+      });
+      if (addedUs) out.push({ instance: root.instance, groupJid: g.id, subject: null });
+    }
+  }
+  return out;
+}
+
 // ---- storing --------------------------------------------------------
 
 /** Looks up a group's subject; null when unknown. Never throws. */
 export type GroupNameLookup = (groupJid: string) => Promise<string | null>;
 
-export type GroupStoreResult = 'stored' | 'duplicate';
+export type GroupStoreResult = 'stored' | 'duplicate' | 'blocked';
 
 /** Placeholder name until Evolution tells us the real group subject. */
 const fallbackGroupName = (groupJid: string) => `Grupo ${groupJid.split('@')[0]}`;
@@ -180,7 +224,8 @@ async function findOrCreateGroupContact(
   ownerUserId: string,
   groupJid: string,
   getGroupName: GroupNameLookup,
-): Promise<string> {
+  subject: string | null = null,
+): Promise<{ id: string; created: boolean }> {
   const find = async () => {
     const { data } = await db
       .from('contacts')
@@ -204,10 +249,10 @@ async function findOrCreateGroupContact(
           .eq('id', existing.id);
       }
     }
-    return existing.id;
+    return { id: existing.id, created: false };
   }
 
-  const name = (await getGroupName(groupJid)) ?? fallbackGroupName(groupJid);
+  const name = subject ?? (await getGroupName(groupJid)) ?? fallbackGroupName(groupJid);
   const { data: created, error } = await db
     .from('contacts')
     .insert({
@@ -221,10 +266,10 @@ async function findOrCreateGroupContact(
     })
     .select('id')
     .single<{ id: string }>();
-  if (created) return created.id;
+  if (created) return { id: created.id, created: true };
   if (isUniqueViolation(error)) {
     const raced = await find();
-    if (raced) return raced.id;
+    if (raced) return { id: raced.id, created: false };
   }
   throw new Error(`group contact create failed: ${JSON.stringify(error)}`);
 }
@@ -274,8 +319,12 @@ export async function storeGroupMessage(
   msg: ParsedGroupMessage,
   getGroupName: GroupNameLookup = async () => null,
 ): Promise<GroupStoreResult> {
+  // A group the user deleted stays deleted until the number is added to
+  // it again (see storeGroupJoined).
+  if (await isGroupBlocked(db, accountId, msg.groupJid)) return 'blocked';
+
   const ownerUserId = await resolveAuditUserId(db, accountId);
-  const contactId = await findOrCreateGroupContact(db, accountId, ownerUserId, msg.groupJid, getGroupName);
+  const { id: contactId } = await findOrCreateGroupContact(db, accountId, ownerUserId, msg.groupJid, getGroupName);
   const conversation = await findOrCreateGroupConversation(db, accountId, ownerUserId, contactId);
 
   const { data: dup } = await db
@@ -316,4 +365,52 @@ export async function storeGroupMessage(
   if (convError) console.error('[evolution-groups] conversation update failed:', convError);
 
   return 'stored';
+}
+
+async function isGroupBlocked(db: SupabaseClient, accountId: string, groupJid: string): Promise<boolean> {
+  const { data } = await db
+    .from('whatsapp_group_blocks')
+    .select('group_jid')
+    .eq('account_id', accountId)
+    .eq('group_jid', groupJid)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+/**
+ * The paired number was added to a group: show it in the inbox right
+ * away (before anyone writes) and lift a previous delete. A conversation
+ * that already has messages is left untouched.
+ */
+export async function storeGroupJoined(
+  db: SupabaseClient,
+  accountId: string,
+  join: ParsedGroupJoin,
+  getGroupName: GroupNameLookup = async () => null,
+): Promise<void> {
+  await db.from('whatsapp_group_blocks').delete().eq('account_id', accountId).eq('group_jid', join.groupJid);
+
+  const ownerUserId = await resolveAuditUserId(db, accountId);
+  const contact = await findOrCreateGroupContact(
+    db,
+    accountId,
+    ownerUserId,
+    join.groupJid,
+    getGroupName,
+    join.subject,
+  );
+  const conversation = await findOrCreateGroupConversation(db, accountId, ownerUserId, contact.id);
+
+  const { data: row } = await db
+    .from('conversations')
+    .select('last_message_at')
+    .eq('id', conversation.id)
+    .maybeSingle<{ last_message_at: string | null }>();
+  if (row?.last_message_at) return;
+
+  const now = new Date().toISOString();
+  await db
+    .from('conversations')
+    .update({ last_message_text: 'Você foi adicionado ao grupo', last_message_at: now, updated_at: now })
+    .eq('id', conversation.id);
 }

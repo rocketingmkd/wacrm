@@ -7,7 +7,9 @@ vi.mock('@/lib/api/v1/contacts', () => ({
 
 import {
   isValidWebhookSecret,
+  parseGroupJoins,
   parseGroupUpsert,
+  storeGroupJoined,
   storeGroupMessage,
   webhookSecretFor,
   type ParsedGroupMessage,
@@ -146,6 +148,7 @@ function fakeDb() {
     contacts: [],
     conversations: [],
     messages: [],
+    whatsapp_group_blocks: [],
   };
   let seq = 0;
 
@@ -154,6 +157,7 @@ function fakeDb() {
     let patch: Row | null = null;
     let insertRow: Row | null = null;
     let single = false;
+    let removing = false;
 
     const matching = () => tables[name].filter((r) => filters.every(([k, v]) => r[k] === v));
 
@@ -165,6 +169,10 @@ function fakeDb() {
       },
       order: () => builder,
       limit: () => builder,
+      delete: () => {
+        removing = true;
+        return builder;
+      },
       update: (p: Row) => {
         patch = p;
         return builder;
@@ -183,6 +191,11 @@ function fakeDb() {
         return { data: matching()[0] ?? null, error: null };
       },
       then: (resolve: (v: unknown) => void) => {
+        if (removing) {
+          const gone = new Set(matching());
+          tables[name] = tables[name].filter((r) => !gone.has(r));
+          return resolve({ data: null, error: null });
+        }
         if (patch) {
           matching().forEach((r) => Object.assign(r, patch));
           return resolve({ data: null, error: null });
@@ -288,5 +301,75 @@ describe('storeGroupMessage', () => {
     );
     expect(tables.messages[1]).toMatchObject({ sender_type: 'agent', origin: 'whatsapp_app', status: 'sent' });
     expect(tables.conversations[0]).toMatchObject({ last_message_text: 'combinado', unread_count: 1 });
+  });
+});
+
+describe('parseGroupJoins', () => {
+  it('reads groups.upsert with the subject', () => {
+    const out = parseGroupJoins(
+      { event: 'groups.upsert', instance: 'crm-1', data: [{ id: GROUP, subject: 'Obra Centro' }, { id: '5543@s.whatsapp.net' }] },
+      null,
+    );
+    expect(out).toEqual([{ instance: 'crm-1', groupJid: GROUP, subject: 'Obra Centro' }]);
+  });
+
+  it('accepts the uppercase event name', () => {
+    const out = parseGroupJoins({ event: 'GROUPS_UPSERT', instance: 'crm-1', data: [{ id: GROUP }] }, null);
+    expect(out).toHaveLength(1);
+  });
+
+  it('reads a participants add that names the paired number', () => {
+    const body = (participants: unknown[], action = 'add') => ({
+      event: 'group-participants.update',
+      instance: 'crm-1',
+      data: { id: GROUP, action, participants },
+    });
+    expect(parseGroupJoins(body(['5543900000000@s.whatsapp.net']), '5543900000000')).toHaveLength(1);
+    expect(
+      parseGroupJoins(body([{ id: '99@lid', phoneNumber: '5543900000000@s.whatsapp.net' }]), '5543900000000'),
+    ).toHaveLength(1);
+    // someone else joined, we were removed, or we don't know our own number
+    expect(parseGroupJoins(body(['5511911112222@s.whatsapp.net']), '5543900000000')).toEqual([]);
+    expect(parseGroupJoins(body(['5543900000000@s.whatsapp.net'], 'remove'), '5543900000000')).toEqual([]);
+    expect(parseGroupJoins(body(['5543900000000@s.whatsapp.net']), null)).toEqual([]);
+  });
+
+  it('ignores other events and malformed bodies', () => {
+    expect(parseGroupJoins({ event: 'messages.upsert', instance: 'crm-1', data: {} }, null)).toEqual([]);
+    expect(parseGroupJoins(null, null)).toEqual([]);
+  });
+});
+
+describe('deleted groups and being added again', () => {
+  it('ignores messages of a group the user deleted', async () => {
+    const { db, tables } = fakeDb();
+    tables.whatsapp_group_blocks.push({ account_id: 'acc-1', group_jid: GROUP });
+    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('blocked');
+    expect(tables.contacts).toHaveLength(0);
+    expect(tables.messages).toHaveLength(0);
+  });
+
+  it('shows the group as soon as the number is added, with the subject from the event', async () => {
+    const { db, tables } = fakeDb();
+    await storeGroupJoined(db, 'acc-1', { instance: 'crm-1', groupJid: GROUP, subject: 'Obra Centro' });
+    expect(tables.contacts[0]).toMatchObject({ is_group: true, group_jid: GROUP, name: 'Obra Centro' });
+    expect(tables.conversations[0]).toMatchObject({ last_message_text: 'Você foi adicionado ao grupo' });
+    expect(tables.messages).toHaveLength(0);
+  });
+
+  it('being added again lifts the delete', async () => {
+    const { db, tables } = fakeDb();
+    tables.whatsapp_group_blocks.push({ account_id: 'acc-1', group_jid: GROUP });
+    await storeGroupJoined(db, 'acc-1', { instance: 'crm-1', groupJid: GROUP, subject: null }, async () => 'Obra Centro');
+    expect(tables.whatsapp_group_blocks).toHaveLength(0);
+    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('stored');
+  });
+
+  it('leaves a conversation that already has messages untouched', async () => {
+    const { db, tables } = fakeDb();
+    await storeGroupMessage(db, 'acc-1', base, async () => 'Obra Centro');
+    await storeGroupJoined(db, 'acc-1', { instance: 'crm-1', groupJid: GROUP, subject: 'Obra Centro' });
+    expect(tables.contacts).toHaveLength(1);
+    expect(tables.conversations[0].last_message_text).toBe('Maria: bom dia');
   });
 });

@@ -22,6 +22,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContactDeleteMenu,
+  type ContactDeleteTarget,
+} from "@/components/contacts/contact-delete-menu";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -37,6 +41,8 @@ interface ConversationListProps {
   resyncToken?: number;
   /** Opens the "Nova conversa" dialog (type a number to start a thread). */
   onNewConversation?: () => void;
+  /** A conversation's contact was deleted from the right-click menu. */
+  onConversationDeleted?: (conversationId: string) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -56,6 +62,7 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
   onNewConversation,
+  onConversationDeleted,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   
@@ -68,6 +75,10 @@ export function ConversationList({
   ], [t]);
 
   const [search, setSearch] = useState("");
+  // Right-click "Excluir contato" (also covers WhatsApp groups).
+  const [deleteTarget, setDeleteTarget] = useState<
+    (ContactDeleteTarget & { conversationId: string; seq: number }) | null
+  >(null);
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
@@ -422,12 +433,33 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setDeleteTarget({
+                    x: e.clientX,
+                    y: e.clientY,
+                    contactId: conv.contact_id,
+                    name: conv.contact?.name || conv.contact?.phone || t("unknown"),
+                    isGroup: Boolean(conv.contact?.is_group),
+                    conversationId: conv.id,
+                    seq: Date.now(),
+                  });
+                }}
                 t={t}
               />
             ))}
           </div>
         )}
       </ScrollArea>
+
+      <ContactDeleteMenu
+        key={deleteTarget?.seq ?? "none"}
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => {
+          if (deleteTarget) onConversationDeleted?.(deleteTarget.conversationId);
+        }}
+      />
     </div>
   );
 }
@@ -436,6 +468,7 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -443,6 +476,7 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onContextMenu,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -463,6 +497,7 @@ function ConversationItem({
   return (
     <button
       onClick={handleClick}
+      onContextMenu={onContextMenu}
       className={cn(
         "relative flex w-full items-start gap-3 border-b border-border/60 px-3 py-3 text-left transition-colors hover:bg-card-2",
         isActive && "bg-primary-soft hover:bg-primary-soft"

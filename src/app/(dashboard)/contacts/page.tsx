@@ -54,6 +54,7 @@ import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
+import { ContactDeleteMenu, type ContactDeleteTarget } from '@/components/contacts/contact-delete-menu';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
@@ -93,6 +94,8 @@ export default function ContactsPage() {
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  // Right-click "Excluir contato" on a table row.
+  const [menuTarget, setMenuTarget] = useState<(ContactDeleteTarget & { seq: number }) | null>(null);
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
@@ -593,6 +596,17 @@ export default function ContactsPage() {
                   key={contact.id}
                   className="border-border hover:bg-muted/50 cursor-pointer"
                   onClick={() => openDetail(contact.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenuTarget({
+                      x: e.clientX,
+                      y: e.clientY,
+                      contactId: contact.id,
+                      name: contact.name || contact.phone || '',
+                      isGroup: Boolean(contact.is_group),
+                      seq: Date.now(),
+                    });
+                  }}
                 >
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox
@@ -797,6 +811,13 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ContactDeleteMenu
+        key={menuTarget?.seq ?? 'none'}
+        target={menuTarget}
+        onClose={() => setMenuTarget(null)}
+        onDeleted={() => fetchContacts()}
+      />
 
       {/* Bulk Delete Confirmation */}
       <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>

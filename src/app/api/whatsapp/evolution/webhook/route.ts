@@ -3,7 +3,9 @@ import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { fetchGroupSubject } from '@/lib/whatsapp/evolution-api'
 import {
   isValidWebhookSecret,
+  parseGroupJoins,
   parseGroupUpsert,
+  storeGroupJoined,
   storeGroupMessage,
 } from '@/lib/whatsapp/evolution-group-inbound'
 
@@ -30,16 +32,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const messages = parseGroupUpsert(body)
-  if (messages.length === 0) return NextResponse.json({ ok: true, stored: 0 })
-
   const db = supabaseAdmin()
   const { data: session } = await db
     .from('whatsapp_unofficial_sessions')
-    .select('account_id, enabled')
+    .select('account_id, enabled, phone')
     .eq('instance_name', instance)
-    .maybeSingle<{ account_id: string; enabled: boolean }>()
+    .maybeSingle<{ account_id: string; enabled: boolean; phone: string | null }>()
   if (!session?.enabled) return NextResponse.json({ ok: true, ignored: 'session-off' })
+
+  const messages = parseGroupUpsert(body)
+  const joins = parseGroupJoins(body, session.phone)
+  if (messages.length === 0 && joins.length === 0) return NextResponse.json({ ok: true, stored: 0 })
 
   // The webhook payload carries no group subject; ask Evolution (only
   // when a group is first seen).
@@ -48,6 +51,14 @@ export async function POST(request: Request) {
       console.warn('[evolution-webhook] group subject lookup failed:', err instanceof Error ? err.message : err)
       return null
     })
+
+  for (const join of joins) {
+    try {
+      await storeGroupJoined(db, session.account_id, join, getGroupName)
+    } catch (err) {
+      console.error('[evolution-webhook] failed to store group join:', err)
+    }
+  }
 
   let stored = 0
   for (const msg of messages) {
