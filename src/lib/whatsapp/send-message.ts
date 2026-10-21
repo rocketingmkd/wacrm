@@ -28,7 +28,7 @@ import {
   type TransportProvider,
   type WhatsAppTransport,
 } from '@/lib/whatsapp/transport';
-import { resolveUnofficialSend } from '@/lib/whatsapp/unofficial-guard';
+import { resolveUnofficialSend, resolveGroupSend } from '@/lib/whatsapp/unofficial-guard';
 import {
   validateInteractivePayload,
   interactivePayloadPreviewText,
@@ -246,7 +246,7 @@ export async function sendMessageToConversation(
     interactivePayload,
     replyToMessageId,
   } = params;
-  const provider: TransportProvider = params.transport ?? 'official';
+  let provider: TransportProvider = params.transport ?? 'official';
 
   if (!conversationId) {
     throw new SendMessageError(
@@ -280,7 +280,26 @@ export async function sendMessageToConversation(
 
   const contact = conversation.contact;
   const waUserId: string | null = contact?.wa_user_id ?? null;
-  if (!contact?.phone && !waUserId) {
+
+  // A WhatsApp group (migration 070) goes out through the unofficial
+  // session only, to its group id: no 24h window, no phone, and only
+  // text or media (templates and interactive messages are Cloud-API-only).
+  const isGroup = Boolean(contact?.is_group);
+  if (isGroup) {
+    if (!contact.group_jid) {
+      throw new SendMessageError('bad_request', 'Grupo sem identificador do WhatsApp', 400);
+    }
+    if (messageType !== 'text' && !isMediaKind) {
+      throw new SendMessageError(
+        'unofficial_unsupported_type',
+        'Nos grupos só dá para enviar texto e mídia.',
+        400
+      );
+    }
+    provider = 'evolution';
+  }
+
+  if (!isGroup && !contact?.phone && !waUserId) {
     throw new SendMessageError(
       'bad_request',
       'O contato não tem telefone nem ID de usuário do WhatsApp',
@@ -293,7 +312,7 @@ export async function sendMessageToConversation(
   // used as the fallback send target and for the auto-fix-on-success
   // rewrite below.
   let sanitizedPhone: string | null = null;
-  if (contact.phone) {
+  if (contact.phone && !isGroup) {
     sanitizedPhone = sanitizePhoneForMeta(contact.phone);
     if (!isValidE164(sanitizedPhone)) {
       throw new SendMessageError(
@@ -304,49 +323,56 @@ export async function sendMessageToConversation(
     }
   }
 
-  // WhatsApp config, account-scoped.
-  const { data: config, error: configError } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', accountId)
-    .single();
-
-  if (configError || !config) {
-    throw new SendMessageError(
-      'whatsapp_not_configured',
-      'WhatsApp não configurado. Conecte sua conta do WhatsApp primeiro.',
-      400
-    );
-  }
-
-  const accessToken = decrypt(config.access_token);
-  let transport: WhatsAppTransport = createOfficialTransport({
-    phoneNumberId: config.phone_number_id,
-    accessToken,
-  });
-  if (provider === 'evolution') {
-    const session = await resolveUnofficialSend(db, accountId, {
-      conversationId,
-      messageType,
-      hasPhone: Boolean(sanitizedPhone),
-    });
+  // WhatsApp config, account-scoped. A group doesn't need the official
+  // config: it only uses the unofficial session.
+  let transport: WhatsAppTransport;
+  if (isGroup) {
+    const session = await resolveGroupSend(db, accountId);
     transport = createEvolutionTransport({ instanceName: session.instance_name });
-  }
-
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
+  } else {
+    const { data: config, error: configError } = await db
       .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
+      .select('*')
+      .eq('account_id', accountId)
+      .single();
+
+    if (configError || !config) {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'WhatsApp não configurado. Conecte sua conta do WhatsApp primeiro.',
+        400
+      );
+    }
+
+    const accessToken = decrypt(config.access_token);
+    transport = createOfficialTransport({
+      phoneNumberId: config.phone_number_id,
+      accessToken,
+    });
+    if (provider === 'evolution') {
+      const session = await resolveUnofficialSend(db, accountId, {
+        conversationId,
+        messageType,
+        hasPhone: Boolean(sanitizedPhone),
       });
+      transport = createEvolutionTransport({ instanceName: session.instance_name });
+    }
+
+    // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
+    if (isLegacyFormat(config.access_token)) {
+      void db
+        .from('whatsapp_config')
+        .update({ access_token: encrypt(accessToken) })
+        .eq('id', config.id)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) {
+            console.warn(
+              '[send-message] access_token GCM upgrade failed:',
+              error.message
+            );
+          }
+        });
+    }
   }
 
   // Resolve the reply target to its Meta message_id. The parent must
@@ -482,7 +508,10 @@ export async function sendMessageToConversation(
   let workingPhone = sanitizedPhone;
   try {
     const candidates: SendCandidate[] = [];
-    if (provider === 'evolution') {
+    if (isGroup) {
+      // The group id is the address; there is nothing to guess.
+      candidates.push({ kind: 'phone', value: contact.group_jid });
+    } else if (provider === 'evolution') {
       // One shot, exact number: no BSUID and no variant guessing, since
       // a wrong guess would message a stranger from the unofficial path.
       candidates.push({ kind: 'phone', value: sanitizedPhone! });
@@ -531,7 +560,7 @@ export async function sendMessageToConversation(
     throw new SendMessageError('meta_error', `Erro da API da Meta: ${message}`, 502);
   }
 
-  if (workingPhone !== sanitizedPhone) {
+  if (!isGroup && workingPhone !== sanitizedPhone) {
     console.log(
       `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
     );

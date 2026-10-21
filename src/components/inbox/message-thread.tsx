@@ -296,8 +296,13 @@ export function MessageThread({
     };
   }, []);
 
+  // A WhatsApp group has no 24h window: it is a plain chat through the
+  // unofficial session.
+  const isGroup = Boolean(contact?.is_group);
+
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
+    if (isGroup) return { expired: false, remaining: "" };
     // A thread with no messages yet (e.g. just opened via "Nova conversa")
     // has no customer message either, so free text is not allowed.
     if (!messages.length) return { expired: true, remaining: "Sem mensagens do cliente" };
@@ -323,7 +328,7 @@ export function MessageThread({
         : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
     return { expired, remaining };
-  }, [messages, tTimer]);
+  }, [messages, tTimer, isGroup]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -979,37 +984,42 @@ export function MessageThread({
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
             <p className="truncate text-xs text-muted-foreground">
-              {contact.phone || (contact.wa_username ? `@${contact.wa_username}` : 'Somente WhatsApp')}
+              {contact.is_group ? 'Grupo do WhatsApp' : contact.phone || (contact.wa_username ? `@${contact.wa_username}` : 'Somente WhatsApp')}
             </p>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
-          <Badge
-            variant="outline"
-            className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
-            )}
-          >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
+          {!isGroup && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+                sessionInfo.expired ? "text-red-400" : "text-primary"
+              )}
+            >
+              <Clock className="h-3 w-3" />
+              {sessionInfo.remaining}
+            </Badge>
+          )}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1 sm:gap-2">
           {/* "IA ativa": pause or resume the AI auto-reply on this thread. */}
-          <AiHeaderSwitch
-            conversationId={conversation.id}
-            paused={aiPaused}
-            onPausedChange={(paused) => {
-              setAiOverride({ id: conversation.id, base: serverAiPaused, paused });
-              // Taking over assigns the thread to the acting agent; resuming
-              // releases it, same as the old banner did.
-              onAssignChange(conversation.id, paused ? (user?.id ?? null) : null);
-            }}
-          />
+          {/* (not in groups: the AI never answers there, and a group can't rate) */}
+          {!isGroup && (
+            <AiHeaderSwitch
+              conversationId={conversation.id}
+              paused={aiPaused}
+              onPausedChange={(paused) => {
+                setAiOverride({ id: conversation.id, base: serverAiPaused, paused });
+                // Taking over assigns the thread to the acting agent; resuming
+                // releases it, same as the old banner did.
+                onAssignChange(conversation.id, paused ? (user?.id ?? null) : null);
+              }}
+            />
+          )}
           {/* "Enviar avaliação": asks the customer to rate the service. */}
-          <CsatButton conversationId={conversation.id} windowOpen={!sessionInfo.expired} />
+          {!isGroup && <CsatButton conversationId={conversation.id} windowOpen={!sessionInfo.expired} />}
 
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
@@ -1255,12 +1265,13 @@ export function MessageThread({
 
       {/* Note left by the AI when it handed the thread to a human. The
           on/off control is the "IA ativa" switch in the header. */}
-      <AiThreadBanner paused={aiPaused} handoffSummary={conversation.ai_handoff_summary} />
+      {!isGroup && <AiThreadBanner paused={aiPaused} handoffSummary={conversation.ai_handoff_summary} />}
 
       {/* Composer */}
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
+        isGroup={isGroup}
         onSend={handleSend}
         unofficialReady={
           unofficialReady &&

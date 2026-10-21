@@ -109,6 +109,39 @@ export function assertUnofficialSendAllowed(input: {
 }
 
 /**
+ * A WhatsApp group goes out through the unofficial session only (the Cloud
+ * API has no groups). No 24h window, no per-lead or daily limit: those rules
+ * exist to protect the number when REOPENING a 1:1 chat. The session just has
+ * to be switched on and paired.
+ */
+export async function resolveGroupSend(
+  db: SupabaseClient,
+  accountId: string
+): Promise<UnofficialSession> {
+  const { data: session } = await db
+    .from('whatsapp_unofficial_sessions')
+    .select('instance_name, status, enabled, allow_cold_open, max_per_lead, daily_limit')
+    .eq('account_id', accountId)
+    .maybeSingle<UnofficialSession>();
+
+  if (!session || !session.enabled) {
+    throw new SendMessageError(
+      'unofficial_disabled',
+      'A sessão não oficial não está ativada nesta conta. Ative-a em Configurações para falar nos grupos.',
+      409
+    );
+  }
+  if (session.status !== 'connected') {
+    throw new SendMessageError(
+      'unofficial_not_connected',
+      'A sessão não oficial está desconectada. Leia o QR code de novo em Configurações.',
+      409
+    );
+  }
+  return session;
+}
+
+/**
  * Load what the rules need and apply them. Returns the session so the
  * caller can build the Evolution transport from its instance name.
  */
@@ -149,9 +182,11 @@ export async function resolveUnofficialSend(
   const since = new Date(Date.now() - WINDOW_MS).toISOString();
   const { count: dayCount } = await db
     .from('messages')
-    .select('id, conversations!inner(account_id)', { count: 'exact', head: true })
+    .select('id, conversations!inner(account_id, contacts!inner(is_group))', { count: 'exact', head: true })
     .eq('transport', 'evolution')
     .eq('conversations.account_id', accountId)
+    // messages sent to WhatsApp groups don't count toward the reopening quota
+    .eq('conversations.contacts.is_group', false)
     .gt('created_at', since);
 
   assertUnofficialSendAllowed({
