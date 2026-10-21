@@ -12,7 +12,8 @@
 //
 // Body:
 //   {
-//     "to": "+14155550123",                 // required, E.164
+//     "to": "+14155550123",                 // required, E.164 (or "conversation_id": a WhatsApp GROUP's
+//                                           //   conversation id, text/media only; exactly one of the two)
 //     "type": "text",                        // text|template|image|video|document|audio (default: text)
 //     "text": "Hello!",                      // text body, or media caption
 //     "media_url": "https://…/file.pdf",     // required for image/video/document/audio
@@ -33,7 +34,10 @@
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
-import { resolveConversationByPhone } from '@/lib/whatsapp/resolve-conversation';
+import {
+  resolveConversationByPhone,
+  resolveGroupConversation,
+} from '@/lib/whatsapp/resolve-conversation';
 import {
   sendMessageToConversation,
   validateSendMessageParams,
@@ -54,8 +58,15 @@ export async function POST(request: Request) {
     }
 
     const to = typeof body.to === 'string' ? body.to.trim() : '';
-    if (!to) {
-      return fail('bad_request', "'to' is required", 400);
+    // A WhatsApp group has no phone number: it is addressed by its
+    // conversation id instead (groups only, see resolveGroupConversation).
+    const groupConversationId =
+      typeof body.conversation_id === 'string' ? body.conversation_id.trim() : '';
+    if (!to && !groupConversationId) {
+      return fail('bad_request', "'to' (phone) or 'conversation_id' (group) is required", 400);
+    }
+    if (to && groupConversationId) {
+      return fail('bad_request', "Send either 'to' or 'conversation_id', not both", 400);
     }
 
     const type = typeof body.type === 'string' ? body.type : 'text';
@@ -98,12 +109,14 @@ export async function POST(request: Request) {
     // Find-or-create the conversation for this phone, then send. Both
     // steps share `SendMessageError`, so one catch maps the whole
     // pipeline to the envelope.
-    const resolved = await resolveConversationByPhone(
-      ctx.supabase,
-      ctx.accountId,
-      to,
-      typeof body.name === 'string' ? body.name : null
-    );
+    const resolved = groupConversationId
+      ? await resolveGroupConversation(ctx.supabase, ctx.accountId, groupConversationId)
+      : await resolveConversationByPhone(
+          ctx.supabase,
+          ctx.accountId,
+          to,
+          typeof body.name === 'string' ? body.name : null
+        );
 
     const result = await sendMessageToConversation(
       ctx.supabase,

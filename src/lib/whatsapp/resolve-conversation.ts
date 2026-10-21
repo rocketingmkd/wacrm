@@ -152,6 +152,43 @@ export async function resolveConversationByPhone(
   return { conversationId, contactId, contactCreated };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The conversation of a WhatsApp GROUP, by its id. A group has no phone to
+ * resolve by, so the public API addresses it with `conversation_id`. It
+ * only accepts groups: reaching a 1:1 contact stays tied to its phone
+ * number (and to the Cloud API rules), never to a guessed conversation id.
+ */
+export async function resolveGroupConversation(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string
+): Promise<ResolvedConversation> {
+  if (!UUID_RE.test(conversationId)) {
+    throw new SendMessageError('bad_request', "'conversation_id' must be a conversation id", 400);
+  }
+  const { data: conversation } = await db
+    .from('conversations')
+    .select('id, contact_id, contact:contacts(is_group)')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (!conversation) {
+    throw new SendMessageError('not_found', 'Conversation not found', 404);
+  }
+  const contact = conversation.contact as { is_group?: boolean } | { is_group?: boolean }[] | null;
+  const isGroup = Array.isArray(contact) ? contact[0]?.is_group : contact?.is_group;
+  if (!isGroup) {
+    throw new SendMessageError(
+      'bad_request',
+      "'conversation_id' only works for WhatsApp groups; use 'to' (a phone number) for a contact",
+      400
+    );
+  }
+  return { conversationId: conversation.id, contactId: conversation.contact_id, contactCreated: false };
+}
+
 /**
  * Find (oldest-first) or create the single conversation for
  * `(accountId, contactId)`. Handles the unique-index race the same way

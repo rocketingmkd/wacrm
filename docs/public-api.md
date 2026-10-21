@@ -235,7 +235,11 @@ with no known origin; WhatsApp groups are not counted). Query:
 Groups received through the unofficial (Evolution) session show up as
 conversations whose `contact.is_group` is `true` (`contact.name` is the
 group name). Their inbound messages carry `sender_name` / `sender_phone`
-(who spoke). Sending to a group is not available through the API yet.
+(who spoke). To send to a group, use `POST /api/v1/messages` with the
+group's `conversation_id` instead of `to` (scope `messages:send`). Groups
+take **text and media only**; they go out through the unofficial session,
+so it must be switched on and connected. `conversation_id` only works for
+groups: a 1:1 contact is always addressed by phone number.
 
 ### `POST /api/v1/broadcasts`
 
