@@ -27,7 +27,7 @@ type SessionRow = { instance_name: string; status: string; enabled: boolean }
 function webhookUrl(): string {
   const base = (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim().replace(/\/+$/, '')
   if (!base) throw new Error('NEXT_PUBLIC_SITE_URL is not set')
-  return `${base}/api/whatsapp/evolution-webhook`
+  return `${base}/api/whatsapp/evolution/webhook`
 }
 
 export async function GET() {

@@ -7,7 +7,7 @@ import {
 } from '@/lib/whatsapp/evolution-group-inbound'
 
 /**
- * POST /api/whatsapp/evolution-webhook
+ * POST /api/whatsapp/evolution/webhook
  *
  * Inbound events from the account's Evolution (unofficial) session. Today
  * it only stores messages of the WhatsApp groups the admin chose to follow
