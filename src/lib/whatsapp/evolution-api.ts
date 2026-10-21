@@ -133,6 +133,14 @@ export async function fetchGroupSubject(args: {
   return raw.subject?.trim() || null;
 }
 
+/** The paired number leaves the group on WhatsApp. */
+export async function leaveGroup(args: { instanceName: string; groupJid: string }): Promise<void> {
+  await call(
+    'DELETE',
+    `/group/leaveGroup/${encodeURIComponent(args.instanceName)}?groupJid=${encodeURIComponent(args.groupJid)}`,
+  );
+}
+
 /**
  * Point the instance's inbound events at the CRM. Idempotent: Evolution
  * replaces the instance's webhook config on every call.

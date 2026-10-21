@@ -212,7 +212,7 @@ export function parseGroupJoins(body: unknown, ownPhone: string | null): ParsedG
 /** Looks up a group's subject; null when unknown. Never throws. */
 export type GroupNameLookup = (groupJid: string) => Promise<string | null>;
 
-export type GroupStoreResult = 'stored' | 'duplicate' | 'blocked';
+export type GroupStoreResult = 'stored' | 'duplicate';
 
 /** Placeholder name until Evolution tells us the real group subject. */
 const fallbackGroupName = (groupJid: string) => `Grupo ${groupJid.split('@')[0]}`;
@@ -319,10 +319,6 @@ export async function storeGroupMessage(
   msg: ParsedGroupMessage,
   getGroupName: GroupNameLookup = async () => null,
 ): Promise<GroupStoreResult> {
-  // A group the user deleted stays deleted until the number is added to
-  // it again (see storeGroupJoined).
-  if (await isGroupBlocked(db, accountId, msg.groupJid)) return 'blocked';
-
   const ownerUserId = await resolveAuditUserId(db, accountId);
   const { id: contactId } = await findOrCreateGroupContact(db, accountId, ownerUserId, msg.groupJid, getGroupName);
   const conversation = await findOrCreateGroupConversation(db, accountId, ownerUserId, contactId);
@@ -367,20 +363,10 @@ export async function storeGroupMessage(
   return 'stored';
 }
 
-async function isGroupBlocked(db: SupabaseClient, accountId: string, groupJid: string): Promise<boolean> {
-  const { data } = await db
-    .from('whatsapp_group_blocks')
-    .select('group_jid')
-    .eq('account_id', accountId)
-    .eq('group_jid', groupJid)
-    .maybeSingle();
-  return Boolean(data);
-}
-
 /**
  * The paired number was added to a group: show it in the inbox right
- * away (before anyone writes) and lift a previous delete. A conversation
- * that already has messages is left untouched.
+ * away (before anyone writes). A conversation that already has messages
+ * is left untouched.
  */
 export async function storeGroupJoined(
   db: SupabaseClient,
@@ -388,8 +374,6 @@ export async function storeGroupJoined(
   join: ParsedGroupJoin,
   getGroupName: GroupNameLookup = async () => null,
 ): Promise<void> {
-  await db.from('whatsapp_group_blocks').delete().eq('account_id', accountId).eq('group_jid', join.groupJid);
-
   const ownerUserId = await resolveAuditUserId(db, accountId);
   const contact = await findOrCreateGroupContact(
     db,

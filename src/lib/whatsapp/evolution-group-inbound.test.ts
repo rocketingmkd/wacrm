@@ -148,7 +148,6 @@ function fakeDb() {
     contacts: [],
     conversations: [],
     messages: [],
-    whatsapp_group_blocks: [],
   };
   let seq = 0;
 
@@ -340,29 +339,13 @@ describe('parseGroupJoins', () => {
   });
 });
 
-describe('deleted groups and being added again', () => {
-  it('ignores messages of a group the user deleted', async () => {
-    const { db, tables } = fakeDb();
-    tables.whatsapp_group_blocks.push({ account_id: 'acc-1', group_jid: GROUP });
-    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('blocked');
-    expect(tables.contacts).toHaveLength(0);
-    expect(tables.messages).toHaveLength(0);
-  });
-
+describe('being added to a group', () => {
   it('shows the group as soon as the number is added, with the subject from the event', async () => {
     const { db, tables } = fakeDb();
     await storeGroupJoined(db, 'acc-1', { instance: 'crm-1', groupJid: GROUP, subject: 'Obra Centro' });
     expect(tables.contacts[0]).toMatchObject({ is_group: true, group_jid: GROUP, name: 'Obra Centro' });
     expect(tables.conversations[0]).toMatchObject({ last_message_text: 'Você foi adicionado ao grupo' });
     expect(tables.messages).toHaveLength(0);
-  });
-
-  it('being added again lifts the delete', async () => {
-    const { db, tables } = fakeDb();
-    tables.whatsapp_group_blocks.push({ account_id: 'acc-1', group_jid: GROUP });
-    await storeGroupJoined(db, 'acc-1', { instance: 'crm-1', groupJid: GROUP, subject: null }, async () => 'Obra Centro');
-    expect(tables.whatsapp_group_blocks).toHaveLength(0);
-    expect(await storeGroupMessage(db, 'acc-1', base)).toBe('stored');
   });
 
   it('leaves a conversation that already has messages untouched', async () => {

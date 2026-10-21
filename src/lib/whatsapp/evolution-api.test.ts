@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createInstance,
+  fetchGroupSubject,
   getConnectionState,
   getInstancePhone,
   instanceNameForAccount,
   isEvolutionConfigured,
+  leaveGroup,
   sendMedia,
   sendText,
+  setWebhook,
   EvolutionNotConfiguredError,
 } from './evolution-api';
 import { createEvolutionTransport } from './transport';
@@ -117,5 +120,57 @@ describe('createEvolutionTransport', () => {
   it('refuses BSUID-only recipients (no phone)', () => {
     const t = createEvolutionTransport({ instanceName: 'i' });
     expect(() => t.sendText({ to: '', recipientUserId: 'bsuid', text: 'x' })).toThrow(/phone number/);
+  });
+});
+
+describe('evolution-api groups', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    process.env.EVOLUTION_API_URL = 'https://evo.test';
+    process.env.EVOLUTION_API_KEY = 'global-key';
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.EVOLUTION_API_URL;
+    delete process.env.EVOLUTION_API_KEY;
+  });
+
+  it('makes the number leave a group with DELETE and the group jid in the query', async () => {
+    fetchMock.mockReturnValueOnce(json({ status: 'SUCCESS' }));
+    await leaveGroup({ instanceName: 'crm-1', groupJid: '120363025246125486@g.us' });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(init.method).toBe('DELETE');
+    expect(url).toBe('https://evo.test/group/leaveGroup/crm-1?groupJid=120363025246125486%40g.us');
+  });
+
+  it('surfaces a failed leave as an Evolution API error', async () => {
+    fetchMock.mockReturnValueOnce(json({ message: 'not-authorized' }, 400));
+    await expect(leaveGroup({ instanceName: 'crm-1', groupJid: 'x@g.us' })).rejects.toThrow(
+      /^Evolution API error 400/,
+    );
+  });
+
+  it('reads a group subject, trimmed, or null when it has none', async () => {
+    fetchMock.mockReturnValueOnce(json({ id: 'a@g.us', subject: '  Obra Centro ' }));
+    expect(await fetchGroupSubject({ instanceName: 'crm-1', groupJid: 'a@g.us' })).toBe('Obra Centro');
+    fetchMock.mockReturnValueOnce(json({ id: 'a@g.us' }));
+    expect(await fetchGroupSubject({ instanceName: 'crm-1', groupJid: 'a@g.us' })).toBeNull();
+    expect(fetchMock.mock.calls[0][0]).toBe('https://evo.test/group/findGroupInfos/crm-1?groupJid=a%40g.us');
+  });
+
+  it('registers the webhook for messages and group events with the secret header', async () => {
+    fetchMock.mockReturnValueOnce(json({}));
+    await setWebhook({ instanceName: 'crm-1', url: 'https://crm.test/api/whatsapp/evolution/webhook', headers: { 'x-evolution-secret': 's' } });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://evo.test/webhook/set/crm-1');
+    expect(JSON.parse(init.body).webhook).toMatchObject({
+      enabled: true,
+      url: 'https://crm.test/api/whatsapp/evolution/webhook',
+      headers: { 'x-evolution-secret': 's' },
+      events: ['MESSAGES_UPSERT', 'GROUPS_UPSERT', 'GROUP_PARTICIPANTS_UPDATE'],
+    });
   });
 });

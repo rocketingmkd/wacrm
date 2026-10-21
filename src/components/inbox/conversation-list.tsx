@@ -53,7 +53,7 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 
 
 
-type InboxFilter = ConversationStatus | "all" | "unread";
+type InboxFilter = ConversationStatus | "all" | "unread" | "groups";
 
 export function ConversationList({
   activeConversationId,
@@ -72,6 +72,7 @@ export function ConversationList({
     { label: t("filterOpen"), value: "open" },
     { label: t("filterPending"), value: "pending" },
     { label: t("filterClosed"), value: "closed" },
+    { label: t("filterGroups"), value: "groups" },
   ], [t]);
 
   const [search, setSearch] = useState("");
@@ -167,6 +168,12 @@ export function ConversationList({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
 
+  // Groups with unread messages, shown as a badge on the Groups tab.
+  const unreadGroups = useMemo(
+    () => conversations.filter((c) => c.contact?.is_group && c.unread_count > 0).length,
+    [conversations],
+  );
+
   const tagsById = useMemo(() => {
     const m = new Map<string, Tag>();
     for (const t of tags) m.set(t.id, t);
@@ -174,9 +181,14 @@ export function ConversationList({
   }, [tags]);
 
   const filtered = useMemo(() => {
-    let result = conversations;
+    // Groups live only in their own tab; every other tab is 1:1 chats.
+    let result = conversations.filter((c) =>
+      filter === "groups" ? Boolean(c.contact?.is_group) : !c.contact?.is_group,
+    );
 
-    if (filter === "unread") {
+    if (filter === "groups") {
+      // no status filter: the tab shows every group
+    } else if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
     } else if (filter !== "all") {
       result = result.filter((c) => c.status === filter);
@@ -264,7 +276,7 @@ export function ConversationList({
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
-          <div className="flex w-full flex-wrap items-center gap-0.5">
+          <div className="grid w-full grid-cols-3 gap-0.5">
           {FILTER_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -272,13 +284,18 @@ export function ConversationList({
               onClick={() => setFilter(opt.value)}
               aria-pressed={filter === opt.value}
               className={cn(
-                "inline-flex h-7 shrink-0 items-center rounded-full px-1 text-[11px] font-medium transition-colors",
+                "inline-flex h-7 items-center justify-center gap-1 rounded-full px-1 text-[11px] font-medium transition-colors",
                 filter === opt.value
                   ? "bg-primary-soft text-primary shadow-[inset_0_0_0_1px_var(--primary-soft-2)]"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {opt.label}
+              {opt.value === "groups" && unreadGroups > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                  {unreadGroups > 99 ? "99+" : unreadGroups}
+                </span>
+              )}
             </button>
           ))}
           </div>

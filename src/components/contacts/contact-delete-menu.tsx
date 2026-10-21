@@ -35,9 +35,9 @@ const MENU_HEIGHT = 44;
 
 /**
  * Right-click "Excluir contato" menu with a confirmation step. Deleting a
- * contact removes its conversations and messages (FK cascade). A deleted
- * WhatsApp group is remembered by the database (migration 072) so it does
- * not come back with its next message.
+ * contact removes its conversations and messages (FK cascade). Deleting a
+ * WhatsApp group makes the number LEAVE the group first (server route),
+ * like deleting a group in WhatsApp itself.
  *
  * The caller opens it from an `onContextMenu` handler and passes the
  * cursor position; give it a `key` tied to the target so each right-click
@@ -64,22 +64,36 @@ export function ContactDeleteMenu({ target, onClose, onDeleted }: ContactDeleteM
     if (!target) return;
     setDeleting(true);
     try {
-      // `.select('id')` so a delete the policy silently refuses (viewer
-      // role) shows up as zero rows instead of looking like a success.
-      const { data, error } = await createClient()
-        .from("contacts")
-        .delete()
-        .eq("id", target.contactId)
-        .select("id");
-      if (error) {
-        toast.error(`Não foi possível excluir o ${noun}.`);
-        return;
+      if (target.isGroup) {
+        const res = await fetch("/api/whatsapp/groups/leave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contact_id: target.contactId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data.error || "Não foi possível sair do grupo.");
+          return;
+        }
+        toast.success("O número saiu do grupo e ele foi excluído.");
+      } else {
+        // `.select('id')` so a delete the policy silently refuses (viewer
+        // role) shows up as zero rows instead of looking like a success.
+        const { data, error } = await createClient()
+          .from("contacts")
+          .delete()
+          .eq("id", target.contactId)
+          .select("id");
+        if (error) {
+          toast.error("Não foi possível excluir o contato.");
+          return;
+        }
+        if (!data || data.length === 0) {
+          toast.error("Você não tem permissão para excluir este contato.");
+          return;
+        }
+        toast.success("Contato excluído.");
       }
-      if (!data || data.length === 0) {
-        toast.error(`Você não tem permissão para excluir este ${noun}.`);
-        return;
-      }
-      toast.success(target.isGroup ? "Grupo excluído." : "Contato excluído.");
       onDeleted(target.contactId);
       onClose();
     } finally {
@@ -130,7 +144,7 @@ export function ContactDeleteMenu({ target, onClose, onDeleted }: ContactDeleteM
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {target.isGroup
-                ? `O grupo "${target.name}" e todo o histórico dele serão apagados do CRM. Ele só volta a aparecer se o número for adicionado ao grupo de novo.`
+                ? `O número vai sair do grupo "${target.name}" no WhatsApp e o histórico dele será apagado do CRM. Você não receberá mais mensagens dele. Para voltar, alguém precisa adicionar o número ao grupo de novo.`
                 : `"${target.name}" será apagado junto com as conversas e o histórico de mensagens. Isso não pode ser desfeito.`}
             </DialogDescription>
           </DialogHeader>
@@ -140,7 +154,7 @@ export function ContactDeleteMenu({ target, onClose, onDeleted }: ContactDeleteM
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
               {deleting && <Loader2 className="size-4 animate-spin" />}
-              Excluir
+              {target.isGroup ? "Sair e excluir" : "Excluir"}
             </Button>
           </DialogFooter>
         </DialogContent>
