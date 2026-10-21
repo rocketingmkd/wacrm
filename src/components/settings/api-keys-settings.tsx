@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Ban, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -77,6 +77,9 @@ export function ApiKeysSettings() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
+  // Key waiting for the "delete for good" confirmation.
+  const [toDelete, setToDelete] = useState<ApiKey | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -99,6 +102,28 @@ export function ApiKeysSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function handleDelete(key: ApiKey) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/account/api-keys/${key.id}?permanent=1`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        toast.error(payload.error || t('deleteFailed'));
+        return;
+      }
+      toast.success(t('deleteSuccess', { name: key.name }));
+      setKeys((prev) => prev.filter((k) => k.id !== key.id));
+      setToDelete(null);
+    } catch (err) {
+      console.error('[ApiKeysSettings] delete error:', err);
+      toast.error(t('networkError'));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleRevoke(key: ApiKey) {
     setRevoking(key.id);
@@ -250,24 +275,35 @@ export function ApiKeysSettings() {
                       </p>
                     </div>
 
-                    {status === 'active' && (
-                      <RequireRole min="admin">
+                    <RequireRole min="admin">
+                      <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+                        {status === 'active' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRevoke(k)}
+                            disabled={revoking === k.id}
+                            className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
+                          >
+                            {revoking === k.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Ban className="size-4" />
+                            )}
+                            {t('revoke')}
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleRevoke(k)}
-                          disabled={revoking === k.id}
-                          className="self-start border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200 sm:self-auto"
+                          onClick={() => setToDelete(k)}
+                          className="border-red-500/40 bg-red-500/10 text-red-300 hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200"
                         >
-                          {revoking === k.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="size-4" />
-                          )}
-                          {t('revoke')}
+                          <Trash2 className="size-4" />
+                          {t('delete')}
                         </Button>
-                      </RequireRole>
-                    )}
+                      </div>
+                    </RequireRole>
                   </li>
                 );
               })}
@@ -281,6 +317,34 @@ export function ApiKeysSettings() {
         onOpenChange={setCreateOpen}
         onCreated={load}
       />
+
+      <Dialog open={toDelete !== null} onOpenChange={(open) => !open && !deleting && setToDelete(null)}>
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">
+              {t('deleteTitle', { name: toDelete?.name ?? '' })}
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {toDelete && !toDelete.revoked_at
+                ? t('deleteDescActive')
+                : t('deleteDescInactive')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="bg-popover border-border">
+            <Button variant="outline" onClick={() => setToDelete(null)} disabled={deleting}>
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => toDelete && handleDelete(toDelete)}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 className="size-4 animate-spin" />}
+              {t('delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

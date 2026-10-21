@@ -1,5 +1,11 @@
 // ============================================================
-// DELETE /api/account/api-keys/[id] — revoke a key.
+// DELETE /api/account/api-keys/[id] — revoke a key, or delete it for good
+// with `?permanent=1`.
+//
+// Permanent delete removes the row: the key stops working at once (the
+// auth lookup finds nothing) and disappears from the roster. Use it to
+// tidy up; revoke keeps the audit trail. Admin+, enforced here and by the
+// `api_keys_delete` RLS policy.
 //
 // Soft revoke: sets `revoked_at` rather than deleting the row, so
 // the key's name/prefix stay visible in the roster as an audit
@@ -22,7 +28,7 @@ import {
 } from '@/lib/rate-limit';
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -35,6 +41,29 @@ export async function DELETE(
     if (!limit.success) return rateLimitResponse(limit);
 
     const { id } = await params;
+
+    // Permanent delete: works on an active, revoked or expired key.
+    if (new URL(request.url).searchParams.get('permanent') === '1') {
+      const { data: removed, error: deleteError } = await ctx.supabase
+        .from('api_keys')
+        .delete()
+        .eq('id', id)
+        .eq('account_id', ctx.accountId)
+        .select('id')
+        .maybeSingle();
+
+      if (deleteError) {
+        console.error('[DELETE /api/account/api-keys/[id]] delete error:', deleteError);
+        return NextResponse.json(
+          { error: 'Failed to delete API key' },
+          { status: 500 }
+        );
+      }
+      if (!removed) {
+        return NextResponse.json({ error: 'API key not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true });
+    }
 
     // Scope the update by account_id as well as id so an admin can
     // never revoke another account's key by guessing a UUID. (RLS
