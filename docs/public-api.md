@@ -241,6 +241,22 @@ take **text and media only**; they go out through the unofficial session,
 so it must be switched on and connected. `conversation_id` only works for
 groups: a 1:1 contact is always addressed by phone number.
 
+#### `POST /api/v1/groups`
+
+Create a group through the unofficial session (the paired number is the
+owner). Scope: `messages:send`. Body: `subject` (max 100), optional
+`description` (max 500), `participants` (1 to 10 phone numbers).
+
+```bash
+curl -X POST https://your-crm.example.com/api/v1/groups   -H "Authorization: Bearer wacrm_live_xxx"   -H "Content-Type: application/json"   -d '{"subject":"Rocketing e Cliente","participants":["+5515999990000"]}'
+```
+
+Answer (201): `conversation_id`, `group_jid`, `subject`, `added`, `not_added`,
+`verified`, `invite_link`. The group exists even when WhatsApp refuses to
+add someone (privacy settings): that number appears in `not_added` and you
+send it the `invite_link` by hand. `verified: false` means WhatsApp's
+answer could not be matched to the numbers, so `added` / `not_added` are empty.
+
 ### `POST /api/v1/broadcasts`
 
 Launch a template broadcast to a list of recipients. Scope:

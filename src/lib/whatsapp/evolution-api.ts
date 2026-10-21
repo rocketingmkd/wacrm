@@ -133,6 +133,58 @@ export async function fetchGroupSubject(args: {
   return raw.subject?.trim() || null;
 }
 
+export interface EvolutionCreatedGroup {
+  /** Group JID, e.g. 120363025246125486@g.us */
+  id: string;
+  subject: string;
+  /** Participants WhatsApp reports in the new group (JIDs; may include @lid). */
+  participants: string[];
+}
+
+/**
+ * Create a group with the paired number as owner. `participants` are phone
+ * numbers with country code (digits only). WhatsApp adds the ones it can:
+ * a person whose privacy settings block being added by strangers is simply
+ * missing from the answer, and the group still exists.
+ */
+export async function createGroup(args: {
+  instanceName: string;
+  subject: string;
+  description?: string;
+  participants: string[];
+}): Promise<EvolutionCreatedGroup> {
+  const raw = await call<{
+    id?: string;
+    subject?: string;
+    participants?: Array<string | { id?: string; phoneNumber?: string }>;
+  }>('POST', `/group/create/${encodeURIComponent(args.instanceName)}`, {
+    subject: args.subject,
+    ...(args.description ? { description: args.description } : {}),
+    participants: args.participants,
+  });
+  if (!raw.id || !raw.id.endsWith('@g.us')) {
+    throw new Error('Evolution API did not return the new group id');
+  }
+  const participants = (Array.isArray(raw.participants) ? raw.participants : [])
+    .map((p) => (typeof p === 'string' ? p : p?.phoneNumber ?? p?.id ?? ''))
+    .filter(Boolean);
+  return { id: raw.id, subject: raw.subject?.trim() || args.subject, participants };
+}
+
+/** Invite link of a group the paired number administers, or null. */
+export async function fetchInviteLink(args: {
+  instanceName: string;
+  groupJid: string;
+}): Promise<string | null> {
+  const raw = await call<{ inviteUrl?: string; inviteCode?: string; code?: string }>(
+    'GET',
+    `/group/inviteCode/${encodeURIComponent(args.instanceName)}?groupJid=${encodeURIComponent(args.groupJid)}`,
+  );
+  if (raw.inviteUrl) return raw.inviteUrl;
+  const code = raw.inviteCode ?? raw.code;
+  return code ? `https://chat.whatsapp.com/${code}` : null;
+}
+
 /** The paired number leaves the group on WhatsApp. */
 export async function leaveGroup(args: { instanceName: string; groupJid: string }): Promise<void> {
   await call(

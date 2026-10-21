@@ -366,14 +366,15 @@ export async function storeGroupMessage(
 /**
  * The paired number was added to a group: show it in the inbox right
  * away (before anyone writes). A conversation that already has messages
- * is left untouched.
+ * is left untouched. Returns the conversation id.
  */
 export async function storeGroupJoined(
   db: SupabaseClient,
   accountId: string,
   join: ParsedGroupJoin,
   getGroupName: GroupNameLookup = async () => null,
-): Promise<void> {
+  firstLine = 'Você foi adicionado ao grupo',
+): Promise<string> {
   const ownerUserId = await resolveAuditUserId(db, accountId);
   const contact = await findOrCreateGroupContact(
     db,
@@ -390,11 +391,12 @@ export async function storeGroupJoined(
     .select('last_message_at')
     .eq('id', conversation.id)
     .maybeSingle<{ last_message_at: string | null }>();
-  if (row?.last_message_at) return;
+  if (row?.last_message_at) return conversation.id;
 
   const now = new Date().toISOString();
   await db
     .from('conversations')
-    .update({ last_message_text: 'Você foi adicionado ao grupo', last_message_at: now, updated_at: now })
+    .update({ last_message_text: firstLine, last_message_at: now, updated_at: now })
     .eq('id', conversation.id);
+  return conversation.id;
 }
