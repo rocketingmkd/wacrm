@@ -66,7 +66,7 @@ describe('SCOPE_DESCRIPTIONS', () => {
 describe('isWriteScope', () => {
   it('classifies every scope as read or write, matching the billing write-lock gate', () => {
     const writeScopes = new Set(['messages:send', 'contacts:write', 'broadcasts:send', 'webhooks:manage']);
-    const readScopes = new Set(['messages:read', 'contacts:read', 'conversations:read']);
+    const readScopes = new Set(['messages:read', 'contacts:read', 'conversations:read', 'traffic:read']);
     for (const s of API_SCOPES) {
       if (writeScopes.has(s)) expect(isWriteScope(s)).toBe(true);
       else if (readScopes.has(s)) expect(isWriteScope(s)).toBe(false);

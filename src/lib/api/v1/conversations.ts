@@ -28,6 +28,8 @@ export interface ApiConversation {
     name: string | null;
     email: string | null;
     company: string | null;
+    /** True for a WhatsApp group (the contact is the group). */
+    is_group: boolean;
     tags: { id: string; name: string; color: string }[];
   } | null;
 }
@@ -45,6 +47,9 @@ export interface ApiMessage {
   status: string;
   reply_to_message_id: string | null;
   interactive_reply_id: string | null;
+  /** Group messages only: who spoke. Null otherwise. */
+  sender_name: string | null;
+  sender_phone: string | null;
   created_at: string;
 }
 
@@ -71,6 +76,7 @@ export function serializeConversation(conv: Conversation): ApiConversation {
           name: c.name ?? null,
           email: c.email ?? null,
           company: c.company ?? null,
+          is_group: Boolean(c.is_group),
           tags: (c.tags ?? []).map((t) => ({
             id: t.id,
             name: t.name,
@@ -97,6 +103,8 @@ export function serializeMessage(m: Message): ApiMessage {
     status: m.status,
     reply_to_message_id: m.reply_to_message_id ?? null,
     interactive_reply_id: m.interactive_reply_id ?? null,
+    sender_name: m.sender_name ?? null,
+    sender_phone: m.sender_phone ?? null,
     created_at: m.created_at,
   };
 }

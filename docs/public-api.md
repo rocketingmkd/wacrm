@@ -48,6 +48,7 @@ it. Grant the minimum.
 | `contacts:read`      | List and read contacts                   |
 | `contacts:write`     | Create and update contacts               |
 | `conversations:read` | List and read conversations              |
+| `traffic:read`       | Read where leads came from (ad source)   |
 | `broadcasts:send`    | Launch broadcast campaigns               |
 | `webhooks:manage`    | Register and manage outbound webhooks    |
 
@@ -218,6 +219,23 @@ Paginated. Each message includes its `direction` (`inbound` /
 `outbound`), `status` (delivery state), `whatsapp_message_id`, and
 `content_*`. The conversation is verified to belong to your account
 first (`404` otherwise).
+
+### `GET /api/v1/traffic`
+
+Where leads came from. Scope: `traffic:read`. The same report as the
+"Origem do tráfego" page: totals, leads/deals/revenue per ad source
+(`meta_ctwa`, `meta_site`, `google`, `other`) and per campaign, leads per
+day, the latest leads with their origin, and `untracked` (new contacts
+with no known origin; WhatsApp groups are not counted). Query:
+`?from=<ISO>&to=<ISO>&tz=<IANA zone>`; defaults to the last 30 days in
+`America/Sao_Paulo`, capped like the dashboard.
+
+### WhatsApp groups
+
+Groups received through the unofficial (Evolution) session show up as
+conversations whose `contact.is_group` is `true` (`contact.name` is the
+group name). Their inbound messages carry `sender_name` / `sender_phone`
+(who spoke). Sending to a group is not available through the API yet.
 
 ### `POST /api/v1/broadcasts`
 
