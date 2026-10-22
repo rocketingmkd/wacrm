@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { processConversionQueue } from '@/lib/tracking/conversions'
+import { processGoogleQueue } from '@/lib/google-ads/conversions'
 
 /**
  * Sends the queued deal conversions to Meta's Conversions API.
@@ -25,6 +26,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const result = await processConversionQueue(supabaseAdmin())
-  return NextResponse.json(result)
+  const db = supabaseAdmin()
+  const result = await processConversionQueue(db)
+  const google = await processGoogleQueue(db)
+  return NextResponse.json({ ...result, google })
 }

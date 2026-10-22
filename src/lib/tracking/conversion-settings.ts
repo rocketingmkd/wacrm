@@ -9,12 +9,17 @@ export interface RuleInput {
   event_name: string
   send_value: boolean
   enabled: boolean
+  /** Google Ads conversion action that receives this event (digits). */
+  google_action_id: string | null
 }
 
 export interface SettingsInput {
   meta_dataset_id: string | null
   meta_enabled: boolean
   meta_test_code: string | null
+  google_enabled: boolean
+  /** Google validates the request but imports nothing. */
+  google_validate_only: boolean
   rules: RuleInput[]
 }
 
@@ -42,6 +47,10 @@ export function parseSettingsInput(raw: unknown): { ok: true; value: SettingsInp
     return { ok: false, error: 'O código de teste está em formato inválido.' }
   }
 
+  const googleEnabled = body.google_enabled === true
+  // Safe by default: only an explicit false turns the test mode off.
+  const googleValidateOnly = body.google_validate_only !== false
+
   if (!Array.isArray(body.rules) || body.rules.length > MAX_RULES) {
     return { ok: false, error: 'Regras inválidas.' }
   }
@@ -57,6 +66,10 @@ export function parseSettingsInput(raw: unknown): { ok: true; value: SettingsInp
       return { ok: false, error: 'Cada regra precisa de um estágio ou do status "ganho".' }
     }
     if (stageId && !UUID.test(stageId)) return { ok: false, error: 'Estágio inválido.' }
+    const googleRaw = typeof r.google_action_id === 'string' ? r.google_action_id.replace(/\D/g, '') : ''
+    if (googleRaw && (googleRaw.length < 5 || googleRaw.length > 20)) {
+      return { ok: false, error: 'O ID da ação de conversão do Google deve ter só números.' }
+    }
     const id = typeof r.id === 'string' && UUID.test(r.id) ? r.id : undefined
     const trigger = `${stageId ?? ''}|${onStatus ?? ''}|${eventName}`
     if (seen.has(trigger)) return { ok: false, error: 'Há regras repetidas.' }
@@ -68,7 +81,12 @@ export function parseSettingsInput(raw: unknown): { ok: true; value: SettingsInp
       event_name: eventName,
       send_value: r.send_value === true,
       enabled: r.enabled !== false,
+      google_action_id: googleRaw || null,
     })
+  }
+
+  if (googleEnabled && !rules.some((r) => r.enabled && r.google_action_id)) {
+    return { ok: false, error: 'Para ligar o envio ao Google, preencha o ID da ação de conversão em pelo menos uma regra ativa.' }
   }
 
   return {
@@ -77,6 +95,8 @@ export function parseSettingsInput(raw: unknown): { ok: true; value: SettingsInp
       meta_dataset_id: datasetRaw || null,
       meta_enabled: enabled,
       meta_test_code: testRaw || null,
+      google_enabled: googleEnabled,
+      google_validate_only: googleValidateOnly,
       rules,
     },
   }

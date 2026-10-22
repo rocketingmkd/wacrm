@@ -68,3 +68,27 @@ describe('parseSettingsInput', () => {
     expect(err({ meta_test_code: 'a b', rules: [] })).toMatch(/código de teste/)
   })
 })
+
+describe('google fields', () => {
+  const rule = { stage_id: STAGE, event_name: 'Lead', google_action_id: '987-654-32' }
+
+  it('keeps only the digits of the conversion action id', () => {
+    const v = ok({ rules: [rule] })
+    expect(v.rules[0].google_action_id).toBe('98765432')
+    expect(v.google_enabled).toBe(false)
+  })
+
+  it('starts in test mode unless it is turned off on purpose', () => {
+    expect(ok({ rules: [] }).google_validate_only).toBe(true)
+    expect(ok({ google_validate_only: false, rules: [] }).google_validate_only).toBe(false)
+  })
+
+  it('needs an active rule with an action id to turn Google on', () => {
+    expect(err({ google_enabled: true, rules: [{ stage_id: STAGE, event_name: 'Lead' }] })).toMatch(/ação de conversão/)
+    expect(ok({ google_enabled: true, rules: [rule] }).google_enabled).toBe(true)
+  })
+
+  it('rejects a too short action id', () => {
+    expect(err({ rules: [{ ...rule, google_action_id: '12' }] })).toMatch(/só números/)
+  })
+})

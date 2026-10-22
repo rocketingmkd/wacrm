@@ -203,6 +203,13 @@ export default function TrafficPage() {
   const [customTo, setCustomTo] = useState("");
   const [showInstall, setShowInstall] = useState(false);
   const [showConversions, setShowConversions] = useState(false);
+
+  // Coming back from the Google authorization: open the panel that says how it went.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("google")) return;
+    const t = setTimeout(() => setShowConversions(true), 0);
+    return () => clearTimeout(t);
+  }, []);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{
     key: string;
@@ -359,7 +366,7 @@ export default function TrafficPage() {
       {showConversions && (
         <Panel
           title="Enviar conversões para os anúncios"
-          subtitle="Devolve à Meta as vendas que vieram dos anúncios."
+          subtitle="Devolve à Meta e ao Google as vendas que vieram dos anúncios."
         >
           <ConversionsPanel />
         </Panel>

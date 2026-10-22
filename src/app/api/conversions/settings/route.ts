@@ -15,12 +15,12 @@ export async function GET() {
     const [settings, rules, pipelines, recent] = await Promise.all([
       supabase
         .from('conversion_settings')
-        .select('meta_dataset_id, meta_enabled, meta_test_code')
+        .select('meta_dataset_id, meta_enabled, meta_test_code, google_enabled, google_validate_only')
         .eq('account_id', accountId)
         .maybeSingle(),
       supabase
         .from('conversion_rules')
-        .select('id, stage_id, on_status, event_name, send_value, enabled')
+        .select('id, stage_id, on_status, event_name, send_value, enabled, google_action_id')
         .eq('account_id', accountId)
         .order('created_at', { ascending: true }),
       supabase
@@ -45,7 +45,13 @@ export async function GET() {
       )
 
     return NextResponse.json({
-      settings: settings.data ?? { meta_dataset_id: null, meta_enabled: false, meta_test_code: null },
+      settings: settings.data ?? {
+        meta_dataset_id: null,
+        meta_enabled: false,
+        meta_test_code: null,
+        google_enabled: false,
+        google_validate_only: true,
+      },
       rules: rules.data ?? [],
       stages,
       recent: recent.data ?? [],
@@ -83,6 +89,8 @@ export async function PUT(request: Request) {
         meta_dataset_id: input.meta_dataset_id,
         meta_enabled: input.meta_enabled,
         meta_test_code: input.meta_test_code,
+        google_enabled: input.google_enabled,
+        google_validate_only: input.google_validate_only,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'account_id' },
@@ -112,6 +120,7 @@ export async function PUT(request: Request) {
         event_name: r.event_name,
         send_value: r.send_value,
         enabled: r.enabled,
+        google_action_id: r.google_action_id,
       }
       const { error } = r.id
         ? await supabase.from('conversion_rules').update(row).eq('id', r.id).eq('account_id', accountId)

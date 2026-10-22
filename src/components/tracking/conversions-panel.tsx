@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { GoogleAdsCard } from "@/components/tracking/google-ads-card";
 
 interface Rule {
   id?: string;
@@ -15,6 +16,7 @@ interface Rule {
   event_name: string;
   send_value: boolean;
   enabled: boolean;
+  google_action_id: string;
 }
 
 interface Stage {
@@ -35,7 +37,13 @@ interface RecentEvent {
 }
 
 interface Payload {
-  settings: { meta_dataset_id: string | null; meta_enabled: boolean; meta_test_code: string | null };
+  settings: {
+    meta_dataset_id: string | null;
+    meta_enabled: boolean;
+    meta_test_code: string | null;
+    google_enabled: boolean;
+    google_validate_only: boolean;
+  };
   rules: {
     id: string;
     stage_id: string | null;
@@ -43,6 +51,7 @@ interface Payload {
     event_name: string;
     send_value: boolean;
     enabled: boolean;
+    google_action_id: string | null;
   }[];
   stages: Stage[];
   recent: RecentEvent[];
@@ -69,6 +78,8 @@ export function ConversionsPanel() {
   const [datasetId, setDatasetId] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [testCode, setTestCode] = useState("");
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleValidateOnly, setGoogleValidateOnly] = useState(true);
   const [rules, setRules] = useState<Rule[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -78,6 +89,8 @@ export function ConversionsPanel() {
     setDatasetId(payload.settings.meta_dataset_id ?? "");
     setEnabled(payload.settings.meta_enabled);
     setTestCode(payload.settings.meta_test_code ?? "");
+    setGoogleEnabled(payload.settings.google_enabled);
+    setGoogleValidateOnly(payload.settings.google_validate_only);
     setRules(
       payload.rules.map((r) => ({
         id: r.id,
@@ -85,6 +98,7 @@ export function ConversionsPanel() {
         event_name: r.event_name,
         send_value: r.send_value,
         enabled: r.enabled,
+        google_action_id: r.google_action_id ?? "",
       })),
     );
   }
@@ -115,11 +129,11 @@ export function ConversionsPanel() {
     const has = (trigger: string, event: string) =>
       next.some((r) => r.trigger === trigger && r.event_name === event);
     if (!has("won", "Purchase")) {
-      next.push({ trigger: "won", event_name: "Purchase", send_value: true, enabled: true });
+      next.push({ trigger: "won", event_name: "Purchase", send_value: true, enabled: true, google_action_id: "" });
     }
     const qualified = data?.stages.find((s) => /qualific/i.test(s.name));
     if (qualified && !has(qualified.id, "Lead")) {
-      next.push({ trigger: qualified.id, event_name: "Lead", send_value: false, enabled: true });
+      next.push({ trigger: qualified.id, event_name: "Lead", send_value: false, enabled: true, google_action_id: "" });
     }
     setRules(next);
   }
@@ -135,6 +149,8 @@ export function ConversionsPanel() {
           meta_dataset_id: datasetId,
           meta_enabled: enabled,
           meta_test_code: testCode,
+          google_enabled: googleEnabled,
+          google_validate_only: googleValidateOnly,
           rules: rules.map((r) => ({
             id: r.id,
             stage_id: r.trigger === "won" ? null : r.trigger,
@@ -142,6 +158,7 @@ export function ConversionsPanel() {
             event_name: r.event_name,
             send_value: r.send_value,
             enabled: r.enabled,
+            google_action_id: r.google_action_id,
           })),
         }),
       });
@@ -174,8 +191,8 @@ export function ConversionsPanel() {
       <p className="text-muted-foreground">
         Quando um negócio chega a uma etapa que você escolher, o CRM avisa a Meta qual anúncio
         gerou aquela venda. Assim os anúncios aprendem a trazer quem compra, não só quem clica.
-        Vale para leads que vieram de anúncios da Meta (clique no WhatsApp ou site). O envio para o
-        Google Ads será ligado depois.
+        Vale para leads que vieram de anúncios da Meta (clique no WhatsApp ou site). Para o Google Ads,
+        o CRM usa o gclid do clique e envia a venda para a ação de conversão que você escolher.
       </p>
 
       <div className="space-y-3 rounded-xl border border-border p-4">
@@ -215,6 +232,13 @@ export function ConversionsPanel() {
         </div>
       </div>
 
+      <GoogleAdsCard
+        enabled={googleEnabled}
+        onEnabledChange={setGoogleEnabled}
+        validateOnly={googleValidateOnly}
+        onValidateOnlyChange={setGoogleValidateOnly}
+      />
+
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">Quando enviar</p>
@@ -234,6 +258,7 @@ export function ConversionsPanel() {
                     event_name: "Lead",
                     send_value: false,
                     enabled: true,
+                    google_action_id: "",
                   },
                 ])
               }
@@ -299,6 +324,14 @@ export function ConversionsPanel() {
                   />
                   com o valor
                 </label>
+                <Input
+                  className="h-9 w-44"
+                  value={r.google_action_id}
+                  onChange={(e) => updateRule(i, { google_action_id: e.target.value })}
+                  placeholder="ID da ação no Google"
+                  inputMode="numeric"
+                  aria-label="ID da ação de conversão do Google"
+                />
                 <div className="ml-auto flex items-center gap-3">
                   <Switch
                     checked={r.enabled}
