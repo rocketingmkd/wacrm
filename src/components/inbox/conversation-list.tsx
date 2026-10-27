@@ -45,13 +45,19 @@ interface ConversationListProps {
   onConversationDeleted?: (conversationId: string) => void;
 }
 
-const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
-};
 
 
+
+// Stable per-name colour so avatars without a photo look like WhatsApp's.
+const AVATAR_COLORS = [
+  "#00a884", "#5e47de", "#c0392b", "#d68910", "#2874a6",
+  "#8e44ad", "#16a085", "#cb4335", "#7d6608", "#2e4053",
+];
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
 
 type InboxFilter = ConversationStatus | "all" | "unread" | "groups";
 
@@ -102,8 +108,10 @@ export function ConversationList({
   // older value — the very next render updates the ref for any
   // subsequent async completion.
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
+  const conversationsRef = useRef(conversations);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
+    conversationsRef.current = conversations;
   });
 
   useEffect(() => {
@@ -130,8 +138,34 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
+      const loaded = normalizeConversations(data ?? []);
+      onConversationsLoadedRef.current(loaded);
       setLoading(false);
+
+      // Fill in WhatsApp profile photos (accounts with an Evolution session
+      // only; the server returns nothing otherwise). Failures are silent:
+      // the coloured initial stays.
+      if (loaded.some((c) => c.contact && !c.contact.avatar_url)) {
+        try {
+          const res = await fetch("/api/contacts/avatars/sync", { method: "POST" });
+          if (!res.ok || cancelled) return;
+          const { avatars } = (await res.json()) as {
+            avatars: { contact_id: string; avatar_url: string }[];
+          };
+          if (avatars.length === 0) return;
+          const byContact = new Map(avatars.map((a) => [a.contact_id, a.avatar_url]));
+          // Patch the latest list (realtime may have changed it meanwhile).
+          onConversationsLoadedRef.current(
+            conversationsRef.current.map((c) =>
+              c.contact && byContact.has(c.contact.id)
+                ? { ...c, contact: { ...c.contact, avatar_url: byContact.get(c.contact.id) } }
+                : c,
+            ),
+          );
+        } catch {
+          /* photos are cosmetic */
+        }
+      }
     })();
 
     return () => {
@@ -498,6 +532,7 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
+  const contactTags = contact?.tags ?? [];
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -526,7 +561,19 @@ function ConversationItem({
         />
       )}
       {/* Avatar */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-semibold text-primary">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold",
+          !contact?.avatar_url && !contact?.is_group && "text-white"
+        )}
+        style={
+          contact?.avatar_url
+            ? undefined
+            : contact?.is_group
+              ? { backgroundColor: "var(--primary-soft)", color: "var(--primary)" }
+              : { backgroundColor: avatarColor(displayName) }
+        }
+      >
         {contact?.avatar_url ? (
           <img
             src={contact.avatar_url}
@@ -551,7 +598,16 @@ function ConversationItem({
           >
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
+          <span
+            className={cn(
+              "shrink-0 text-[10px]",
+              conversation.unread_count > 0
+                ? "font-semibold text-primary"
+                : "text-muted-foreground"
+            )}
+          >
+            {timeAgo}
+          </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p className="truncate text-xs text-muted-foreground">
@@ -563,15 +619,26 @@ function ConversationItem({
                 {conversation.unread_count}
               </span>
             )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
           </div>
         </div>
+        {contactTags.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {contactTags.slice(0, 3).map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex max-w-24 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                style={{ backgroundColor: `${tag.color}26`, color: tag.color }}
+              >
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {contactTags.length > 3 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{contactTags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );

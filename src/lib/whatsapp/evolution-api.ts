@@ -194,6 +194,23 @@ export async function leaveGroup(args: { instanceName: string; groupJid: string 
 }
 
 /**
+ * Current WhatsApp profile picture URL of a number or group JID, or null
+ * when there is none / it is private. The URL is temporary: copy the image.
+ */
+export async function fetchProfilePictureUrl(args: {
+  instanceName: string;
+  /** Phone digits (with country code) or a full JID. */
+  number: string;
+}): Promise<string | null> {
+  const raw = await call<{ profilePictureUrl?: string | null; wuid?: string }>(
+    'POST',
+    `/chat/fetchProfilePictureUrl/${encodeURIComponent(args.instanceName)}`,
+    { number: args.number },
+  );
+  return raw.profilePictureUrl || null;
+}
+
+/**
  * Point the instance's inbound events at the CRM. Idempotent: Evolution
  * replaces the instance's webhook config on every call.
  */
