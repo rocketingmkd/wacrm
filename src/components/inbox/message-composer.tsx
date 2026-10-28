@@ -430,7 +430,7 @@ export function MessageComposer({
         removeStaged(draftRef.current?.path);
         setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : "Falha no envio do arquivo.");
       } finally {
         setBusy(false);
       }
@@ -467,7 +467,7 @@ export function MessageComposer({
         removeStaged(draftRef.current?.path);
         setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : "Falha no envio do arquivo.");
       } finally {
         setBusy(false);
       }

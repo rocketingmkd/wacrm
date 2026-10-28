@@ -35,7 +35,7 @@ export async function GET() {
 
     if (error) {
       console.error('[ai/provider GET] fetch error:', error)
-      return NextResponse.json({ error: 'Failed to load provider config' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar a configuração do provedor' }, { status: 500 })
     }
     if (!data) return NextResponse.json({ configured: false })
 
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       } catch (err) {
         if (err instanceof AiError) {
           return NextResponse.json(
-            { error: `Embeddings key: ${err.message}`, code: err.code },
+            { error: `Chave de embeddings: ${err.message}`, code: err.code },
             { status: 400 },
           )
         }
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
       if (upErr) {
         console.error('[ai/provider POST] update error:', upErr)
-        return NextResponse.json({ error: 'Failed to save provider config' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível salvar a configuração do provedor' }, { status: 500 })
       }
     } else {
       const { error: insErr } = await supabase
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
         .insert({ ...row, created_by: userId })
       if (insErr) {
         console.error('[ai/provider POST] insert error:', insErr)
-        return NextResponse.json({ error: 'Failed to save provider config' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível salvar a configuração do provedor' }, { status: 500 })
       }
     }
 
@@ -198,7 +198,7 @@ export async function DELETE() {
       .eq('account_id', accountId)
     if (error) {
       console.error('[ai/provider DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete provider config' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível excluir a configuração do provedor' }, { status: 500 })
     }
     return NextResponse.json({ success: true })
   } catch (err) {

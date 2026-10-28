@@ -48,14 +48,14 @@ export async function POST(request: Request) {
     // Pay's own delivery dashboard, mirroring the WhatsApp webhook's
     // reasoning for rejecting invalid signatures visibly.
     console.warn('[billing-webhook] rejected request with invalid/missing token')
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
   let payload: unknown
   try {
     payload = JSON.parse(raw)
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
   const headers = request.headers

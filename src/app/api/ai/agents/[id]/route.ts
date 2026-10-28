@@ -41,9 +41,9 @@ export async function GET(_request: Request, { params }: Params) {
       .maybeSingle()
     if (error) {
       console.error('[ai/agents/[id] GET] error:', error)
-      return NextResponse.json({ error: 'Failed to load agent' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar o agente' }, { status: 500 })
     }
-    if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!data) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
     return NextResponse.json(data)
   } catch (err) {
@@ -94,9 +94,9 @@ export async function PATCH(request: Request, { params }: Params) {
       .maybeSingle()
     if (fetchErr) {
       console.error('[ai/agents/[id] PATCH] fetch error:', fetchErr)
-      return NextResponse.json({ error: 'Failed to load agent' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar o agente' }, { status: 500 })
     }
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!existing) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
     const update: Record<string, unknown> = {}
 
@@ -224,7 +224,7 @@ export async function PATCH(request: Request, { params }: Params) {
         .eq('is_receptionist', true)
       if (demoteErr) {
         console.error('[ai/agents/[id] PATCH] demote error:', demoteErr)
-        return NextResponse.json({ error: 'Failed to promote agent' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível promover o agente' }, { status: 500 })
       }
       update.is_receptionist = true
     }
@@ -243,7 +243,7 @@ export async function PATCH(request: Request, { params }: Params) {
         return bad('An agent with this slug already exists on this account.', 'slug_taken')
       }
       console.error('[ai/agents/[id] PATCH] update error:', upErr)
-      return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível atualizar o agente' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
@@ -273,7 +273,7 @@ export async function DELETE(_request: Request, { params }: Params) {
       .eq('account_id', accountId)
       .eq('id', id)
       .maybeSingle()
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!existing) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
 
     const { error } = await supabase
       .from('ai_agents')
@@ -282,7 +282,7 @@ export async function DELETE(_request: Request, { params }: Params) {
       .eq('id', id)
     if (error) {
       console.error('[ai/agents/[id] DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível excluir o agente' }, { status: 500 })
     }
     return NextResponse.json({ success: true })
   } catch (err) {

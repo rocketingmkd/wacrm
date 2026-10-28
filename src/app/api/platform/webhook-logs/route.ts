@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('[platform/webhook-logs GET] fetch error:', error)
-      return NextResponse.json({ error: 'Failed to load webhook logs' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar os logs de webhook' }, { status: 500 })
     }
 
     return NextResponse.json({

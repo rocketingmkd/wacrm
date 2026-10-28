@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       }
     | null
   if (!body) {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
   const admin = supabaseAdmin()
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     const template = getFlowTemplate(body.template_slug)
     if (!template) {
       return NextResponse.json(
-        { error: `Unknown template_slug "${body.template_slug}"` },
+        { error: `template_slug desconhecido "${body.template_slug}"` },
         { status: 400 },
       )
     }

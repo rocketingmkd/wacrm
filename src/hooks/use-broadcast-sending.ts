@@ -531,7 +531,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
                 .from('broadcast_recipients')
                 .update({
                   status: 'failed',
-                  error_message: result.error ?? 'Unknown error',
+                  error_message: result.error ?? 'Erro desconhecido',
                 })
                 .eq('id', recipient.id);
             }
@@ -543,7 +543,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
               .from('broadcast_recipients')
               .update({
                 status: 'failed',
-                error_message: err instanceof Error ? err.message : 'Unknown error',
+                error_message: err instanceof Error ? err.message : 'Erro desconhecido',
               })
               .eq('id', recipient.id);
           }

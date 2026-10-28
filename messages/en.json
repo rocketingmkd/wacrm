@@ -107,7 +107,22 @@
       "timeS": "{sec}s ago",
       "timeM": "{min}m ago",
       "timeH": "{hr}h ago",
-      "timeD": "{day}d ago"
+      "timeD": "{day}d ago",
+      "unknown": "Unknown",
+      "aContact": "a contact",
+      "automationDefault": "Automation",
+      "newMessage": "New message from {who}",
+      "newContact": "New contact: {name}",
+      "dealInStage": "Deal \"{title}\" in {stage}",
+      "dealUpdated": "Deal \"{title}\" updated",
+      "broadcastSent": "Broadcast \"{name}\" sent to {count} contacts",
+      "broadcastOther": "Broadcast \"{name}\" {status} ({count} recipients)",
+      "broadcastStatusDraft": "draft",
+      "broadcastStatusScheduled": "scheduled",
+      "broadcastStatusSending": "sending",
+      "broadcastStatusFailed": "failed",
+      "automationTriggered": "Automation \"{name}\" triggered for {who}",
+      "automationFailed": "Automation \"{name}\" failed for {who}"
     },
     "conversationsChart": {
       "title": "Conversations Over Time",
@@ -137,7 +152,15 @@
       "thisWeek": "This week:",
       "lastWeek": "Last week:",
       "noReplies": "No replies recorded yet",
-      "noRepliesHint": "This chart fills in as you reply to customer messages."
+      "noRepliesHint": "This chart fills in as you reply to customer messages.",
+      "avgMinutes": "Avg minutes",
+      "dowMon": "Mon",
+      "dowTue": "Tue",
+      "dowWed": "Wed",
+      "dowThu": "Thu",
+      "dowFri": "Fri",
+      "dowSat": "Sat",
+      "dowSun": "Sun"
     },
     "emptyState": {
       "title": "Not enough data yet"

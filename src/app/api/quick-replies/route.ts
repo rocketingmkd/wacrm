@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
 
   const title = typeof body.title === 'string' ? body.title.trim() : ''
   const kind = body.kind === 'interactive' ? 'interactive' : 'text'

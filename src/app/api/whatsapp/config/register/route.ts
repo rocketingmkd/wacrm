@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const { data: profile } = await supabase
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { pin } = body
     if (typeof pin !== 'string' || !/^\d{6}$/.test(pin)) {
-      return NextResponse.json({ error: 'PIN must be exactly 6 digits.' }, { status: 400 })
+      return NextResponse.json({ error: 'O PIN deve ter exatamente 6 dígitos.' }, { status: 400 })
     }
 
     const { data: config } = await supabase
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
     if (!config) {
       return NextResponse.json(
-        { error: 'No WhatsApp configuration saved yet.' },
+        { error: 'Nenhuma configuração do WhatsApp salva ainda.' },
         { status: 404 },
       )
     }
@@ -86,12 +86,12 @@ export async function POST(request: Request) {
         pin,
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+      const message = err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
       await supabase
         .from('whatsapp_config')
         .update({ last_registration_error: message, updated_at: new Date().toISOString() })
         .eq('account_id', accountId)
-      return NextResponse.json({ error: `Meta API error: ${message}` }, { status: 400 })
+      return NextResponse.json({ error: `Erro da API da Meta: ${message}` }, { status: 400 })
     }
 
     const { error: updateError } = await supabase
@@ -107,12 +107,12 @@ export async function POST(request: Request) {
 
     if (updateError) {
       console.error('Error updating whatsapp_config after register:', updateError)
-      return NextResponse.json({ error: 'Registered with Meta but failed to save status.' }, { status: 500 })
+      return NextResponse.json({ error: 'Registrado na Meta, mas não foi possível salvar o status.' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in WhatsApp config register POST:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

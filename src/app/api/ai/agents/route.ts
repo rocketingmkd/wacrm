@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       .eq('account_id', accountId)
     if (countErr) {
       console.error('[ai/agents POST] count error:', countErr)
-      return NextResponse.json({ error: 'Failed to check existing agents' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível verificar os agentes existentes' }, { status: 500 })
     }
     const isFirstAgent = (existingCount ?? 0) === 0
 
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
       if (!hasAiAgents) {
         return NextResponse.json(
           {
-            error: 'Adding more than one AI agent requires the Pro plan.',
+            error: 'Adicionar mais de um agente de IA exige o plano Pro.',
             code: 'plan_upgrade_required',
           },
           { status: 403 },
@@ -211,7 +211,7 @@ export async function POST(request: Request) {
         return bad('An agent with this slug already exists on this account.', 'slug_taken')
       }
       console.error('[ai/agents POST] insert error:', insErr)
-      return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível criar o agente' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, id: inserted.id })

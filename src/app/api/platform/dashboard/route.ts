@@ -34,7 +34,7 @@ export async function GET() {
 
     if (statusErr) {
       console.error('[platform/dashboard GET] status fetch error:', statusErr)
-      return NextResponse.json({ error: 'Failed to load dashboard' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar o painel' }, { status: 500 })
     }
 
     const byStatus = Object.fromEntries(BILLING_STATUSES.map((s) => [s, 0])) as Record<

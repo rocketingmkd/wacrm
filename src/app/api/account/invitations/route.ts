@@ -153,7 +153,7 @@ export async function GET() {
     if (error) {
       console.error("[GET /api/account/invitations] fetch error:", error);
       return NextResponse.json(
-        { error: "Failed to load invitations" },
+        { error: "Não foi possível carregar os convites" },
         { status: 500 },
       );
     }
@@ -207,7 +207,7 @@ export async function POST(request: Request) {
       const trimmed = body.label.trim();
       if (trimmed.length > MAX_LABEL_LEN) {
         return NextResponse.json(
-          { error: `Label must be ${MAX_LABEL_LEN} characters or fewer` },
+          { error: `O rótulo deve ter no máximo ${MAX_LABEL_LEN} caracteres` },
           { status: 400 },
         );
       }
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
     if (error || !data) {
       console.error("[POST /api/account/invitations] insert error:", error);
       return NextResponse.json(
-        { error: "Failed to create invitation" },
+        { error: "Não foi possível criar o convite" },
         { status: 500 },
       );
     }

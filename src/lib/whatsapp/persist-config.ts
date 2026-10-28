@@ -125,7 +125,7 @@ export async function saveVerifiedWhatsAppConfig(
       accessToken,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+    const message = err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
     console.error('Meta API verification failed during save:', message)
     throw new SaveConfigError(`Meta API error: ${message}`, 400)
   }
@@ -137,7 +137,7 @@ export async function saveVerifiedWhatsAppConfig(
     encryptedAccessToken = encrypt(accessToken)
     encryptedVerifyToken = verifyToken ? encrypt(verifyToken) : null
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown encryption error'
+    const message = err instanceof Error ? err.message : 'Erro de criptografia desconhecido'
     console.error('Encryption failed:', message)
     throw new SaveConfigError(
       'Failed to encrypt token. Check that ENCRYPTION_KEY is a valid 64-character hex string in your environment variables.',
@@ -192,7 +192,7 @@ export async function saveVerifiedWhatsAppConfig(
           registeredAt = new Date().toISOString()
         } catch (err) {
           registrationError =
-            err instanceof Error ? err.message : 'Unknown Meta API error'
+            err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
           console.error('Phone number /register failed:', registrationError)
           // Deliberately fall through and still save the row so the
           // caller can retry without re-entering everything.

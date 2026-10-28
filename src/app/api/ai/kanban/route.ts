@@ -29,7 +29,7 @@ export async function GET() {
 
     if (error) {
       console.error('[ai/kanban GET] fetch error:', error)
-      return NextResponse.json({ error: 'Failed to load kanban config' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar a configuração do Kanban' }, { status: 500 })
     }
     if (!data) return NextResponse.json({ configured: false })
 
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (plErr) {
       console.error('[ai/kanban POST] pipeline check error:', plErr)
-      return NextResponse.json({ error: 'Failed to validate pipeline' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível validar o funil' }, { status: 500 })
     }
     if (!pipeline) return bad('pipeline not found in this account')
 
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
         .in('id', stageIds)
       if (stErr) {
         console.error('[ai/kanban POST] stage check error:', stErr)
-        return NextResponse.json({ error: 'Failed to validate stages' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível validar as etapas' }, { status: 500 })
       }
       const found = new Set((stages ?? []).map((s) => s.id as string))
       if (stageIds.some((s) => !found.has(s))) {
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
       if (upErr) {
         console.error('[ai/kanban POST] update error:', upErr)
-        return NextResponse.json({ error: 'Failed to save kanban config' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível salvar a configuração do Kanban' }, { status: 500 })
       }
     } else {
       const { error: insErr } = await supabase
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
         .insert({ ...row, created_by: userId })
       if (insErr) {
         console.error('[ai/kanban POST] insert error:', insErr)
-        return NextResponse.json({ error: 'Failed to save kanban config' }, { status: 500 })
+        return NextResponse.json({ error: 'Não foi possível salvar a configuração do Kanban' }, { status: 500 })
       }
     }
 
@@ -167,7 +167,7 @@ export async function DELETE() {
       .eq('account_id', accountId)
     if (error) {
       console.error('[ai/kanban DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete kanban config' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível excluir a configuração do Kanban' }, { status: 500 })
     }
     return NextResponse.json({ success: true })
   } catch (err) {

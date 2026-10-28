@@ -109,7 +109,7 @@ export async function createWhatsAppGroup(
       participants: requested,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown Evolution error';
+    const message = err instanceof Error ? err.message : 'Erro desconhecido da Evolution';
     console.error('[create-group] Evolution create failed:', message);
     throw new SendMessageError('unofficial_error', `Erro da sessão não oficial: ${message}`, 502);
   }

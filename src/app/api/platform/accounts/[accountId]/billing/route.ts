@@ -53,7 +53,7 @@ export async function PATCH(
     const { accountId } = await params
     const body = (await request.json().catch(() => null)) as Body | null
     if (!body || typeof body !== 'object' || !('action' in body)) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo da requisição inválido' }, { status: 400 })
     }
 
     const { data: current, error: currentErr } = await ctx.admin
@@ -64,10 +64,10 @@ export async function PATCH(
 
     if (currentErr) {
       console.error('[platform/accounts/:id/billing PATCH] load error:', currentErr)
-      return NextResponse.json({ error: 'Failed to load billing row' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar os dados de cobrança' }, { status: 500 })
     }
     if (!current) {
-      return NextResponse.json({ error: 'Account has no billing row' }, { status: 404 })
+      return NextResponse.json({ error: 'A conta não tem dados de cobrança' }, { status: 404 })
     }
 
     const patch: Record<string, unknown> = { updated_by_user_id: ctx.userId }
@@ -101,11 +101,11 @@ export async function PATCH(
       }
       case 'set_status': {
         if (!isBillingStatus(body.status)) {
-          return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+          return NextResponse.json({ error: 'Status inválido' }, { status: 400 })
         }
         if (typeof body.notes !== 'string' || !body.notes.trim()) {
           return NextResponse.json(
-            { error: 'A note is required when forcing a status change' },
+            { error: 'É obrigatório informar uma nota ao forçar a mudança de status' },
             { status: 400 },
           )
         }
@@ -125,13 +125,13 @@ export async function PATCH(
       }
       case 'link_email': {
         if (typeof body.email !== 'string' || !body.email.includes('@')) {
-          return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
+          return NextResponse.json({ error: 'É obrigatório informar um e-mail válido' }, { status: 400 })
         }
         patch.external_customer_email = body.email.toLowerCase().trim()
         break
       }
       default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+        return NextResponse.json({ error: 'Ação desconhecida' }, { status: 400 })
     }
 
     const { data: updated, error: updateErr } = await ctx.admin
@@ -145,7 +145,7 @@ export async function PATCH(
 
     if (updateErr) {
       console.error('[platform/accounts/:id/billing PATCH] update error:', updateErr)
-      return NextResponse.json({ error: 'Failed to update billing' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível atualizar a cobrança' }, { status: 500 })
     }
 
     await ctx.admin.from('platform_audit_log').insert({

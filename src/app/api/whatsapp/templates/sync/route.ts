@@ -134,7 +134,7 @@ export async function POST() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     // Resolve the caller's account_id — both whatsapp_config and
@@ -147,7 +147,7 @@ export async function POST() {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -356,7 +356,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : 'Failed to sync templates',
+          error instanceof Error ? error.message : 'Não foi possível sincronizar os modelos',
       },
       { status: 500 },
     )

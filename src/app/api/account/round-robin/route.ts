@@ -38,7 +38,7 @@ export async function GET() {
     if (error) {
       console.error("[GET /api/account/round-robin] fetch error:", error);
       return NextResponse.json(
-        { error: "Failed to load round-robin setting" },
+        { error: "Não foi possível carregar a configuração de rodízio" },
         { status: 500 },
       );
     }
@@ -77,7 +77,7 @@ export async function PATCH(request: Request) {
     if (error) {
       console.error("[PATCH /api/account/round-robin] update error:", error);
       return NextResponse.json(
-        { error: "Failed to update round-robin setting" },
+        { error: "Não foi possível atualizar a configuração de rodízio" },
         { status: 500 },
       );
     }

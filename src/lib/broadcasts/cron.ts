@@ -201,7 +201,7 @@ async function processOneBroadcast(
           .eq('id', recipient.id);
       } catch (err) {
         failed++;
-        const message = err instanceof Error ? err.message : 'Unknown error';
+        const message = err instanceof Error ? err.message : 'Erro desconhecido';
         console.error(`[broadcasts-cron] send failed for recipient ${recipient.id}:`, message);
         await db
           .from('broadcast_recipients')

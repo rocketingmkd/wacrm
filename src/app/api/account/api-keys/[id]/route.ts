@@ -55,12 +55,12 @@ export async function DELETE(
       if (deleteError) {
         console.error('[DELETE /api/account/api-keys/[id]] delete error:', deleteError);
         return NextResponse.json(
-          { error: 'Failed to delete API key' },
+          { error: 'Não foi possível excluir a chave de API' },
           { status: 500 }
         );
       }
       if (!removed) {
-        return NextResponse.json({ error: 'API key not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Chave de API não encontrada' }, { status: 404 });
       }
       return NextResponse.json({ success: true });
     }
@@ -81,14 +81,14 @@ export async function DELETE(
     if (error) {
       console.error('[DELETE /api/account/api-keys/[id]] error:', error);
       return NextResponse.json(
-        { error: 'Failed to revoke API key' },
+        { error: 'Não foi possível revogar a chave de API' },
         { status: 500 }
       );
     }
     if (!data) {
       // Either no such key in this account, or it was already revoked.
       return NextResponse.json(
-        { error: 'API key not found or already revoked' },
+        { error: 'Chave de API não encontrada ou já revogada' },
         { status: 404 }
       );
     }

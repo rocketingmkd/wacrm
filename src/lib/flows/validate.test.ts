@@ -77,7 +77,7 @@ describe("validateFlowForActivation — flow-level", () => {
       [],
     );
     expect(
-      issues.some((i) => i.message.includes("at least one node")),
+      issues.some((i) => i.message.includes("pelo menos um bloco")),
     ).toBe(true);
   });
 
@@ -94,7 +94,7 @@ describe("validateFlowForActivation — flow-level", () => {
     expect(
       issues.some(
         (i) =>
-          i.message.includes("Duplicate node_key") &&
+          i.message.includes("node_key duplicado") &&
           i.node_key === "a",
       ),
     ).toBe(true);
@@ -114,7 +114,7 @@ describe("validateFlowForActivation — trigger", () => {
       issues.some(
         (i) =>
           i.scope === "trigger" &&
-          i.message.includes("at least one keyword"),
+          i.message.includes("pelo menos uma palavra-chave"),
       ),
     ).toBe(true);
   });
@@ -263,7 +263,7 @@ describe("validateFlowForActivation — nodes", () => {
         (i) =>
           i.node_key === "b" &&
           i.field === "buttons" &&
-          i.message.includes("at least one"),
+          i.message.includes("pelo menos um botão"),
       ),
     ).toBe(true);
   });
@@ -295,7 +295,7 @@ describe("validateFlowForActivation — nodes", () => {
         (i) =>
           i.node_key === "b" &&
           i.field === "buttons" &&
-          i.message.includes("at most 3"),
+          i.message.includes("no máximo 3"),
       ),
     ).toBe(true);
   });
@@ -325,7 +325,7 @@ describe("validateFlowForActivation — nodes", () => {
         (i) =>
           i.node_key === "b" &&
           i.field === "buttons.0.title" &&
-          i.message.includes("over 20"),
+          i.message.includes("passa de 20"),
       ),
     ).toBe(true);
   });
@@ -378,7 +378,7 @@ describe("validateFlowForActivation — nodes", () => {
       nodes,
     );
     expect(
-      issues.some((i) => i.message.includes("Duplicate button reply id")),
+      issues.some((i) => i.message.includes("ID de resposta de botão duplicado")),
     ).toBe(true);
   });
 
@@ -410,7 +410,7 @@ describe("validateFlowForActivation — nodes", () => {
         (i) =>
           i.node_key === "l" &&
           i.field === "sections" &&
-          i.message.includes("at most 10"),
+          i.message.includes("no máximo 10"),
       ),
     ).toBe(true);
   });
@@ -445,7 +445,7 @@ describe("validateFlowForActivation — nodes", () => {
       nodes,
     );
     expect(
-      issues.some((i) => i.message.includes("exceeds 24 chars")),
+      issues.some((i) => i.message.includes("passa de 24 caracteres")),
     ).toBe(true);
   });
 
@@ -465,7 +465,7 @@ describe("validateFlowForActivation — nodes", () => {
         (i) =>
           i.node_key === "orphan" &&
           i.severity === "warning" &&
-          i.message.includes("unreachable"),
+          i.message.includes("não pode ser alcançado"),
       ),
     ).toBe(true);
   });
@@ -479,7 +479,7 @@ describe("validateFlowForActivation — nodes", () => {
       nodes,
     );
     expect(
-      issues.some((i) => i.message.includes("Unknown node type")),
+      issues.some((i) => i.message.includes("Tipo de bloco desconhecido")),
     ).toBe(true);
   });
 });

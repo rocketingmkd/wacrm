@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('[platform/accounts GET] fetch error:', error)
-      return NextResponse.json({ error: 'Failed to load accounts' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar as contas' }, { status: 500 })
     }
 
     return NextResponse.json({

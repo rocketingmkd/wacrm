@@ -68,7 +68,7 @@ export default function NewBroadcastPage() {
     } catch (err) {
       // Previously swallowed with console.error — the wizard would
       // just no-op, leaving the user confused. Surface the reason.
-      const message = err instanceof Error ? err.message : 'Broadcast failed';
+      const message = err instanceof Error ? err.message : 'Falha no disparo';
       console.error('Broadcast failed:', err);
       toast.error(message);
     }
@@ -97,7 +97,7 @@ export default function NewBroadcastPage() {
       toast.success('Disparo agendado com sucesso.');
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to schedule broadcast';
+      const message = err instanceof Error ? err.message : 'Não foi possível agendar o disparo';
       console.error('Broadcast scheduling failed:', err);
       toast.error(message);
     }

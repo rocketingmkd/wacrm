@@ -37,7 +37,7 @@ function rpcErrorToResponse(err: PostgrestError): NextResponse {
   }
   console.error("[members route] unexpected RPC error:", err);
   return NextResponse.json(
-    { error: "Failed to update member" },
+    { error: "Não foi possível atualizar o membro" },
     { status: 500 },
   );
 }

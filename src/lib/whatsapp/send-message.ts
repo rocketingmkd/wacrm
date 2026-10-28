@@ -551,7 +551,7 @@ export async function sendMessageToConversation(
     if (lastError) throw lastError;
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
+      err instanceof Error ? err.message : 'Erro desconhecido da API da Meta';
     if (provider === 'evolution') {
       console.error('[send-message] unofficial send failed:', message);
       throw new SendMessageError('unofficial_error', `Erro da sessão não oficial: ${message}`, 502);

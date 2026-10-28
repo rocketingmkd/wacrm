@@ -57,7 +57,7 @@ export async function GET() {
     if (error) {
       console.error('[GET /api/account/api-keys] fetch error:', error);
       return NextResponse.json(
-        { error: 'Failed to load API keys' },
+        { error: 'Não foi possível carregar as chaves de API' },
         { status: 500 }
       );
     }
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     }
     if (rawName.length > MAX_NAME_LEN) {
       return NextResponse.json(
-        { error: `Name must be ${MAX_NAME_LEN} characters or fewer` },
+        { error: `O nome deve ter no máximo ${MAX_NAME_LEN} caracteres` },
         { status: 400 }
       );
     }
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
     if (error || !data) {
       console.error('[POST /api/account/api-keys] insert error:', error);
       return NextResponse.json(
-        { error: 'Failed to create API key' },
+        { error: 'Não foi possível criar a chave de API' },
         { status: 500 }
       );
     }

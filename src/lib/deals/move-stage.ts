@@ -46,7 +46,7 @@ export async function moveDealStage(args: {
     .eq('account_id', accountId)
     .maybeSingle()
   if (readErr) return { ok: false, status: 500, error: readErr.message }
-  if (!deal) return { ok: false, status: 404, error: 'Not found' }
+  if (!deal) return { ok: false, status: 404, error: 'Não encontrado' }
 
   const fromStageId = deal.stage_id as string
   if (fromStageId === toStageId) return { ok: true, move: null }

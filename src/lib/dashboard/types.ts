@@ -58,8 +58,12 @@ export type ActivityKind =
 export interface ActivityItem {
   id: string
   kind: ActivityKind
-  /** Primary line of text rendered in the feed. Pre-formatted. */
+  /** Primary line of text rendered in the feed. Pre-formatted (English
+   *  fallback). The feed prefers `i18n` when present so the line follows
+   *  the app language. */
   text: string
+  /** Translation key (Dashboard.activityFeed.*) + values for the line. */
+  i18n?: { key: string; values: Record<string, string | number | null> }
   /** ISO timestamp the item happened at, drives relative-time + sort. */
   at: string
   /** Optional deep-link for the whole row (not all items have a target). */

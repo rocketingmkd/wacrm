@@ -21,7 +21,7 @@ export async function PATCH(
   }
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
 
   const update: Record<string, unknown> = {}
   if (typeof body.title === 'string') {

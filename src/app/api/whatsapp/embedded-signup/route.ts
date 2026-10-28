@@ -56,13 +56,13 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const accountId = await resolveAccountId(supabase, user.id)
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -96,10 +96,10 @@ export async function POST(request: Request) {
         const exchanged = await exchangeCodeForToken({ code })
         accessToken = exchanged.accessToken
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+        const message = err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
         console.error('Embedded Signup code exchange failed:', message)
         return NextResponse.json(
-          { error: `Meta API error: ${message}` },
+          { error: `Erro da API da Meta: ${message}` },
           { status: 400 }
         )
       }
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
         const numbers = await getWabaPhoneNumbers({ wabaId: waba_id, accessToken })
         if (numbers.length === 0) {
           return NextResponse.json(
-            { error: 'No phone numbers found under this WABA.' },
+            { error: 'Nenhum número de telefone encontrado nesta WABA.' },
             { status: 400 }
           )
         }
@@ -121,10 +121,10 @@ export async function POST(request: Request) {
         // to pick, which the popup doesn't surface for this event.
         phone_number_id = numbers[0].id
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+        const message = err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
         console.error('getWabaPhoneNumbers failed during Coexistence signup:', message)
         return NextResponse.json(
-          { error: `Meta API error: ${message}` },
+          { error: `Erro da API da Meta: ${message}` },
           { status: 400 }
         )
       }
@@ -177,6 +177,6 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error('Error in WhatsApp embedded-signup POST:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

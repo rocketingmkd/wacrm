@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       error: authError,
     } = await supabase.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     // Resolve the caller's account_id — whatsapp_config + the
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
     const accountId = profile?.account_id as string | undefined
     if (!accountId) {
       return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
+        { error: 'Seu perfil não está vinculado a uma conta.' },
         { status: 403 },
       )
     }
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     try {
       payload = (await request.json()) as TemplatePayload
     } catch {
-      return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo JSON inválido.' }, { status: 400 })
     }
 
     if (payload.category === 'Authentication') {
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     try {
       validateTemplatePayload(payload)
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Validation failed.'
+      const message = e instanceof Error ? e.message : 'A validação falhou.'
       // Log every rejected submission — without this a failed create
       // leaves no server-side trace and turns into a silent "my
       // template vanished" report.
@@ -196,7 +196,7 @@ export async function POST(request: Request) {
         await ensureImageHeaderHandle(payload, accessToken)
       } catch (e) {
         return NextResponse.json(
-          { error: e instanceof Error ? e.message : 'Header image upload failed.' },
+          { error: e instanceof Error ? e.message : 'Falha no envio da imagem do cabeçalho.' },
           { status: 400 },
         )
       }
@@ -211,7 +211,7 @@ export async function POST(request: Request) {
         metaTemplateId = meta.id
         metaStatus = meta.status
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'Meta submit failed.'
+        const message = e instanceof Error ? e.message : 'Falha no envio para a Meta.'
         console.error(
           `[templates/submit] Meta rejected account=${accountId} waba=${config.waba_id} name=${payload?.name} lang=${payload?.language}: ${message}`,
         )
@@ -255,7 +255,7 @@ export async function POST(request: Request) {
       )
       return NextResponse.json(
         {
-          error: `Submitted to Meta but failed to save locally: ${upsertErr.message}. Run "Sync from Meta" to recover.`,
+          error: `Enviado à Meta, mas não foi possível salvar localmente: ${upsertErr.message}. Use "Sincronizar da Meta" para recuperar.`,
           meta_template_id: metaTemplateId,
         },
         { status: 500 },
@@ -275,7 +275,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : 'Failed to submit template.',
+          error instanceof Error ? error.message : 'Não foi possível enviar o modelo.',
       },
       { status: 500 },
     )

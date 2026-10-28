@@ -38,7 +38,7 @@ export async function POST() {
 
     if (error) {
       console.error('[platform/integrations/webhook-token POST] upsert error:', error)
-      return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível gerar o token' }, { status: 500 })
     }
 
     await ctx.admin.from('platform_audit_log').insert({

@@ -103,7 +103,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {it.text}
+                    {activityText(it, t)}
                   </span>
                   <span className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
                     {relativeTime(it.at, t)}
@@ -155,6 +155,31 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
       )}
     </section>
   )
+}
+
+type Translate = ReturnType<typeof useTranslations>
+
+const BROADCAST_STATUSES = ['draft', 'scheduled', 'sending', 'failed'] as const
+
+/** Feed line in the app language; falls back to the stored English text. */
+function activityText(it: ActivityItem, t: Translate): string {
+  if (!it.i18n) return it.text
+  const tr = t as unknown as (key: string, values?: Record<string, string | number>) => string
+  const { key, values } = it.i18n
+  const isAutomation = key.startsWith('automation')
+  const resolved: Record<string, string | number> = {}
+  for (const [k, v] of Object.entries(values)) {
+    if (v != null) resolved[k] = v
+  }
+  if (!resolved.who) resolved.who = tr(isAutomation ? 'aContact' : 'unknown')
+  if (isAutomation && !resolved.name) resolved.name = tr('automationDefault')
+  if (key === 'broadcastOther') {
+    const status = String(resolved.status)
+    resolved.status = (BROADCAST_STATUSES as readonly string[]).includes(status)
+      ? tr(`broadcastStatus${status[0].toUpperCase()}${status.slice(1)}`)
+      : status
+  }
+  return tr(key, resolved)
 }
 
 function relativeTime(iso: string, t: ReturnType<typeof useTranslations>): string {

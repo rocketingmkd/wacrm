@@ -107,7 +107,22 @@
       "timeS": "{sec}초 전",
       "timeM": "{min}분 전",
       "timeH": "{hr}시간 전",
-      "timeD": "{day}일 전"
+      "timeD": "{day}일 전",
+      "unknown": "알 수 없음",
+      "aContact": "연락처",
+      "automationDefault": "자동화",
+      "newMessage": "{who}의 새 메시지",
+      "newContact": "새 연락처: {name}",
+      "dealInStage": "딜 \"{title}\" - {stage}",
+      "dealUpdated": "딜 \"{title}\" 업데이트됨",
+      "broadcastSent": "브로드캐스트 \"{name}\" {count}명에게 발송됨",
+      "broadcastOther": "브로드캐스트 \"{name}\" {status} (수신자 {count}명)",
+      "broadcastStatusDraft": "초안",
+      "broadcastStatusScheduled": "예약됨",
+      "broadcastStatusSending": "발송 중",
+      "broadcastStatusFailed": "실패",
+      "automationTriggered": "자동화 \"{name}\" {who}에게 실행됨",
+      "automationFailed": "자동화 \"{name}\" {who} 실행 실패"
     },
     "conversationsChart": {
       "title": "기간별 대화 추이",
@@ -137,7 +152,15 @@
       "thisWeek": "이번 주:",
       "lastWeek": "지난 주:",
       "noReplies": "아직 기록된 응답이 없습니다",
-      "noRepliesHint": "고객 메시지에 답변하면 이 차트가 채워집니다."
+      "noRepliesHint": "고객 메시지에 답변하면 이 차트가 채워집니다.",
+      "avgMinutes": "평균 시간(분)",
+      "dowMon": "월",
+      "dowTue": "화",
+      "dowWed": "수",
+      "dowThu": "목",
+      "dowFri": "금",
+      "dowSat": "토",
+      "dowSun": "일"
     },
     "emptyState": {
       "title": "아직 데이터가 충분하지 않습니다"

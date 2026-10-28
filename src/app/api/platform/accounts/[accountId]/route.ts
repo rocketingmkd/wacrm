@@ -28,10 +28,10 @@ export async function GET(
 
     if (accountErr) {
       console.error('[platform/accounts/:id GET] account fetch error:', accountErr)
-      return NextResponse.json({ error: 'Failed to load account' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar a conta' }, { status: 500 })
     }
     if (!account) {
-      return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 })
     }
 
     const [{ data: webhookLogs }, { data: auditLog }] = await Promise.all([

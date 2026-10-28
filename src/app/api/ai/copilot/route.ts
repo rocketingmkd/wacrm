@@ -58,7 +58,7 @@ export async function GET(request: Request) {
       )
     }
     if (!(await resolveConversationAccount(supabase, conversationId))) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 })
     }
 
     const { data } = await supabase
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       )
     }
     if (!(await resolveConversationAccount(supabase, conversationId))) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 })
     }
 
     const row = await refreshConversationInsight(supabaseAdmin(), {

@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: Params) {
     const { id } = await params
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+      return NextResponse.json({ error: 'Corpo da requisição inválido' }, { status: 400 })
     }
 
     const model = typeof body.model === 'string' ? body.model.trim() : ''
@@ -71,7 +71,7 @@ export async function POST(request: Request, { params }: Params) {
         return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
       }
       console.error('[ai/agents/[id]/test] validation error:', err)
-      return NextResponse.json({ error: 'Could not validate this model.' }, { status: 400 })
+      return NextResponse.json({ error: 'Não foi possível validar este modelo.' }, { status: 400 })
     }
 
     return NextResponse.json({ ok: true })

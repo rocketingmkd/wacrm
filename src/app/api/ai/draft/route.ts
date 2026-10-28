@@ -52,10 +52,10 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (convErr) {
       console.error('[ai/draft] conversation lookup error:', convErr)
-      return NextResponse.json({ error: 'Failed to load conversation' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar a conversa' }, { status: 500 })
     }
     if (!conversation) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 })
     }
 
     // Uses whichever agent is "on duty" for this conversation (falling
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     if (!config) {
       return NextResponse.json(
         {
-          error: 'AI assistant is not set up. Enable it in Settings → AI Assistant.',
+          error: 'O assistente de IA não está configurado. Ative em Configurações → Assistente de IA.',
           code: 'ai_not_configured',
         },
         { status: 400 },
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     if (messages.length === 0) {
       return NextResponse.json(
         {
-          error: 'No messages to draft from yet.',
+          error: 'Ainda não há mensagens para gerar um rascunho.',
           code: 'no_messages',
         },
         { status: 400 },

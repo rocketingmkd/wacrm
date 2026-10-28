@@ -23,7 +23,7 @@ export async function GET() {
 
     if (error) {
       console.error('[platform/settings GET] fetch error:', error)
-      return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível carregar as configurações' }, { status: 500 })
     }
 
     return NextResponse.json({ settings: data })
@@ -60,7 +60,7 @@ export async function PATCH(request: Request) {
 
     if (error) {
       console.error('[platform/settings PATCH] update error:', error)
-      return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 })
+      return NextResponse.json({ error: 'Não foi possível atualizar as configurações' }, { status: 500 })
     }
 
     await ctx.admin.from('platform_audit_log').insert({

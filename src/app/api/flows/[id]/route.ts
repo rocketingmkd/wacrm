@@ -34,7 +34,7 @@ async function requireOwnership(
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    return { ok: false, status: 401, body: { error: 'Unauthorized' } }
+    return { ok: false, status: 401, body: { error: 'Não autorizado' } }
   }
   // RLS scopes this to the caller — a flow owned by another user
   // returns null (404 below).
@@ -44,7 +44,7 @@ async function requireOwnership(
     .eq('id', flowId)
     .maybeSingle()
   if (!flow) {
-    return { ok: false, status: 404, body: { error: 'Not found' } }
+    return { ok: false, status: 404, body: { error: 'Não encontrado' } }
   }
   return { ok: true, userId: user.id, supabase }
 }
@@ -74,7 +74,7 @@ export async function GET(
       .order('created_at', { ascending: true }),
   ])
   if (!flow) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Não encontrado' }, { status: 404 })
   }
   return NextResponse.json({ flow, nodes: nodes ?? [] })
 }
@@ -115,7 +115,7 @@ export async function PUT(
 
   const body = (await request.json().catch(() => null)) as PutBody | null
   if (!body) {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
   if (body.name !== undefined && !body.name.trim()) {
     return NextResponse.json(

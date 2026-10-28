@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     } = body
 
     if (transport !== undefined && transport !== 'official' && transport !== 'evolution') {
-      return NextResponse.json({ error: 'Invalid transport' }, { status: 400 })
+      return NextResponse.json({ error: 'Canal de envio inválido' }, { status: 400 })
     }
 
     if ((!conversationIdInput && !contact_id) || !message_type) {
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
       if (convError || !data) {
         return NextResponse.json(
-          { error: 'Conversation not found' },
+          { error: 'Conversa não encontrada' },
           { status: 404 }
         )
       }
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
 
       if (contactErr || !contactRow) {
         return NextResponse.json(
-          { error: 'Contact not found' },
+          { error: 'Contato não encontrado' },
           { status: 404 }
         )
       }
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
       )
       if (!resolved) {
         return NextResponse.json(
-          { error: 'Failed to open a conversation for this contact' },
+          { error: 'Não foi possível abrir uma conversa para este contato' },
           { status: 500 }
         )
       }
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
 
     if (!conversationId) {
       return NextResponse.json(
-        { error: 'Conversation not found' },
+        { error: 'Conversa não encontrada' },
         { status: 404 }
       )
     }
@@ -206,7 +206,7 @@ export async function POST(request: Request) {
     }
     console.error('Error in WhatsApp send POST:', error)
     return NextResponse.json(
-      { error: 'Failed to send message' },
+      { error: 'Não foi possível enviar a mensagem' },
       { status: 500 }
     )
   }

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -41,12 +41,12 @@ export async function POST(request: Request) {
       const { accessToken } = await exchangeCodeForToken({ code })
       return NextResponse.json({ accessToken })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Meta API error'
+      const message = err instanceof Error ? err.message : 'Erro desconhecido da API da Meta'
       console.error('Embedded Signup immediate code exchange failed:', message)
-      return NextResponse.json({ error: `Meta API error: ${message}` }, { status: 400 })
+      return NextResponse.json({ error: `Erro da API da Meta: ${message}` }, { status: 400 })
     }
   } catch (error) {
     console.error('Error in WhatsApp embedded-signup/exchange POST:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

@@ -158,7 +158,7 @@ export async function POST(request: Request) {
           results.push({
             phone: recipient.phone,
             status: 'failed',
-            error: 'Invalid phone number format',
+            error: 'Formato de telefone inválido',
           })
           failedCount++
           continue
@@ -210,7 +210,7 @@ export async function POST(request: Request) {
             ? error.message
             : error instanceof Error
               ? error.message
-              : 'Unknown error'
+              : 'Erro desconhecido'
         console.error(
           `Failed to send broadcast to ${recipient.phone ?? contactId}:`,
           errorMessage
@@ -242,7 +242,7 @@ export async function POST(request: Request) {
     }
     console.error('Error in WhatsApp broadcast POST:', error)
     return NextResponse.json(
-      { error: 'Failed to process broadcast' },
+      { error: 'Não foi possível processar o disparo' },
       { status: 500 }
     )
   }
