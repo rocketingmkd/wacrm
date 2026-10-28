@@ -45,7 +45,7 @@ describe('sendMessageToConversation — param validation (pre-DB)', () => {
     await expectSendError(
       { ...base, messageType: 'carrier-pigeon' },
       400,
-      /Unsupported message_type/
+      /message_type não suportado/
     );
   });
 
@@ -84,7 +84,7 @@ describe('sendMessageToConversation — param validation (pre-DB)', () => {
         contentText: 'a'.repeat(1025),
       },
       400,
-      /1024-character limit/
+      /limite de 1024 caracteres/
     );
   });
 

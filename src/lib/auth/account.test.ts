@@ -130,7 +130,7 @@ describe("getCurrentAccount", () => {
     await expect(getCurrentAccount()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
-  it("maps a profiles query error to 'Could not load account context'", async () => {
+  it("maps a profiles query error to 'Não foi possível carregar o contexto da conta'", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
       byTable: {
@@ -139,11 +139,11 @@ describe("getCurrentAccount", () => {
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
-      "Could not load account context",
+      "Não foi possível carregar o contexto da conta",
     );
   });
 
-  it("maps an accounts query error to 'Could not load account context'", async () => {
+  it("maps an accounts query error to 'Não foi possível carregar o contexto da conta'", async () => {
     // The exact #294 shape if the embed were still in play, but now on
     // the decoupled accounts lookup: profile resolves, account read errors.
     const { client } = makeClient({
@@ -159,7 +159,7 @@ describe("getCurrentAccount", () => {
     createClient.mockReturnValue(client);
     const err = await getCurrentAccount().catch((e) => e);
     expect(err).toBeInstanceOf(ForbiddenError);
-    expect(err.message).toBe("Could not load account context");
+    expect(err.message).toBe("Não foi possível carregar o contexto da conta");
   });
 
   it("rejects a profile not linked to an account", async () => {
@@ -171,7 +171,7 @@ describe("getCurrentAccount", () => {
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
+      "O perfil não está vinculado a uma conta",
     );
   });
 
@@ -188,7 +188,7 @@ describe("getCurrentAccount", () => {
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
+      "O perfil não está vinculado a uma conta",
     );
   });
 });
@@ -304,7 +304,7 @@ describe("toErrorResponse", () => {
     const res = toErrorResponse(new PaymentRequiredError());
     expect(res.status).toBe(402);
     const body = await res.json();
-    expect(body).toEqual({ error: "Account is read-only", code: "account_read_only" });
+    expect(body).toEqual({ error: "A conta está somente para leitura", code: "account_read_only" });
   });
 
   it("maps FeatureNotAvailableError to 403 with a stable error code", async () => {
@@ -312,7 +312,7 @@ describe("toErrorResponse", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body).toEqual({
-      error: "This feature requires the Pro plan",
+      error: "Este recurso exige o plano Pro",
       code: "plan_upgrade_required",
     });
   });

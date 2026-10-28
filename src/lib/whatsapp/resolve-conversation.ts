@@ -63,7 +63,7 @@ export async function resolveConversationByPhone(
   if (!config) {
     throw new SendMessageError(
       'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      'WhatsApp não configurado. Configure a integração do WhatsApp primeiro.',
       400
     );
   }
@@ -119,7 +119,7 @@ export async function resolveConversationByPhone(
         } else {
           throw new SendMessageError(
             'db_error',
-            'Failed to create contact',
+            'Não foi possível criar o contato',
             500
           );
         }
@@ -128,7 +128,7 @@ export async function resolveConversationByPhone(
           '[resolve-conversation] contact create error:',
           createErr
         );
-        throw new SendMessageError('db_error', 'Failed to create contact', 500);
+        throw new SendMessageError('db_error', 'Não foi possível criar o contato', 500);
       }
     } else {
       contactId = created.id;
@@ -175,7 +175,7 @@ export async function resolveGroupConversation(
     .eq('account_id', accountId)
     .maybeSingle();
   if (!conversation) {
-    throw new SendMessageError('not_found', 'Conversation not found', 404);
+    throw new SendMessageError('not_found', 'Conversa não encontrada', 404);
   }
   const contact = conversation.contact as { is_group?: boolean } | { is_group?: boolean }[] | null;
   const isGroup = Array.isArray(contact) ? contact[0]?.is_group : contact?.is_group;
@@ -211,7 +211,7 @@ async function findOrCreateConversationRow(
 
   if (findErr) {
     console.error('[resolve-conversation] conversation lookup error:', findErr);
-    throw new SendMessageError('db_error', 'Failed to resolve conversation', 500);
+    throw new SendMessageError('db_error', 'Não foi possível localizar a conversa', 500);
   }
 
   if (existing && existing.length > 0) {
@@ -242,7 +242,7 @@ async function findOrCreateConversationRow(
       }
     }
     console.error('[resolve-conversation] conversation create error:', convErr);
-    throw new SendMessageError('db_error', 'Failed to create conversation', 500);
+    throw new SendMessageError('db_error', 'Não foi possível criar a conversa', 500);
   }
 
   return newConv.id;

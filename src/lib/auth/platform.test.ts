@@ -63,7 +63,7 @@ describe("requirePlatformAdmin", () => {
     createClient.mockReturnValue(client);
     const err = await requirePlatformAdmin().catch((e) => e);
     expect(err).toBeInstanceOf(ForbiddenError);
-    expect(err.message).toBe("Not a platform administrator");
+    expect(err.message).toBe("Você não é administrador da plataforma");
   });
 
   it("throws ForbiddenError when the RPC itself errors", async () => {

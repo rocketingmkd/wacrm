@@ -108,10 +108,10 @@ export async function requirePlatformAdmin(): Promise<PlatformContext> {
   const { data: isAdmin, error } = await supabase.rpc('is_platform_admin');
   if (error) {
     console.error('[platform] is_platform_admin RPC failed:', error);
-    throw new ForbiddenError('Could not verify platform admin status');
+    throw new ForbiddenError('Não foi possível verificar o acesso de administrador da plataforma');
   }
   if (!isAdmin) {
-    throw new ForbiddenError('Not a platform administrator');
+    throw new ForbiddenError('Você não é administrador da plataforma');
   }
 
   return {

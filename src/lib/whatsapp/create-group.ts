@@ -83,7 +83,7 @@ export async function createWhatsAppGroup(
     if (!isValidE164(digits)) {
       throw new SendMessageError(
         'bad_request',
-        `Invalid phone number in 'participants': "${String(raw).slice(0, 30)}"`,
+        `Telefone inválido em 'participants': "${String(raw).slice(0, 30)}"`,
         400
       );
     }
@@ -92,7 +92,7 @@ export async function createWhatsAppGroup(
   if (requested.length > MAX_GROUP_PARTICIPANTS) {
     throw new SendMessageError(
       'bad_request',
-      `At most ${MAX_GROUP_PARTICIPANTS} participants per group`,
+      `No máximo ${MAX_GROUP_PARTICIPANTS} participantes por grupo`,
       400
     );
   }

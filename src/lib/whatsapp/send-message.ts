@@ -133,7 +133,7 @@ export function validateSendMessageParams(params: {
   if (!(VALID_MESSAGE_TYPES as readonly string[]).includes(messageType)) {
     throw new SendMessageError(
       'bad_request',
-      `Unsupported message_type "${messageType}"`,
+      `message_type não suportado "${messageType}"`,
       400
     );
   }
@@ -180,7 +180,7 @@ export function validateSendMessageParams(params: {
   ) {
     throw new SendMessageError(
       'bad_request',
-      'Caption exceeds the 1024-character limit',
+      'A legenda passa do limite de 1024 caracteres',
       400
     );
   }
@@ -417,7 +417,7 @@ export async function sendMessageToConversation(
     if (data && !isMessageTemplate(data)) {
       throw new SendMessageError(
         'template_malformed',
-        'Template row is malformed locally — run "Sync from Meta" in Settings to repair it.',
+        'O registro do modelo está inconsistente localmente. Use "Sincronizar da Meta" em Configurações para repará-lo.',
         500
       );
     }
@@ -601,7 +601,7 @@ export async function sendMessageToConversation(
     console.error('[send-message] error inserting sent message:', msgError);
     throw new SendMessageError(
       'db_error',
-      `Message sent to Meta but failed to save to DB: ${msgError.message}`,
+      `Mensagem enviada à Meta, mas não foi possível salvá-la no banco: ${msgError.message}`,
       500
     );
   }
