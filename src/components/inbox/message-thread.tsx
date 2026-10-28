@@ -1262,6 +1262,20 @@ export function MessageThread({
                             reactions={msgReactions}
                             currentUserId={user?.id}
                             onToggleReaction={handlePillToggle}
+                            avatarUrl={
+                              msg.sender_type === "customer"
+                                ? contact?.avatar_url
+                                : profiles.find(
+                                    (p) => p.id === msg.sender_id || p.user_id === msg.sender_id,
+                                  )?.avatar_url
+                            }
+                            avatarName={
+                              msg.sender_type === "customer"
+                                ? msg.sender_name || contactDisplayName
+                                : profiles.find(
+                                    (p) => p.id === msg.sender_id || p.user_id === msg.sender_id,
+                                  )?.full_name
+                            }
                             isFirstInGroup={isFirstInGroup}
                             templateButtons={
                               msg.template_name

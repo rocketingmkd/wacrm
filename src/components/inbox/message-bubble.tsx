@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
 import { MediaLightbox } from "./media-lightbox";
+import { AudioMessagePlayer } from "./audio-message-player";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
 
@@ -34,6 +35,9 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /** Photo + name of whoever sent the message, shown on voice messages. */
+  avatarUrl?: string | null;
+  avatarName?: string;
   /**
    * True when this is the first message of a consecutive run from the
    * same sender (agent/bot vs. customer). Only the first bubble in a run
@@ -215,16 +219,22 @@ function MessageContent({
   message,
   t,
   templateButtons,
+  inlineFooter,
+  audio,
 }: {
   message: Message;
   t: ReturnType<typeof useTranslations>;
   templateButtons?: TemplateButton[];
+  /** Time + status that float at the end of the text's last line. */
+  inlineFooter?: React.ReactNode;
+  audio?: { avatarUrl?: string | null; name?: string; footer: React.ReactNode };
 }) {
   switch (message.content_type) {
     case "text":
       return (
-        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
+        <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14.2px] leading-[19px]">
           {message.content_text}
+          {inlineFooter}
         </p>
       );
 
@@ -264,7 +274,12 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="w-60 max-w-full" />
+            <AudioMessagePlayer
+              url={message.media_url}
+              avatarUrl={audio?.avatarUrl}
+              name={audio?.name}
+              footer={audio?.footer}
+            />
           ) : (
             <MediaUnavailable label={t("audio")} t={t} />
           )}
@@ -363,6 +378,8 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  avatarUrl,
+  avatarName,
   isFirstInGroup = true,
   templateButtons,
 }: MessageBubbleProps) {
@@ -376,9 +393,54 @@ export function MessageBubble({
   // floats over the picture instead of sitting in a strip below it.
   const hasMedia = Boolean(message.media_url);
   const isVisual = hasMedia && (message.content_type === "image" || message.content_type === "video");
-  const isFramed = isVisual || (hasMedia && message.content_type === "audio");
+  const isFramed = isVisual;
+  const isAudio = hasMedia && message.content_type === "audio";
+  // Plain text carries its time on the last line (WhatsApp); everything
+  // else keeps the time in its own row below the content.
+  const isInlineText = message.content_type === "text";
   const timeOverlay =
     isVisual && !message.content_text && !reply && !(message.sender_name && !isAgent);
+
+  const footerInner = (
+    <>
+      {/* AI badge — only on replies the auto-reply bot generated
+          (always outbound, so it sits on the wa-out fill). Lets
+          agents tell an AI reply from their own / a Flow's at a
+          glance. When the reply carries the agent's name (multi-
+          agent accounts, migration 056) the badge names it —
+          "IA · Comercial" — so a silent transfer is visible. */}
+      {message.ai_generated && (
+        <span
+          className="inline-flex max-w-[60%] items-center gap-0.5 rounded-full bg-wa-out-foreground/20 px-1.5 py-px text-[9px] font-semibold leading-none tracking-wide text-wa-out-foreground"
+          title={
+            message.ai_agent_name
+              ? `${t("aiBadgeTitle")} — ${message.ai_agent_name}`
+              : t("aiBadgeTitle")
+          }
+        >
+          <Sparkles className="h-2.5 w-2.5 shrink-0" />
+          <span className="uppercase">{t("aiBadge")}</span>
+          {message.ai_agent_name && (
+            <span className="truncate normal-case opacity-90">
+              · {message.ai_agent_name}
+            </span>
+          )}
+        </span>
+      )}
+      {message.transport === "evolution" && (
+        <span
+          className="inline-flex items-center rounded-full bg-amber-500/25 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-amber-200"
+          title="Enviada pela sessão não oficial para reabrir a conversa"
+        >
+          via não oficial
+        </span>
+      )}
+      {/* Fixed WhatsApp metadata gray — reads fine against both the
+          green outbound and white/slate inbound bubble. */}
+      <span className={cn("text-[11px]", timeOverlay ? "text-white" : "text-wa-meta")}>{time}</span>
+      {isAgent && <StatusIcon status={message.status} />}
+    </>
+  );
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
@@ -392,7 +454,7 @@ export function MessageBubble({
       <div
         className={cn(
           "relative rounded-lg",
-          isFramed ? "p-1" : "px-3 py-2",
+          isFramed ? "p-1" : "px-[9px] pt-[6px] pb-[7px]",
           isAgent
             ? "bg-wa-out text-wa-out-foreground"
             : "bg-wa-in text-wa-in-foreground",
@@ -428,62 +490,41 @@ export function MessageBubble({
             />
           </div>
         )}
-        <MessageContent message={message} t={t} templateButtons={templateButtons} />
-        <div
-          className={cn(
-            "mt-1 flex items-center gap-1",
-            isAgent ? "justify-end" : "justify-start",
-            isFramed && !timeOverlay && "px-2 pb-0.5",
-            timeOverlay &&
-              "absolute bottom-2 right-2 mt-0 rounded-full bg-black/45 px-1.5 py-0.5 text-white",
-          )}
-        >
-          {/* AI badge — only on replies the auto-reply bot generated
-              (always outbound, so it sits on the wa-out fill). Lets
-              agents tell an AI reply from their own / a Flow's at a
-              glance. When the reply carries the agent's name (multi-
-              agent accounts, migration 056) the badge names it —
-              "IA · Comercial" — so a silent transfer is visible. */}
-          {message.ai_generated && (
-            <span
-              className="inline-flex max-w-[60%] items-center gap-0.5 rounded-full bg-wa-out-foreground/20 px-1.5 py-px text-[9px] font-semibold leading-none tracking-wide text-wa-out-foreground"
-              title={
-                message.ai_agent_name
-                  ? `${t("aiBadgeTitle")} — ${message.ai_agent_name}`
-                  : t("aiBadgeTitle")
-              }
-            >
-              <Sparkles className="h-2.5 w-2.5 shrink-0" />
-              <span className="uppercase">{t("aiBadge")}</span>
-              {message.ai_agent_name && (
-                <span className="truncate normal-case opacity-90">
-                  · {message.ai_agent_name}
-                </span>
-              )}
-            </span>
-          )}
-          {message.transport === 'evolution' && (
-            <span
-              className="inline-flex items-center rounded-full bg-amber-500/25 px-1.5 py-px text-[9px] font-semibold uppercase leading-none tracking-wide text-amber-200"
-              title="Enviada pela sessão não oficial para reabrir a conversa"
-            >
-              via não oficial
-            </span>
-          )}
-          {/* Fixed WhatsApp metadata gray — reads fine against both the
-              green outbound and white/slate inbound bubble, so it doesn't
-              need to branch on isAgent the way the old primary-tinted
-              version did. */}
-          <span className={cn("text-[10px]", timeOverlay ? "text-white" : "text-wa-meta")}>{time}</span>
-          {isAgent && <StatusIcon status={message.status} />}
-        </div>
+        <MessageContent
+          message={message}
+          t={t}
+          templateButtons={templateButtons}
+          inlineFooter={
+            isInlineText ? (
+              <span className="float-right -mb-[3px] ml-3 mt-[5px] inline-flex items-center gap-1">
+                {footerInner}
+              </span>
+            ) : undefined
+          }
+          audio={{ avatarUrl, name: avatarName, footer: footerInner }}
+        />
+        {!isInlineText && !isAudio && (
+          <div
+            className={cn(
+              "mt-1 flex items-center gap-1",
+              isAgent ? "justify-end" : "justify-start",
+              isFramed && !timeOverlay && "px-2 pb-0.5",
+              timeOverlay &&
+                "absolute bottom-2 right-2 mt-0 rounded-full bg-black/45 px-1.5 py-0.5 text-white",
+            )}
+          >
+            {footerInner}
+          </div>
+        )}
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (
-        <MessageReactions
-          reactions={reactions}
-          currentUserId={currentUserId}
-          onToggle={onToggleReaction}
-        />
+        <div className="relative z-[1] -mt-2.5 px-2">
+          <MessageReactions
+            reactions={reactions}
+            currentUserId={currentUserId}
+            onToggle={onToggleReaction}
+          />
+        </div>
       )}
     </div>
   );
