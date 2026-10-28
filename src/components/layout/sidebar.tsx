@@ -271,7 +271,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className={cn("flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-4", collapsed && "lg:flex-col lg:justify-center lg:gap-1 lg:px-2")}>
+        <div className={cn("flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-4", collapsed && "lg:h-auto lg:flex-col lg:justify-center lg:gap-2 lg:px-2 lg:py-3")}>
           <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
             <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-xl object-contain" />
             <span className={cn("min-w-0", hideWhenCollapsed)}>
