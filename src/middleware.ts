@@ -86,7 +86,7 @@ export async function middleware(request: NextRequest) {
   if (!user && request.nextUrl.pathname.startsWith('/api/whatsapp/') &&
       !request.nextUrl.pathname.includes('/webhook')) {
     return withRefreshedCookies(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      NextResponse.json({ error: 'Sessão expirada. Faça login novamente.' }, { status: 401 })
     )
   }
 
