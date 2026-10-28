@@ -8,13 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { UsersRound } from "lucide-react";
 
 // `useSearchParams` opts the component out of static prerendering
@@ -75,26 +69,24 @@ function LoginPageInner() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
-          <div className="mx-auto mb-2 flex h-20 w-20 items-center justify-center rounded-xl bg-primary/10">
-            {inviteToken ? (
+    <AuthShell mode="login" inviteToken={inviteToken}>
+      <div>
+        <div className="mb-6 flex flex-col items-start text-left">
+          {inviteToken && (
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
               <UsersRound className="h-6 w-6 text-primary" />
-            ) : (
-              <img src="/logo.png" alt="" className="h-16 w-16 object-contain" />
-            )}
-          </div>
-          <CardTitle className="text-xl text-foreground">
+            </div>
+          )}
+          <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground sm:text-[28px]">
             {inviteToken ? t('titleAccept') : t('titleWelcome')}
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {inviteToken
               ? t('descAccept')
               : t('descWelcome')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -162,17 +154,8 @@ function LoginPageInner() {
               {t('createAccount')}
             </Link>
           </p>
-          <p className="mt-3 text-center text-xs text-muted-foreground">
-            <Link href="/terms" className="text-primary hover:text-primary/80">
-              Termos de Uso
-            </Link>{" "}
-            ·{" "}
-            <Link href="/privacy" className="text-primary hover:text-primary/80">
-              Política de Privacidade
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </AuthShell>
   );
 }

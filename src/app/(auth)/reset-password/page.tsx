@@ -6,13 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { KeyRound } from "lucide-react";
 
 export default function ResetPasswordPage() {
@@ -49,18 +43,18 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="items-center text-center">
+    <AuthShell>
+      <div>
+        <div className="mb-6 flex flex-col items-start text-left">
           <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <KeyRound className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-xl text-foreground">Definir nova senha</CardTitle>
-          <CardDescription className="text-muted-foreground">
+          <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground sm:text-[28px]">Definir nova senha</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Escolha uma nova senha para sua conta
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -108,8 +102,8 @@ export default function ResetPasswordPage() {
               {loading ? "Salvando..." : "Salvar nova senha"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </AuthShell>
   );
 }
