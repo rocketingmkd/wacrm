@@ -3,6 +3,11 @@ import { requirePlatformAdmin } from '@/lib/auth/platform'
 import { toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { isBillingStatus } from '@/lib/billing/state'
+import {
+  CreateAccountError,
+  createAccountWithOwner,
+  validateCreateAccountInput,
+} from '@/lib/platform/create-account'
 
 // GET /api/platform/accounts?q=&status=&page=
 //
@@ -60,6 +65,48 @@ export async function GET(request: Request) {
       page_size: PAGE_SIZE,
     })
   } catch (err) {
+    return toErrorResponse(err)
+  }
+}
+
+// POST /api/platform/accounts   { companyName, ownerEmail, ownerName?, trialDays? }
+//
+// "Nova conta": creates the owner's login (the signup trigger provisions
+// the account, profile and trial), renames the account and returns a
+// one-off link for the OWNER to set their own password. No password is
+// generated or returned. Staff only; the action lands in
+// platform_audit_log.
+export async function POST(request: Request) {
+  try {
+    const ctx = await requirePlatformAdmin()
+
+    const limit = checkRateLimit(`platform:create:${ctx.userId}`, RATE_LIMITS.adminAction)
+    if (!limit.success) return rateLimitResponse(limit)
+
+    const body = await request.json().catch(() => null)
+    const input = validateCreateAccountInput(body)
+
+    // Public base URL for the link: the trusted env value first (the
+    // request origin behind Traefik is the container's bind address).
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
+
+    const result = await createAccountWithOwner(ctx.admin, input, {
+      siteUrl,
+      actorUserId: ctx.userId,
+    })
+
+    return NextResponse.json(
+      {
+        account_id: result.accountId,
+        owner_email: result.ownerEmail,
+        setup_link: result.setupLink,
+      },
+      { status: 201 },
+    )
+  } catch (err) {
+    if (err instanceof CreateAccountError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
     return toErrorResponse(err)
   }
 }

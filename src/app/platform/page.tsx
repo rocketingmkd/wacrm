@@ -1,21 +1,48 @@
 'use client';
 
-// /platform — the dashboard landing page: account health at a
-// glance (trial/active/past_due/expired/canceled counts), recent
-// signups, and recent webhook activity. Same role the overview
-// screen plays in the DSC admin panel.
+// /platform — the Master "Painel": account health at a glance
+// (counts by billing status, new accounts, volume, estimated MRR), a
+// 12-month growth chart, recent signups and recent webhook activity.
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import {
+  Activity,
+  Banknote,
+  Building2,
+  Clock,
+  KanbanSquare,
+  Loader2,
+  MessageSquareText,
+  Sparkles,
+  TrendingUp,
+  XCircle,
+} from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
-import { BILLING_STATUSES, type BillingStatus } from '@/lib/billing/state';
+import { type BillingStatus } from '@/lib/billing/state';
+import type { GrowthPoint } from '@/lib/platform/overview';
+import { MasterKpi } from './_components/master-kpi';
+import { STATUS_LABEL, STATUS_TONE, formatBRL } from './_components/billing-ui';
 
 interface DashboardData {
   total_accounts: number;
   by_status: Record<BillingStatus, number>;
+  new_this_month: number;
+  messages_total: number;
+  deals_total: number;
+  mrr_estimate: number;
+  growth: GrowthPoint[];
   recent_accounts: {
     id: string;
     name: string;
@@ -36,26 +63,10 @@ interface DashboardData {
   no_account_7d: number;
 }
 
-const STATUS_LABEL: Record<BillingStatus, string> = {
-  trialing: 'Em teste',
-  active: 'Ativo',
-  past_due: 'Pagamento pendente',
-  expired: 'Trial expirado',
-  canceled: 'Cancelado',
-};
-
-const STATUS_TONE: Record<BillingStatus, string> = {
-  trialing: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  active: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  past_due: 'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
-  expired: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
-  canceled: 'border-neutral-500/30 bg-neutral-500/10 text-neutral-600 dark:text-neutral-400',
-};
-
 const OUTCOME_TONE: Record<'success' | 'ignored' | 'error', string> = {
-  success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  ignored: 'border-neutral-500/30 bg-neutral-500/10 text-neutral-600 dark:text-neutral-400',
-  error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
+  success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dm:text-emerald-300',
+  ignored: 'border-neutral-500/30 bg-neutral-500/10 text-neutral-600 dm:text-neutral-400',
+  error: 'border-red-500/30 bg-red-500/10 text-red-700 dm:text-red-300',
 };
 
 function fmtDateTime(iso: string): string {
@@ -66,6 +77,8 @@ function fmtDateTime(iso: string): string {
     minute: '2-digit',
   });
 }
+
+const fmtInt = (n: number) => n.toLocaleString('pt-BR');
 
 export default function PlatformDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -89,7 +102,7 @@ export default function PlatformDashboardPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-primary" />
+        <Loader2 className="size-6 animate-spin text-red-500" />
       </div>
     );
   }
@@ -97,43 +110,82 @@ export default function PlatformDashboardPage() {
   if (error || !data) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-red-500">
-        {error ?? 'Falha ao carregar o dashboard.'}
+        {error ?? 'Falha ao carregar o painel.'}
       </div>
     );
   }
 
+  const activePct = Math.round((data.by_status.active / Math.max(1, data.total_accounts)) * 100);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Visão geral das contas e da cobrança do Rocketing CRM.
-        </p>
+    <div className="space-y-5">
+      <header className="min-w-0">
+        <h1 className="font-display text-xl font-bold sm:text-2xl">Painel Master</h1>
+        <p className="text-xs text-muted-foreground">Visão geral de toda a plataforma.</p>
+      </header>
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+        <MasterKpi
+          accent
+          icon={<Building2 className="size-4" />}
+          label="Contas"
+          value={fmtInt(data.total_accounts)}
+          hint={`+${data.new_this_month} este mês`}
+        />
+        <MasterKpi
+          icon={<Activity className="size-4" />}
+          label={STATUS_LABEL.active}
+          value={fmtInt(data.by_status.active)}
+          hint={`${activePct}% do total`}
+        />
+        <MasterKpi
+          icon={<Sparkles className="size-4" />}
+          label={STATUS_LABEL.trialing}
+          value={fmtInt(data.by_status.trialing)}
+        />
+        <MasterKpi
+          icon={<Clock className="size-4" />}
+          label={STATUS_LABEL.past_due}
+          value={fmtInt(data.by_status.past_due)}
+        />
+        <MasterKpi
+          icon={<XCircle className="size-4" />}
+          label={STATUS_LABEL.expired}
+          value={fmtInt(data.by_status.expired)}
+        />
+        <MasterKpi
+          icon={<XCircle className="size-4" />}
+          label={STATUS_LABEL.canceled}
+          value={fmtInt(data.by_status.canceled)}
+        />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total de contas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">{data.total_accounts}</CardContent>
-        </Card>
-        {BILLING_STATUSES.map((s) => (
-          <Card size="sm" key={s}>
-            <CardHeader>
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {STATUS_LABEL[s]}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{data.by_status[s]}</CardContent>
-          </Card>
-        ))}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <MasterKpi
+          icon={<TrendingUp className="size-4" />}
+          label="Novas no mês"
+          value={fmtInt(data.new_this_month)}
+        />
+        <MasterKpi
+          icon={<Banknote className="size-4" />}
+          label="MRR estimado"
+          value={formatBRL(data.mrr_estimate)}
+          hint="apenas contas ativas"
+        />
+        <MasterKpi
+          icon={<MessageSquareText className="size-4" />}
+          label="Mensagens (total)"
+          value={fmtInt(data.messages_total)}
+        />
+        <MasterKpi
+          icon={<KanbanSquare className="size-4" />}
+          label="Negócios no funil (total)"
+          value={fmtInt(data.deals_total)}
+        />
       </div>
 
       {data.no_account_7d > 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dm:text-amber-300">
           {data.no_account_7d} webhook{data.no_account_7d === 1 ? '' : 's'} nos últimos 7 dias
           não encontrou{data.no_account_7d === 1 ? '' : 'ram'} uma conta correspondente.{' '}
           <Link href="/platform/webhooks" className="underline">
@@ -141,6 +193,38 @@ export default function PlatformDashboardPage() {
           </Link>
         </div>
       )}
+
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <h2 className="font-display text-[15px] font-semibold">Crescimento de contas</h2>
+        <p className="mb-3 text-xs text-muted-foreground">Total acumulado nos últimos 12 meses</p>
+        <div className="h-[260px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data.growth} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="month" fontSize={11} stroke="var(--muted-foreground)" tickLine={false} />
+              <YAxis fontSize={11} allowDecimals={false} stroke="var(--muted-foreground)" tickLine={false} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--popover)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  color: 'var(--popover-foreground)',
+                }}
+                formatter={(value) => [fmtInt(Number(value)), 'Contas']}
+                labelFormatter={(_, payload) => payload?.[0]?.payload?.key ?? ''}
+              />
+              <Line
+                type="monotone"
+                dataKey="total"
+                stroke="#ef4444"
+                strokeWidth={2.5}
+                dot={{ r: 3, fill: '#ef4444' }}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

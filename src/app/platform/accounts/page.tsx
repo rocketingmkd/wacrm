@@ -12,9 +12,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -138,11 +138,16 @@ export default function PlatformAccountsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Contas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {totalCount} conta{totalCount === 1 ? '' : 's'} no total.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Contas</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {totalCount} conta{totalCount === 1 ? '' : 's'} no total.
+          </p>
+        </div>
+        <Link href="/platform/accounts/new" className={buttonVariants({ variant: 'outline' })}>
+          <Plus /> Nova conta
+        </Link>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

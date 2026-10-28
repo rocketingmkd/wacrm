@@ -3,6 +3,10 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* The app switches light/dark with data-mode on <html>, never a .dark class,
+   so `dark:` above is inert. `dm:` follows data-mode (used by the platform
+   admin; existing `dark:` classes elsewhere are left as they were). */
+@custom-variant dm (&:is([data-mode="dark"] *));
 
 @theme inline {
   --color-background: var(--background);
