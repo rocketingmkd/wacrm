@@ -19,7 +19,6 @@ import {
   Square,
   X,
   Loader2,
-  Sparkles,
   Plus,
   MessageSquareDashed,
   Zap,
@@ -111,7 +110,6 @@ interface MediaDraft {
 }
 
 interface MessageComposerProps {
-  conversationId: string;
   sessionExpired: boolean;
   /** A WhatsApp group: text and media only (no interactive messages or templates). */
   isGroup?: boolean;
@@ -145,7 +143,6 @@ function formatDuration(seconds: number): string {
 const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 
 export function MessageComposer({
-  conversationId,
   sessionExpired,
   isGroup = false,
   onSend,
@@ -169,7 +166,6 @@ export function MessageComposer({
   // composer stays locked and clicking it opens the template picker.
   const reopenMode = unofficialReady && sessionExpired;
   const textLocked = sessionExpired && !reopenMode;
-  const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // External draft push (Gerente IA). Keyed on `nonce` so the same text
@@ -287,50 +283,6 @@ export function MessageComposer({
     },
     [adjustHeight]
   );
-
-  // Ask the AI assistant for a suggested reply and drop it into the
-  // composer for the agent to edit + send. Read-only server-side —
-  // nothing is sent until the agent hits Send.
-  const handleDraft = useCallback(async () => {
-    if (drafting) return;
-    setDrafting(true);
-    try {
-      const res = await fetch("/api/ai/draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.code === "ai_not_configured") {
-          toast.error("A IA ainda não está configurada. Ative em Configurações → Assistente de IA.");
-        } else {
-          toast.error(data.error ?? "Couldn't draft a reply.");
-        }
-        return;
-      }
-      const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
-      if (!draftText) {
-        toast.error("O assistente não retornou uma resposta.");
-        return;
-      }
-      setText(draftText);
-      // Let the textarea grow to fit and drop the cursor at the end so
-      // the agent can tweak immediately.
-      requestAnimationFrame(() => {
-        adjustHeight();
-        const el = textareaRef.current;
-        if (el) {
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
-        }
-      });
-    } catch {
-      toast.error("Não foi possível acessar o assistente de IA.");
-    } finally {
-      setDrafting(false);
-    }
-  }, [drafting, conversationId, adjustHeight]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -745,23 +697,6 @@ export function MessageComposer({
               <ClipboardList className="h-4 w-4" />
             </button>
           )}
-
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="enviar mensagens"
-            disabled={drafting}
-            title={readOnly ? undefined : t("draftWithAI")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
-            onClick={handleDraft}
-          >
-            {drafting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-          </GatedButton>
 
           {textLocked && !readOnly ? (
             <button

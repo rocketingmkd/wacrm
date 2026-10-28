@@ -1275,7 +1275,6 @@ export function MessageThread({
 
       {/* Composer */}
       <MessageComposer
-        conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         isGroup={isGroup}
         onSend={handleSend}
