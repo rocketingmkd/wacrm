@@ -18,10 +18,12 @@ import {
   ExternalLink,
   Phone,
   Copy,
+  Maximize2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
+import { MediaLightbox } from "./media-lightbox";
 import { InteractivePreview } from "@/components/interactive/interactive-preview";
 import { useTranslations } from "next-intl";
 
@@ -63,6 +65,27 @@ function StatusIcon({ status }: { status: Message["status"] }) {
   }
 }
 
+function MediaVideo({ url }: { url: string }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  return (
+    <div className="group/video relative inline-block">
+      <video src={url} controls className="max-h-72 max-w-64 rounded-md" />
+      <button
+        type="button"
+        onClick={() => setViewerOpen(true)}
+        aria-label="Ver em tela cheia"
+        title="Ver em tela cheia"
+        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition-opacity hover:bg-black/75 focus-visible:opacity-100 group-hover/video:opacity-100"
+      >
+        <Maximize2 className="h-3.5 w-3.5" />
+      </button>
+      {viewerOpen && (
+        <MediaLightbox kind="video" src={url} filename="video.mp4" onClose={() => setViewerOpen(false)} />
+      )}
+    </div>
+  );
+}
+
 function MediaUnavailable({ label, t }: { label: string, t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -76,6 +99,7 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const loadImage = useCallback(async () => {
     if (!url) return;
@@ -126,12 +150,24 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <>
+      <img
+        src={src ?? ""}
+        alt={alt}
+        className="max-h-72 max-w-64 cursor-zoom-in rounded-md object-cover"
+        onClick={() => setViewerOpen(true)}
+        onError={() => setError(true)}
+      />
+      {viewerOpen && src && (
+        <MediaLightbox
+          kind="image"
+          src={src}
+          alt={alt}
+          filename="imagem.jpg"
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -201,7 +237,7 @@ function MessageContent({
             <MediaUnavailable label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] px-2 text-sm">
               {message.content_text}
             </p>
           )}
@@ -212,16 +248,12 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
-            />
+            <MediaVideo url={message.media_url} />
           ) : (
             <MediaUnavailable label={t("video")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] px-2 text-sm">
               {message.content_text}
             </p>
           )}
@@ -232,7 +264,7 @@ function MessageContent({
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <audio src={message.media_url} controls className="w-60 max-w-full" />
           ) : (
             <MediaUnavailable label={t("audio")} t={t} />
           )}
@@ -265,7 +297,7 @@ function MessageContent({
             {t("template")}
           </span>
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm">
+            <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere] px-2 text-sm">
               {message.content_text}
             </p>
           )}
@@ -339,6 +371,15 @@ export function MessageBubble({
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
 
+  // WhatsApp look: image / video / audio fill the bubble (thin frame, no
+  // fat padding) and, when there is nothing else in the bubble, the time
+  // floats over the picture instead of sitting in a strip below it.
+  const hasMedia = Boolean(message.media_url);
+  const isVisual = hasMedia && (message.content_type === "image" || message.content_type === "video");
+  const isFramed = isVisual || (hasMedia && message.content_type === "audio");
+  const timeOverlay =
+    isVisual && !message.content_text && !reply && !(message.sender_name && !isAgent);
+
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
   return (
@@ -350,7 +391,8 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-lg px-3 py-2",
+          "relative rounded-lg",
+          isFramed ? "p-1" : "px-3 py-2",
           isAgent
             ? "bg-wa-out text-wa-out-foreground"
             : "bg-wa-in text-wa-in-foreground",
@@ -373,22 +415,27 @@ export function MessageBubble({
         {!isAgent && message.sender_name && (
           // Group messages: who spoke. Several people share sender_type
           // 'customer', so the name is shown on every bubble.
-          <p className="mb-0.5 truncate text-[12px] font-semibold text-primary">
+          <p className={cn("mb-0.5 truncate text-[12px] font-semibold text-primary", isFramed && "px-2 pt-1")}>
             {message.sender_name}
           </p>
         )}
         {reply && (
-          <ReplyQuote
-            authorLabel={reply.authorLabel}
-            preview={reply.preview}
-            onPrimary={isAgent}
-          />
+          <div className={cn(isFramed && "px-1 pt-1")}>
+            <ReplyQuote
+              authorLabel={reply.authorLabel}
+              preview={reply.preview}
+              onPrimary={isAgent}
+            />
+          </div>
         )}
         <MessageContent message={message} t={t} templateButtons={templateButtons} />
         <div
           className={cn(
             "mt-1 flex items-center gap-1",
             isAgent ? "justify-end" : "justify-start",
+            isFramed && !timeOverlay && "px-2 pb-0.5",
+            timeOverlay &&
+              "absolute bottom-2 right-2 mt-0 rounded-full bg-black/45 px-1.5 py-0.5 text-white",
           )}
         >
           {/* AI badge — only on replies the auto-reply bot generated
@@ -427,7 +474,7 @@ export function MessageBubble({
               green outbound and white/slate inbound bubble, so it doesn't
               need to branch on isAgent the way the old primary-tinted
               version did. */}
-          <span className="text-[10px] text-wa-meta">{time}</span>
+          <span className={cn("text-[10px]", timeOverlay ? "text-white" : "text-wa-meta")}>{time}</span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
       </div>
