@@ -23,6 +23,7 @@ import {
   LogOut,
   MessageSquare,
   Plug,
+  Radar,
   Radio,
   Settings,
   Shield,
@@ -126,6 +127,7 @@ const navSections: { labelKey: string; items: NavItem[] }[] = [
       { href: "/automations", labelKey: "automations", icon: Zap },
       { href: "/flows", labelKey: "flows", icon: Workflow, beta: true, feature: "flows" },
       { href: "/agents", labelKey: "aiAgents", icon: Bot },
+      { href: "/copiloto", labelKey: "copilot", icon: Radar, feature: "aiCopilot" },
     ],
   },
   {

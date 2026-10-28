@@ -33,6 +33,7 @@
     "automations": "자동화",
     "flows": "플로우",
     "aiAgents": "AI 에이전트",
+    "copilot": "AI 코파일럿",
     "settings": "설정",
     "beta": "베타",
     "unreadConversations": "읽지 않은 대화 {count}건",
@@ -52,6 +53,7 @@
   "Header": {
     "flows": "플로우",
     "aiAgents": "AI 에이전트",
+    "copilot": "AI 코파일럿",
     "connection": "연결",
     "reports": "보고서",
     "traffic": "트래픽 출처",

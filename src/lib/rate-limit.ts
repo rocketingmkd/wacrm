@@ -178,6 +178,9 @@ export const RATE_LIMITS = {
   /** Copilot insight refresh, per account — caps the team's combined
    *  forced refreshes on the shared BYO key. */
   aiCopilotAccount: { limit: 90, windowMs: 60_000 },
+  /** Copiloto radar scan, per account: one scan fans out up to 10 LLM
+   *  calls on the shared BYO key, so only a few scans a minute. */
+  aiRadar: { limit: 4, windowMs: 60_000 },
   /** Rocketing Pay billing webhook, per source IP. Applied BEFORE
    *  token verification — otherwise billing_webhook_logs itself
    *  becomes the flood target. 60/min per IP is comfortably above

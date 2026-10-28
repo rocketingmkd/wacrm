@@ -75,7 +75,7 @@ export async function middleware(request: NextRequest) {
   // is_platform_admin() authorization check lives in
   // src/app/platform/layout.tsx (requirePlatformAdmin()), not here,
   // to avoid a DB round trip on every matched request.
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/agenda', '/broadcasts', '/automations', '/agents', '/flows', '/notifications', '/reports', '/traffic', '/integrations', '/connection', '/settings', '/platform']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/agenda', '/broadcasts', '/automations', '/agents', '/copiloto', '/flows', '/notifications', '/reports', '/traffic', '/integrations', '/connection', '/settings', '/platform']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

@@ -33,6 +33,7 @@
     "automations": "Automations",
     "flows": "Flows",
     "aiAgents": "AI Agents",
+    "copilot": "AI Copilot",
     "settings": "Settings",
     "beta": "Beta",
     "unreadConversations": "{count} unread {count, plural, =1 {conversation} other {conversations}}",
@@ -52,6 +53,7 @@
   "Header": {
     "flows": "Flows",
     "aiAgents": "AI Agents",
+    "copilot": "AI Copilot",
     "connection": "Connection",
     "reports": "Reports",
     "traffic": "Traffic sources",
