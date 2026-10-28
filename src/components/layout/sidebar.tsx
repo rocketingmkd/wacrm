@@ -15,6 +15,8 @@ import {
   Bell,
   Bot,
   CalendarDays,
+  ChevronsLeft,
+  ChevronsRight,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -165,6 +167,29 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   // in the /platform layout) is the real gate; this only decides
   // whether to show the link, so it fails closed on any error.
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  // Desktop-only "icons only" mode, remembered per browser. Read after
+  // mount (not in the initial state) so server and client markup match.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore after mount to avoid a hydration mismatch
+      setCollapsed(localStorage.getItem("sidebar-collapsed") === "1");
+    } catch {
+      /* storage blocked: stay expanded */
+    }
+  }, []);
+  const toggleCollapsed = () =>
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
+      } catch {
+        /* preference just won't persist */
+      }
+      return next;
+    });
+  // Classes that only apply on lg+ (the mobile drawer is always full).
+  const hideWhenCollapsed = collapsed ? "lg:hidden" : "";
   useEffect(() => {
     let cancelled = false;
     createClient()
@@ -239,16 +264,17 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           // Desktop: static, always visible — reset all the mobile framing.
-          "lg:static lg:z-0 lg:w-[260px] lg:translate-x-0 lg:transition-none",
+          "lg:static lg:z-0 lg:translate-x-0 lg:transition-none",
+          collapsed ? "lg:w-[72px]" : "lg:w-[260px]",
         )}
         aria-label="Principal"
       >
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
-        <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
+        <div className={cn("flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border px-4", collapsed && "lg:flex-col lg:justify-center lg:gap-1 lg:px-2")}>
           <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
             <img src="/logo.png" alt="" className="h-9 w-9 shrink-0 rounded-xl object-contain" />
-            <span className="min-w-0">
+            <span className={cn("min-w-0", hideWhenCollapsed)}>
               <span className="block truncate font-display text-[15px] font-extrabold tracking-tight text-foreground">
                 {t("title")}
               </span>
@@ -267,13 +293,22 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           >
             <X className="h-5 w-5" />
           </button>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            title={collapsed ? "Expandir menu" : "Recolher menu"}
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+          >
+            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+          </button>
         </div>
 
         {/* Main navigation, grouped in labelled sections */}
-        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-3">
+        <nav className={cn("flex-1 space-y-4 overflow-y-auto px-3 py-3", collapsed && "lg:px-2")}>
           {visibleSections.map((section) => (
             <div key={section.labelKey}>
-              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+              <p className={cn("mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80", hideWhenCollapsed)}>
                 {t(section.labelKey as string)}
               </p>
               <ul className="flex flex-col gap-1">
@@ -296,7 +331,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     <li key={item.href}>
                       <Link
                         href={item.href}
+                        title={collapsed ? t(item.labelKey as string) : undefined}
                         className={cn(
+                          collapsed && "lg:justify-center lg:px-0",
                           // Taller on mobile so fingers can hit the row reliably (44px or more).
                           "relative flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] font-medium transition-colors",
                           isActive
@@ -313,11 +350,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         <item.icon
                           className={cn("h-[18px] w-[18px] shrink-0", isActive && "text-primary")}
                         />
-                        <span className="flex-1 truncate">{t(item.labelKey as string)}</span>
+                        <span className={cn("flex-1 truncate", hideWhenCollapsed)}>{t(item.labelKey as string)}</span>
                         {item.beta && (
                           <span
                             aria-label={t("beta")}
-                            className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
+                            className={cn("rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300", hideWhenCollapsed)}
                           >
                             {t("beta")}
                           </span>
@@ -325,7 +362,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         {showUnreadDot && (
                           <span
                             aria-label={t("unreadConversations", { count: totalUnread })}
-                            className="relative flex h-2 w-2"
+                            className={cn("relative flex h-2 w-2", collapsed && "lg:absolute lg:right-3 lg:top-2")}
                           >
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
                             <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -334,7 +371,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                         {showNotificationBadge && (
                           <span
                             aria-label={t("unreadNotifications", { count: unreadNotifications })}
-                            className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
+                            className={cn("flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground", collapsed && "lg:absolute lg:right-1 lg:top-0")}
                           >
                             {unreadNotifications > 9 ? "9+" : unreadNotifications}
                           </span>
@@ -349,7 +386,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </nav>
 
         {/* User section */}
-        <div className="shrink-0 border-t border-border p-3">
+        <div className={cn("shrink-0 border-t border-border p-3", collapsed && "lg:px-2")}>
           {/* Account name display — surfaced only when the account
               name differs from the user's own name (see
               `showAccountStrip`). For a default solo account the two
@@ -357,7 +394,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               below; for renamed or shared accounts it tells the user
               which account they're acting in. */}
           {showAccountStrip && account?.name ? (
-            <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
+            <div className={cn("mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground", hideWhenCollapsed)}>
               <UsersRound className="size-3.5 shrink-0" />
               {/* `title=` exposes the full name on hover when it
                   gets truncated (long account names + narrow
@@ -386,7 +423,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </div>
           ) : null}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-xl border border-border bg-card-2 px-2.5 py-2 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none data-popup-open:bg-muted">
+            <DropdownMenuTrigger className={cn("flex w-full items-center gap-3 rounded-xl border border-border bg-card-2 px-2.5 py-2 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none data-popup-open:bg-muted", collapsed && "lg:justify-center lg:px-0")}>
               <Avatar className="size-8 shrink-0">
                 {profile?.avatar_url ? (
                   <AvatarImage
@@ -400,7 +437,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     "U"}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className={cn("min-w-0 flex-1", hideWhenCollapsed)}>
                 <p className="truncate text-sm font-medium text-foreground">
                   {profile?.full_name ?? t("defaultUser")}
                 </p>

@@ -39,7 +39,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
 import {
@@ -140,6 +139,16 @@ function groupMessagesByDate(messages: Message[]) {
 
   return groups;
 }
+
+// Unofficial-send refusals that a template can get around.
+const UNOFFICIAL_FALLBACK_CODES = new Set([
+  "unofficial_lead_limit",
+  "unofficial_daily_limit",
+  "unofficial_not_connected",
+  "unofficial_disabled",
+  "unofficial_no_history",
+  "unofficial_error",
+]);
 
 const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
   { label: "Open", value: "open", color: "text-primary" },
@@ -561,7 +570,15 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send message:", reason);
-          toast.error(`Falha ao enviar: ${reason}`);
+          // The unofficial session refused to reopen the window (lead or
+          // daily limit, session down, ...): the only way left is an
+          // approved template, so open the picker instead of just failing.
+          if (transport === "evolution" && UNOFFICIAL_FALLBACK_CODES.has(payload?.code)) {
+            toast.error(`${reason} Escolha um modelo para reabrir a conversa.`);
+            setTemplateModalOpen(true);
+          } else {
+            toast.error(`Falha ao enviar: ${reason}`);
+          }
           // Mark the optimistic bubble as failed so the user sees what happened
           onUpdateMessage(tempId, { status: "failed" });
           return;
@@ -829,7 +846,7 @@ export function MessageThread({
         preview: buildReplyPreview(msg, tQuote),
       });
     },
-    [authorLabelFor],
+    [authorLabelFor, tQuote],
   );
 
   // Single reaction-set primitive. emoji === "" removes; otherwise adds/swaps.
@@ -893,7 +910,7 @@ export function MessageThread({
         setReactions(snapshot);
       }
     },
-    [conversation, user?.id],
+    [conversation, user],
   );
 
   const handleAssignChange = useCallback(

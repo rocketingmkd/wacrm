@@ -59,6 +59,11 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+const LIST_DEFAULT_WIDTH = 320;
+const LIST_MIN_WIDTH = 260;
+const LIST_MAX_WIDTH = 560;
+const clampListWidth = (w: number) => Math.min(LIST_MAX_WIDTH, Math.max(LIST_MIN_WIDTH, w));
+
 type InboxFilter = ConversationStatus | "all" | "unread" | "groups";
 
 export function ConversationList({
@@ -82,6 +87,60 @@ export function ConversationList({
   ], [t]);
 
   const [search, setSearch] = useState("");
+
+  // Desktop column width, draggable from the right edge and remembered
+  // per browser. Read after mount so server and client markup match.
+  const [listWidth, setListWidth] = useState(LIST_DEFAULT_WIDTH);
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem("inbox-list-width"));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore after mount to avoid a hydration mismatch
+      if (saved) setListWidth(clampListWidth(saved));
+    } catch {
+      /* storage blocked: keep default */
+    }
+  }, []);
+  const saveListWidth = useCallback((w: number) => {
+    try {
+      localStorage.setItem("inbox-list-width", String(w));
+    } catch {
+      /* preference just won't persist */
+    }
+  }, []);
+  const startResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = listWidth;
+      let latest = startW;
+      const onMove = (ev: PointerEvent) => {
+        latest = clampListWidth(startW + ev.clientX - startX);
+        setListWidth(latest);
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        saveListWidth(latest);
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [listWidth, saveListWidth],
+  );
+  const onResizeKey = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const next = clampListWidth(listWidth + (e.key === "ArrowRight" ? 20 : -20));
+      setListWidth(next);
+      saveListWidth(next);
+    },
+    [listWidth, saveListWidth],
+  );
   // Right-click "Excluir contato" (also covers WhatsApp groups).
   const [deleteTarget, setDeleteTarget] = useState<
     (ContactDeleteTarget & { conversationId: string; seq: number }) | null
@@ -282,7 +341,28 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+    <div
+      className="relative flex h-full w-full flex-col border-r border-border bg-card lg:w-[var(--list-w)]"
+      style={{ "--list-w": `${listWidth}px` } as React.CSSProperties}
+    >
+      {/* Drag handle (desktop only): resize the chat column. Double-click
+          restores the default width. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar lista de conversas"
+        aria-valuemin={LIST_MIN_WIDTH}
+        aria-valuemax={LIST_MAX_WIDTH}
+        aria-valuenow={listWidth}
+        tabIndex={0}
+        onPointerDown={startResize}
+        onKeyDown={onResizeKey}
+        onDoubleClick={() => {
+          setListWidth(LIST_DEFAULT_WIDTH);
+          saveListWidth(LIST_DEFAULT_WIDTH);
+        }}
+        className="absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/40 focus-visible:outline-none lg:block"
+      />
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center gap-2">

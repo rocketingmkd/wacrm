@@ -156,10 +156,11 @@ export function MessageComposer({
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  // Reopening a closed window through the unofficial session is opt-in
-  // per conversation: the agent has to click the banner button first.
-  const [reopenConvId, setReopenConvId] = useState<string | null>(null);
-  const reopenMode = unofficialReady && sessionExpired && reopenConvId === conversationId;
+  // Closed 24h window: when the unofficial session can reopen the thread,
+  // free text goes through it automatically (the thread falls back to the
+  // template picker if the session refuses). Without that route, the
+  // composer stays locked and clicking it opens the template picker.
+  const reopenMode = unofficialReady && sessionExpired;
   const textLocked = sessionExpired && !reopenMode;
   const [drafting, setDrafting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -572,34 +573,6 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">
-            {t("sessionExpiredHint")}
-          </p>
-          {unofficialReady && !reopenMode && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-amber-400 hover:text-amber-300"
-              onClick={() => setReopenConvId(conversationId)}
-              title="Envia uma mensagem livre pela sessão não oficial. Só funciona com quem já falou com você e tem limite por lead."
-            >
-              Reabrir via não oficial
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs text-amber-400 hover:text-amber-300"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="mr-1 h-3 w-3" />
-            {t("templates")}
-          </Button>
-        </div>
-      )}
-
       {/* Hidden file inputs driven by the attach menu. */}
       <input
         ref={imageInputRef}
@@ -765,6 +738,15 @@ export function MessageComposer({
             )}
           </GatedButton>
 
+          {textLocked && !readOnly ? (
+            <button
+              type="button"
+              onClick={onOpenTemplates}
+              className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:border-primary/50"
+            >
+              {t("sessionExpiredPlaceholder")}
+            </button>
+          ) : (
           <textarea
             ref={textareaRef}
             value={text}
@@ -773,9 +755,7 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? t("readOnlyPlaceholder")
-                : reopenMode
-                  ? "Mensagem de reabertura (via não oficial)"
-                : sessionExpired
+                : sessionExpired && !reopenMode
                   ? t("sessionExpiredPlaceholder")
                   : t("typeMessagePlaceholder")
             }
@@ -787,10 +767,10 @@ export function MessageComposer({
             title={readOnly ? t("readOnlyTitle") : undefined}
             className={cn(
               "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (textLocked || readOnly) && "cursor-not-allowed opacity-50",
-              reopenMode && "border-amber-500/50"
+              (textLocked || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
+          )}
 
           <GatedButton
             size="sm"
