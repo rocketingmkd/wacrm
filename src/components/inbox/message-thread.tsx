@@ -25,8 +25,6 @@ import {
   Clock,
   ArrowLeft,
   RefreshCw,
-  PanelRightOpen,
-  PanelRightClose,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MessageBubble } from "./message-bubble";
 import { MessageActions } from "./message-actions";
+import { ContactAvatar } from "./contact-avatar";
 import {
   MessageComposer,
   CHAT_MEDIA_BUCKET,
@@ -995,9 +994,12 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
+          <ContactAvatar
+            name={displayName}
+            url={contact.avatar_url}
+            isGroup={Boolean(contact.is_group)}
+            className="h-10 w-10"
+          />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
             <p className="truncate text-xs text-muted-foreground">
@@ -1037,33 +1039,6 @@ export function MessageThread({
           )}
           {/* "Enviar avaliação": asks the customer to rate the service. */}
           {!isGroup && <CsatButton conversationId={conversation.id} windowOpen={!sessionInfo.expired} />}
-
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
-            <button
-              type="button"
-              onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? t("hideContactPanel") : t("showContactPanel")
-              }
-              title={contactPanelOpen ? t("hideContact") : t("showContact")}
-              aria-pressed={contactPanelOpen}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </button>
-          )}
 
           {/* Manual refresh — forces a refetch of the messages + the
               conversation list (the parent bumps its resyncToken). Useful
@@ -1311,6 +1286,8 @@ export function MessageThread({
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
         onOpenTemplates={handleOpenTemplates}
+        contactPanelOpen={contactPanelOpen}
+        onToggleContactPanel={onToggleContactPanel}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
         insertText={composerInsert}

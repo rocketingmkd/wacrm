@@ -10,6 +10,7 @@ import {
 import {
   Send,
   LayoutTemplate,
+  ClipboardList,
   Paperclip,
   Image as ImageIcon,
   Video,
@@ -120,6 +121,10 @@ interface MessageComposerProps {
   onSendMedia: (payload: SendMediaPayload) => void;
   onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
   onOpenTemplates: () => void;
+  /** Contact-details side panel (desktop). The toggle sits next to the
+   *  templates button; omitted where the panel doesn't exist. */
+  contactPanelOpen?: boolean;
+  onToggleContactPanel?: () => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
   /** Text pushed in from outside (Gerente IA "Gerar rascunho"). The
@@ -148,6 +153,8 @@ export function MessageComposer({
   onSendMedia,
   onSendInteractive,
   onOpenTemplates,
+  contactPanelOpen,
+  onToggleContactPanel,
   replyTo,
   onClearReply,
   insertText,
@@ -720,6 +727,24 @@ export function MessageComposer({
           >
             <LayoutTemplate className="h-4 w-4" />
           </GatedButton>
+
+          {/* Contact record panel toggle — desktop only: the side panel
+              takes width the thread may want back on small laptops. */}
+          {onToggleContactPanel && (
+            <button
+              type="button"
+              onClick={onToggleContactPanel}
+              aria-label={contactPanelOpen ? "Ocultar dados do contato" : "Mostrar dados do contato"}
+              title={contactPanelOpen ? "Ocultar dados do contato" : "Mostrar dados do contato"}
+              aria-pressed={contactPanelOpen}
+              className={cn(
+                "hidden h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
+                contactPanelOpen ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              <ClipboardList className="h-4 w-4" />
+            </button>
+          )}
 
           <GatedButton
             variant="ghost"

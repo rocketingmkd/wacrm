@@ -9,7 +9,7 @@ import {
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X, MessageSquarePlus, UsersRound } from "lucide-react";
+import { Search, ChevronDown, X, MessageSquarePlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useTranslations } from "next-intl";
@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ContactAvatar } from "./contact-avatar";
 import {
   ContactDeleteMenu,
   type ContactDeleteTarget,
@@ -47,17 +48,6 @@ interface ConversationListProps {
 
 
 
-
-// Stable per-name colour so avatars without a photo look like WhatsApp's.
-const AVATAR_COLORS = [
-  "#00a884", "#5e47de", "#c0392b", "#d68910", "#2874a6",
-  "#8e44ad", "#16a085", "#cb4335", "#7d6608", "#2e4053",
-];
-function avatarColor(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
 
 const LIST_DEFAULT_WIDTH = 320;
 const LIST_MIN_WIDTH = 260;
@@ -611,7 +601,6 @@ function ConversationItem({
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
-  const initials = displayName.charAt(0).toUpperCase();
   const contactTags = contact?.tags ?? [];
 
   const handleClick = useCallback(() => {
@@ -641,31 +630,12 @@ function ConversationItem({
         />
       )}
       {/* Avatar */}
-      <div
-        className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold",
-          !contact?.avatar_url && !contact?.is_group && "text-white"
-        )}
-        style={
-          contact?.avatar_url
-            ? undefined
-            : contact?.is_group
-              ? { backgroundColor: "var(--primary-soft)", color: "var(--primary)" }
-              : { backgroundColor: avatarColor(displayName) }
-        }
-      >
-        {contact?.avatar_url ? (
-          <img
-            src={contact.avatar_url}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover"
-          />
-        ) : contact?.is_group ? (
-          <UsersRound className="h-5 w-5" aria-label="Grupo" />
-        ) : (
-          initials
-        )}
-      </div>
+      <ContactAvatar
+        name={displayName}
+        url={contact?.avatar_url}
+        isGroup={Boolean(contact?.is_group)}
+        className="h-10 w-10"
+      />
 
       {/* Content */}
       <div className="min-w-0 flex-1">
