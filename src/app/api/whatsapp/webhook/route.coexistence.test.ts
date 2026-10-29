@@ -123,6 +123,10 @@ function makeSupabaseMock() {
       eqs.push([col, val])
       return b
     })
+    b.or = vi.fn((filter: string) => {
+      eqs.push(['or', filter])
+      return b
+    })
     b.not = vi.fn(chain)
     b.gt = vi.fn(chain)
     b.order = vi.fn(chain)
@@ -434,10 +438,98 @@ describe('Coexistence webhook topics', () => {
         message_id: 'wamid-hist-1',
         status: 'delivered',
       })
-      // Backfill must never overwrite live conversation state.
-      expect(conversationUpdates).toHaveLength(0)
+      // A conversation with no preview yet gets the imported message
+      // (timestamp 1700000000), guarded by the "only if older/empty" filter.
+      expect(conversationUpdates).toHaveLength(1)
+      expect(conversationUpdates[0].patch).toEqual({
+        last_message_text: 'Mensagem antiga do histórico',
+        last_message_at: new Date(1700000000 * 1000).toISOString(),
+      })
+      expect(conversationUpdates[0].eqs).toContainEqual(['id', 'conv-new'])
+      expect(conversationUpdates[0].eqs.some(([c]) => c === 'or')).toBe(true)
       // progress !== 100 and phase !== 2 — sync not yet complete.
       expect(configUpdates.some((u) => 'history_synced_at' in u.patch)).toBe(false)
+    })
+
+    const historyThread = (messages: Record<string, unknown>[]) => ({
+      metadata: { display_phone_number: BUSINESS_PHONE, phone_number_id: 'PNID-1' },
+      history: [
+        {
+          metadata: { phase: 0, chunk_order: 1, progress: 50 },
+          threads: [{ id: CUSTOMER_PHONE, messages }],
+        },
+      ],
+    })
+    const histMsg = (id: string, ts: number, body: string | null, type = 'text') => ({
+      from: CUSTOMER_PHONE,
+      to: BUSINESS_PHONE,
+      id,
+      timestamp: String(ts),
+      type,
+      ...(body === null ? {} : { text: { body } }),
+    })
+
+    it('previews the newest real message once per thread, skipping error entries and not touching unread_count', async () => {
+      await postWebhook(
+        'history',
+        historyThread([
+          histMsg('h1', 1700000100, 'segunda'),
+          histMsg('h2', 1700000300, null, 'errors'),
+          histMsg('h3', 1700000000, 'primeira'),
+          histMsg('h4', 1700000200, 'x'.repeat(250)),
+        ]),
+      )
+
+      expect(messageInserts).toHaveLength(4)
+      expect(conversationUpdates).toHaveLength(1)
+      expect(conversationUpdates[0].patch).toEqual({
+        last_message_text: 'x'.repeat(200),
+        last_message_at: new Date(1700000200 * 1000).toISOString(),
+      })
+      expect('unread_count' in conversationUpdates[0].patch).toBe(false)
+    })
+
+    it('does not overwrite a newer real-time preview', async () => {
+      existingConversationRow = {
+        id: 'conv-live',
+        account_id: 'acct-1',
+        contact_id: 'contact-new',
+        unread_count: 2,
+        last_message_text: 'ao vivo',
+        last_message_at: '2026-10-28T12:00:00.000Z',
+      }
+      await postWebhook('history', historyThread([histMsg('h1', 1700000000, 'antiga')]))
+
+      expect(messageInserts).toHaveLength(1)
+      expect(conversationUpdates).toHaveLength(0)
+    })
+
+    it('replaces an older preview with a newer imported message', async () => {
+      existingConversationRow = {
+        id: 'conv-old',
+        account_id: 'acct-1',
+        contact_id: 'contact-new',
+        unread_count: 0,
+        last_message_text: 'velha',
+        last_message_at: '2020-01-01T00:00:00.000Z',
+      }
+      await postWebhook('history', historyThread([histMsg('h1', 1700000000, 'mais nova')]))
+
+      expect(conversationUpdates).toHaveLength(1)
+      expect(conversationUpdates[0].patch.last_message_text).toBe('mais nova')
+      expect(conversationUpdates[0].eqs).toContainEqual(['id', 'conv-old'])
+    })
+
+    it('uses [type] for a media message without text', async () => {
+      await postWebhook('history', historyThread([histMsg('h1', 1700000000, null, 'image')]))
+
+      expect(conversationUpdates[0].patch.last_message_text).toBe('[image]')
+    })
+
+    it('leaves the preview empty when the thread only has unsupported entries', async () => {
+      await postWebhook('history', historyThread([histMsg('h1', 1700000000, null, 'errors')]))
+
+      expect(conversationUpdates).toHaveLength(0)
     })
 
     it('marks history_synced_at once progress reaches 100', async () => {

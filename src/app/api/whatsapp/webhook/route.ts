@@ -738,10 +738,34 @@ async function handleAppStateSync(value: SmbAppStateSyncValue) {
  * the Embedded Signup popup. Backfilled messages are tagged
  * `origin='history_import'` and deduped by `message_id` (chunks can be
  * redelivered by Meta, and history can overlap live Cloud API traffic
- * received in the meantime). Deliberately does NOT touch
- * conversations.last_message_text/last_message_at — those must keep
- * reflecting real-time traffic, not decades-old backfill.
+ * received in the meantime). Per thread, after the messages are stored, the
+ * conversation preview (last_message_text/last_message_at) is filled from the
+ * newest imported message with real content, but ONLY when the conversation
+ * has no last_message_at yet or its last_message_at is older than that
+ * message — real-time traffic that is newer is never overwritten. Never
+ * touches unread_count.
  */
+async function applyHistoryPreview(conversationId: string, at: number, text: string) {
+  // Fresh read: the row fetched before the loop can be stale by now.
+  const { data: rows } = await supabaseAdmin()
+    .from('conversations')
+    .select('last_message_at')
+    .eq('id', conversationId)
+    .limit(1)
+  const current: string | null | undefined = rows?.[0]?.last_message_at
+  if (current && new Date(current).getTime() >= at) return
+
+  const iso = new Date(at).toISOString()
+  // The filter repeats the rule in SQL so a live message that lands between
+  // the read above and this write still wins.
+  const { error } = await supabaseAdmin()
+    .from('conversations')
+    .update({ last_message_text: text, last_message_at: iso })
+    .eq('id', conversationId)
+    .or(`last_message_at.is.null,last_message_at.lt.${iso}`)
+  if (error) console.error('[coexistence] history preview update failed:', error)
+}
+
 async function handleHistorySync(value: HistoryValue) {
   const phoneNumberId = value.metadata?.phone_number_id
   const businessPhone = value.metadata?.display_phone_number ?? null
@@ -780,6 +804,9 @@ async function handleHistorySync(value: HistoryValue) {
       )
       if (!convResult) continue
 
+      // Newest imported message that can serve as the list preview.
+      let preview: { at: number; text: string } | null = null
+
       for (const msg of thread.messages ?? []) {
         try {
           const { data: existingMsg } = await supabaseAdmin()
@@ -811,9 +838,26 @@ async function handleHistorySync(value: HistoryValue) {
           })
           if (insertError) {
             console.error('[coexistence] history message insert failed:', insertError)
+            continue
+          }
+
+          // History carries entries like "[Unsupported message type: errors]";
+          // they stay in the thread but must not become the list preview.
+          const at = parseInt(msg.timestamp, 10) * 1000
+          const isReal = msg.type !== 'errors' && !(contentText ?? '').startsWith('[Unsupported message type')
+          if (isReal && Number.isFinite(at) && (!preview || at > preview.at)) {
+            preview = { at, text: (contentText || `[${msg.type}]`).slice(0, 200) }
           }
         } catch (err) {
           console.error('[coexistence] failed to import history message:', err)
+        }
+      }
+
+      if (preview) {
+        try {
+          await applyHistoryPreview(convResult.conversation.id, preview.at, preview.text)
+        } catch (err) {
+          console.error('[coexistence] failed to set history preview:', err)
         }
       }
     }
