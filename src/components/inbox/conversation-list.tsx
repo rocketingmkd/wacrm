@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  CONVERSATIONS_PAGE_SIZE,
   CONVERSATION_SELECT,
+  blockHasMore,
   matchesContactFilters,
   normalizeConversations,
+  shouldAutoLoadMore,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
@@ -33,6 +36,8 @@ interface ConversationListProps {
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
+  /** Next block fetched while scrolling: append it, never replace the list. */
+  onPageLoaded: (conversations: Conversation[]) => void;
   /**
    * Increment to force the fetch effect below to refire. The parent
    * bumps this on realtime reconnect / tab visibility → visible so the
@@ -49,6 +54,24 @@ interface ConversationListProps {
 
 
 
+/** One block of the inbox, newest message first (NULL dates last). */
+async function fetchConversationBlock(
+  supabase: ReturnType<typeof createClient>,
+  from: number,
+) {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select(CONVERSATION_SELECT)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(from, from + CONVERSATIONS_PAGE_SIZE - 1);
+  return {
+    rows: (data ?? []) as unknown as Parameters<typeof normalizeConversations>[0],
+    error,
+  };
+}
+
 const LIST_DEFAULT_WIDTH = 320;
 const LIST_MIN_WIDTH = 260;
 const LIST_MAX_WIDTH = 560;
@@ -61,6 +84,7 @@ export function ConversationList({
   onSelect,
   conversations,
   onConversationsLoaded,
+  onPageLoaded,
   resyncToken = 0,
   onNewConversation,
   onConversationDeleted,
@@ -158,20 +182,48 @@ export function ConversationList({
   // subsequent async completion.
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   const conversationsRef = useRef(conversations);
+  const onPageLoadedRef = useRef(onPageLoaded);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
+    onPageLoadedRef.current = onPageLoaded;
     conversationsRef.current = conversations;
   });
+
+  // Server rows fetched so far (the `.range` offset of the next block).
+  // Not conversations.length: realtime can add rows the offset never saw.
+  const serverCountRef = useRef(0);
+  const hasMoreRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  // Bumped by every (re)load; a scroll block that finishes
+  // after that is stale and dropped.
+  const generationRef = useRef(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
+    generationRef.current++;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("conversations")
-        .select(CONVERSATION_SELECT)
-        .order("last_message_at", { ascending: false });
+      // Open (or resync) with the first block; on a resync reload at least
+      // as many rows as the user had already scrolled through, so pages
+      // already shown are not dropped.
+      const target = Math.max(serverCountRef.current, CONVERSATIONS_PAGE_SIZE);
+      const data: Parameters<typeof normalizeConversations>[0] = [];
+      let error: Awaited<ReturnType<typeof fetchConversationBlock>>["error"] = null;
+      let more = false;
+      for (let from = 0; from < target; from += CONVERSATIONS_PAGE_SIZE) {
+        const res = await fetchConversationBlock(supabase, from);
+        if (cancelled) return;
+        if (res.error) {
+          error = res.error;
+          break;
+        }
+        data.push(...res.rows);
+        more = blockHasMore(res.rows.length);
+        if (!more) break;
+      }
 
       if (cancelled) return;
 
@@ -187,7 +239,13 @@ export function ConversationList({
         return;
       }
 
-      const loaded = normalizeConversations(data ?? []);
+      const loaded = normalizeConversations(data);
+      serverCountRef.current = data.length;
+      hasMoreRef.current = more;
+      setHasMore(more);
+      // A scroll block still in flight belongs to the previous load.
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
       onConversationsLoadedRef.current(loaded);
       setLoading(false);
 
@@ -224,6 +282,36 @@ export function ConversationList({
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
+
+  // Next block, appended below what is already loaded.
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const generation = generationRef.current;
+    const { rows, error } = await fetchConversationBlock(
+      createClient(),
+      serverCountRef.current,
+    );
+    if (generation !== generationRef.current) return;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    if (error) {
+      console.error("Failed to fetch more conversations:", {
+        message: error.message,
+        code: error.code,
+      });
+      // Stop auto-paging on a failure; a resync or reload retries.
+      hasMoreRef.current = false;
+      setHasMore(false);
+      return;
+    }
+    serverCountRef.current += rows.length;
+    const more = blockHasMore(rows.length);
+    hasMoreRef.current = more;
+    setHasMore(more);
+    onPageLoadedRef.current(normalizeConversations(rows));
+  }, []);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
   // stay stable regardless of which conversations happen to be loaded.
@@ -298,6 +386,42 @@ export function ConversationList({
 
     return result;
   }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+
+  // Fetch more on its own when search or a narrowing filter could be hiding
+  // conversations that are not loaded yet (the filtering is client side).
+  // Re-runs after each block lands, so it stops once the list is long
+  // enough or the server runs out.
+  const filtering = filter !== "all" || selectedTagIds.length > 0 || selectedCompany !== null;
+  const autoLoad = shouldAutoLoadMore({
+    hasMore,
+    loading,
+    loadingMore,
+    searching: search.trim() !== "",
+    filtering,
+    filteredCount: filtered.length,
+  });
+  useEffect(() => {
+    if (autoLoad) void loadMore();
+  }, [autoLoad, loadMore, conversations]);
+
+  // Plain scrolling: fetch the next block when the end of the list comes
+  // into view. Observed against the ScrollArea viewport, not the window.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loading) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMore();
+      },
+      {
+        root: el.closest('[data-slot="scroll-area-viewport"]'),
+        rootMargin: "0px 0px 400px 0px",
+      },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadMore, filtered.length]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -541,7 +665,7 @@ export function ConversationList({
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && !hasMore && !loadingMore ? (
           <div className="px-4 py-12 text-center">
             <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
           </div>
@@ -568,6 +692,13 @@ export function ConversationList({
                 t={t}
               />
             ))}
+            {(hasMore || loadingMore) && (
+              <div ref={sentinelRef} className="flex justify-center py-3">
+                {loadingMore && (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                )}
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>

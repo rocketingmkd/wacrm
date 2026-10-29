@@ -9,6 +9,106 @@ import type { Conversation, Contact, Tag } from "@/types";
 export const CONVERSATION_SELECT =
   "*, contact:contacts(*, contact_tags(tags(*)))";
 
+/**
+ * Rows per request when loading the inbox. The list opens with one block
+ * and fetches the next as the user scrolls (`.range`). Must stay below
+ * PostgREST's `max_rows` (default 1000) or a "full" block would look short
+ * and stop the paging early.
+ */
+export const CONVERSATIONS_PAGE_SIZE = 100;
+
+/** While a tab/filter is active, keep loading until it shows at least this many. */
+export const FILTERED_MIN_VISIBLE = 30;
+
+/** A block smaller than the page size means the server has no more rows. */
+export function blockHasMore(rowsInBlock: number): boolean {
+  return rowsInBlock >= CONVERSATIONS_PAGE_SIZE;
+}
+
+function timeOf(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Inbox order: most recent message first, conversations without a message
+ * date last (Postgres DESC would put NULL first), `created_at` desc as the
+ * tiebreaker. Mirrors the server query so a client-side re-sort after a
+ * realtime event gives the same order as a fresh load.
+ */
+export function compareConversations(
+  a: Pick<Conversation, "last_message_at" | "created_at">,
+  b: Pick<Conversation, "last_message_at" | "created_at">,
+): number {
+  const am = timeOf(a.last_message_at);
+  const bm = timeOf(b.last_message_at);
+  if (am !== bm) {
+    if (am === null) return 1;
+    if (bm === null) return -1;
+    return bm - am;
+  }
+  return (timeOf(b.created_at) ?? 0) - (timeOf(a.created_at) ?? 0);
+}
+
+/**
+ * Returns a new array in inbox order (stable for ties). `pinnedId` keeps one
+ * dateless conversation (a "Nova conversa" the user has open) at the top
+ * instead of letting the re-sort push it to the end while it is on screen.
+ */
+export function sortConversations<
+  T extends Pick<Conversation, "id" | "last_message_at" | "created_at">,
+>(list: T[], pinnedId?: string | null): T[] {
+  const sorted = [...list].sort(compareConversations);
+  if (!pinnedId) return sorted;
+  const i = sorted.findIndex((c) => c.id === pinnedId);
+  if (i <= 0 || timeOf(sorted[i].last_message_at) !== null) return sorted;
+  const [pinned] = sorted.splice(i, 1);
+  return [pinned, ...sorted];
+}
+
+/**
+ * Merge a freshly fetched block into the current list without duplicating.
+ * `preferIncoming: true` (resync) lets the server copy win; false (scroll
+ * paging) keeps the copy already in state, which realtime may have made
+ * fresher than the row the offset query just read. Rows only in `current`
+ * (hydrated by realtime, or a brand-new chat) are kept.
+ */
+export function mergeConversations(
+  current: Conversation[],
+  incoming: Conversation[],
+  { preferIncoming, pinnedId }: { preferIncoming: boolean; pinnedId?: string | null },
+): Conversation[] {
+  const byId = new Map<string, Conversation>();
+  for (const c of current) byId.set(c.id, c);
+  for (const c of incoming) {
+    if (preferIncoming || !byId.has(c.id)) byId.set(c.id, c);
+  }
+  return sortConversations([...byId.values()], pinnedId);
+}
+
+export interface LoadMoreInput {
+  hasMore: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  /** Search text typed: results must cover the whole inbox. */
+  searching: boolean;
+  /** A tab, tag or company filter is narrowing the list. */
+  filtering: boolean;
+  filteredCount: number;
+}
+
+/**
+ * Whether the list should fetch the next block on its own (without a scroll).
+ * Search needs every conversation; a narrowing filter needs enough matches to
+ * fill the screen. Plain scrolling is handled by the end-of-list sentinel.
+ */
+export function shouldAutoLoadMore(i: LoadMoreInput): boolean {
+  if (!i.hasMore || i.loading || i.loadingMore) return false;
+  if (i.searching) return true;
+  return i.filtering && i.filteredCount < FILTERED_MIN_VISIBLE;
+}
+
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
 type RawConversation = Omit<Conversation, "contact"> & {

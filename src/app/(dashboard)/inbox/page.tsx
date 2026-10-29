@@ -6,7 +6,9 @@ import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
+  mergeConversations,
   normalizeConversation,
+  sortConversations,
 } from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -142,6 +144,13 @@ function InboxPageInner() {
     knownConvIdsRef.current = next;
   }, [conversations]);
 
+  // Id of the open conversation, readable from callbacks with stable
+  // identity. Used to keep a just-created (dateless) chat on top while open.
+  const activeConvIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeConvIdRef.current = activeConversation?.id ?? null;
+  }, [activeConversation?.id]);
+
   // Pull the conversation row with its `contact` joined and merge it
   // into state. Needed because Supabase Realtime payloads only carry the
   // row's own columns — a brand-new conversation arrives without a
@@ -151,7 +160,7 @@ function InboxPageInner() {
   // Also self-heals if a realtime event was missed: callers can invoke
   // this whenever they reference a conversation id they don't recognise.
   const hydrateConversation = useCallback(async (convId: string) => {
-    if (hydratingConvIdsRef.current.has(convId)) return;
+    if (hydratingConvIdsRef.current.has(convId)) return null;
     hydratingConvIdsRef.current.add(convId);
     try {
       const supabase = createClient();
@@ -169,9 +178,9 @@ function InboxPageInner() {
           hint: error.hint,
           code: error.code,
         });
-        return;
+        return null;
       }
-      if (!data) return;
+      if (!data) return null;
       const fetched = normalizeConversation(data);
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === fetched.id);
@@ -187,8 +196,9 @@ function InboxPageInner() {
               : c,
           );
         }
-        return [fetched, ...prev];
+        return sortConversations([fetched, ...prev], activeConvIdRef.current);
       });
+      return fetched;
     } finally {
       hydratingConvIdsRef.current.delete(convId);
     }
@@ -263,18 +273,21 @@ function InboxPageInner() {
         // always read false here.
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_text: newMsg.content_text ?? "",
-                    last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
-                  }
-                : c,
+            sortConversations(
+              prev.map((c) =>
+                c.id === newMsg.conversation_id
+                  ? {
+                      ...c,
+                      last_message_text: newMsg.content_text ?? "",
+                      last_message_at: newMsg.created_at,
+                      unread_count:
+                        activeConversation?.id === newMsg.conversation_id
+                          ? 0
+                          : c.unread_count + 1,
+                    }
+                  : c,
+              ),
+              activeConversation?.id,
             ),
           );
         } else {
@@ -315,7 +328,7 @@ function InboxPageInner() {
         if (!knownConvIdsRef.current.has(conv.id)) {
           setConversations((prev) => {
             if (prev.some((c) => c.id === conv.id)) return prev;
-            return [conv, ...prev];
+            return sortConversations([conv, ...prev], activeConversation?.id);
           });
           hydrateConversation(conv.id);
         }
@@ -330,14 +343,17 @@ function InboxPageInner() {
           // UPDATE to round-trip. Non-active convs take the value as-is.
           const isActive = activeConversation?.id === conv.id;
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === conv.id
-                ? {
-                    ...c,
-                    ...conv,
-                    unread_count: isActive ? 0 : conv.unread_count,
-                  }
-                : c,
+            sortConversations(
+              prev.map((c) =>
+                c.id === conv.id
+                  ? {
+                      ...c,
+                      ...conv,
+                      unread_count: isActive ? 0 : conv.unread_count,
+                    }
+                  : c,
+              ),
+              activeConversation?.id,
             ),
           );
         } else {
@@ -424,7 +440,14 @@ function InboxPageInner() {
 
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
-      setConversations(loaded);
+      // Merge, not replace: a resync reloads the pages already scrolled, and
+      // realtime-hydrated rows (or an open "Nova conversa") must survive it.
+      setConversations((prev) =>
+        mergeConversations(prev, loaded, {
+          preferIncoming: true,
+          pinnedId: activeConvIdRef.current,
+        }),
+      );
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
@@ -447,6 +470,17 @@ function InboxPageInner() {
         // full page reload rehydrated state from scratch.
         if (activeConversation?.id === deepLinkConvId) return;
         const match = loaded.find((c) => c.id === deepLinkConvId);
+        if (!match) {
+          // Only the first block is loaded: an older deep-linked thread may
+          // not be in it. Fetch that one row and open it.
+          const wanted = deepLinkConvId;
+          void hydrateConversation(wanted).then((conv) => {
+            if (!conv || autoSelectedForDeepLinkRef.current !== wanted) return;
+            setActiveConversation(conv);
+            setActiveContact(conv.contact ?? null);
+            setMessages([]);
+          });
+        }
         if (match) {
           setActiveConversation(match);
           setActiveContact(match.contact ?? null);
@@ -465,8 +499,18 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation?.id, hydrateConversation]
   );
+
+  // Next block from the infinite scroll: add it under the current list.
+  const handleConversationsPage = useCallback((rows: Conversation[]) => {
+    setConversations((prev) =>
+      mergeConversations(prev, rows, {
+        preferIncoming: false,
+        pinnedId: activeConvIdRef.current,
+      }),
+    );
+  }, []);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
@@ -602,6 +646,9 @@ function InboxPageInner() {
     setConversations((prev) =>
       prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev],
     );
+    // handleSelectConversation below sets the active id; pin it right away so
+    // a realtime re-sort before the next render cannot demote the new chat.
+    activeConvIdRef.current = conv.id;
     handleSelectConversation(conv);
   };
 
@@ -633,6 +680,7 @@ function InboxPageInner() {
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
+            onPageLoaded={handleConversationsPage}
             resyncToken={resyncToken}
             onNewConversation={() => setNewConversationOpen(true)}
             onConversationDeleted={handleConversationDeleted}
