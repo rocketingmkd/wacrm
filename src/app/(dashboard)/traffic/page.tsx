@@ -38,6 +38,13 @@ import {
 } from "@/lib/tracking/report";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ConversionsPanel } from "@/components/tracking/conversions-panel";
 
@@ -342,11 +349,11 @@ export default function TrafficPage() {
               />
             </div>
           )}
-          <Button variant="outline" size="sm" onClick={() => setShowInstall((v) => !v)}>
+          <Button variant="outline" size="sm" onClick={() => setShowInstall(true)}>
             <Code2 className="size-4" />
             Como rastrear
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowConversions((v) => !v)}>
+          <Button variant="outline" size="sm" onClick={() => setShowConversions(true)}>
             <Send className="size-4" />
             Enviar conversões
           </Button>
@@ -357,20 +364,25 @@ export default function TrafficPage() {
         </div>
       </header>
 
-      {showInstall && (
-        <Panel title="Como rastrear os anúncios" subtitle="Configure uma vez; vale para todas as campanhas.">
-          <InstallPanel />
-        </Panel>
-      )}
+      <Dialog open={showInstall} onOpenChange={setShowInstall}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[16px] font-bold">Como rastrear os anúncios</DialogTitle>
+            <DialogDescription>Configure uma vez; vale para todas as campanhas.</DialogDescription>
+          </DialogHeader>
+          {showInstall && <InstallPanel />}
+        </DialogContent>
+      </Dialog>
 
-      {showConversions && (
-        <Panel
-          title="Enviar conversões para os anúncios"
-          subtitle="Devolve à Meta e ao Google as vendas que vieram dos anúncios."
-        >
-          <ConversionsPanel />
-        </Panel>
-      )}
+      <Dialog open={showConversions} onOpenChange={setShowConversions}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[16px] font-bold">Enviar conversões para os anúncios</DialogTitle>
+            <DialogDescription>Devolve à Meta e ao Google as vendas que vieram dos anúncios.</DialogDescription>
+          </DialogHeader>
+          {showConversions && <ConversionsPanel />}
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
