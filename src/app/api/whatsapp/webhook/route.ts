@@ -1399,6 +1399,7 @@ async function processMessage(
     referral: message.referral,
     messageText: rawContentText ?? message.text?.body,
     seenAt: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+    isNewConversation: convResult.created,
   })
 
   // Update conversation

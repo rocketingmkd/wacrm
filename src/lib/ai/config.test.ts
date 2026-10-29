@@ -6,7 +6,8 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
   decrypt: (v: string) => `plain:${v}`,
 }))
 
-import { loadAiAgent, loadReceptionistAgent, loadProviderConfig } from './config'
+import { loadAiAgent, loadReceptionistAgent, loadProviderConfig, loadCopilotConfig } from './config'
+import { AI_PROVIDER_DEFAULT_MODEL } from './defaults'
 
 /** Fake client whose `.from(table)` resolves a different fixed row per
  *  table — agent identity/behaviour now lives in `ai_agents`, the
@@ -116,5 +117,33 @@ describe('loadProviderConfig', () => {
     })
     const credential = await loadProviderConfig(db, 'acct')
     expect(credential?.embeddingsApiKey).toBe('plain:enc-emb')
+  })
+})
+
+describe('loadCopilotConfig', () => {
+  it('works with only the provider key: no agent row needed', async () => {
+    const db = dbWith({ agent: null, provider: PROVIDER_ROW })
+    expect(await loadCopilotConfig(db, 'acct')).toEqual({
+      provider: 'openai',
+      model: AI_PROVIDER_DEFAULT_MODEL.openai,
+      apiKey: 'plain:enc-key',
+      embeddingsApiKey: null,
+    })
+  })
+
+  it('ignores an inactive agent and uses the system default model, not the agent model', async () => {
+    const db = dbWith({ agent: AGENT_ROW, provider: PROVIDER_ROW })
+    const cfg = await loadCopilotConfig(db, 'acct')
+    expect(cfg?.model).toBe(AI_PROVIDER_DEFAULT_MODEL.openai)
+    expect(cfg?.model).not.toBe('gpt-x')
+  })
+
+  it('picks the default model of the configured provider', async () => {
+    const db = dbWith({ provider: { ...PROVIDER_ROW, provider: 'anthropic' } })
+    expect((await loadCopilotConfig(db, 'acct'))?.model).toBe(AI_PROVIDER_DEFAULT_MODEL.anthropic)
+  })
+
+  it('returns null when the account has no API key', async () => {
+    expect(await loadCopilotConfig(dbWith({ provider: null }), 'acct')).toBeNull()
   })
 })

@@ -18,7 +18,7 @@
 // ============================================================
 
 import { generateReply } from './generate'
-import type { AiConfig, AiUsage, ChatMessage } from './types'
+import type { AiCallConfig, AiUsage, ChatMessage } from './types'
 
 export const COPILOT_TEMPERATURES = ['cold', 'warm', 'hot'] as const
 export type CopilotTemperature = (typeof COPILOT_TEMPERATURES)[number]
@@ -68,7 +68,7 @@ export interface CopilotContext {
 }
 
 export interface GenerateCopilotInsightArgs {
-  config: AiConfig
+  config: AiCallConfig
   /** Recent conversation turns, oldest first (buildConversationContext). */
   messages: ChatMessage[]
   context: CopilotContext

@@ -1,6 +1,6 @@
 import {
   AiError,
-  type AiConfig,
+  type AiCallConfig,
   type AiUsage,
   type BookingRequest,
   type ChatMessage,
@@ -11,7 +11,7 @@ import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 
 export interface GenerateArgs {
-  config: AiConfig
+  config: AiCallConfig
   /** Fully-built system prompt (see `buildSystemPrompt`). */
   systemPrompt: string
   /** Recent conversation turns, oldest first. */

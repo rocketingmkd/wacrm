@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./config', () => ({ loadReceptionistAgent: vi.fn() }))
+vi.mock('./config', () => ({ loadCopilotConfig: vi.fn() }))
 vi.mock('./generate', () => ({ generateReply: vi.fn() }))
 vi.mock('./context', () => ({ buildConversationContext: vi.fn() }))
 vi.mock('./usage', () => ({ logAiUsage: vi.fn() }))
 
-import { loadReceptionistAgent } from './config'
+import { loadCopilotConfig } from './config'
 import { generateReply } from './generate'
 import { buildConversationContext } from './context'
 import { AiError } from './types'
+import { logAiUsage } from './usage'
 import { buildRadarSystemPrompt, parseRadarSignals, runRadarScan } from './radar'
 
 // ---------------------------------------------------------------
@@ -197,7 +198,7 @@ function baseTables(): Record<string, Row[]> {
 }
 
 beforeEach(() => {
-  vi.mocked(loadReceptionistAgent).mockReset().mockResolvedValue(null)
+  vi.mocked(loadCopilotConfig).mockReset().mockResolvedValue(null)
   vi.mocked(generateReply).mockReset()
   vi.mocked(buildConversationContext).mockReset().mockResolvedValue([])
 })
@@ -318,7 +319,7 @@ describe('runRadarScan: bottlenecks (no AI)', () => {
 })
 
 describe('runRadarScan: AI reading', () => {
-  const config = { id: 'agent-1', provider: 'openai', model: 'm', apiKey: 'k' } as never
+  const config = { provider: 'openai', model: 'm', apiKey: 'k' } as never
 
   const aiTables = () => {
     const t = baseTables()
@@ -336,7 +337,7 @@ describe('runRadarScan: AI reading', () => {
   ] as never
 
   it('creates quality and opportunity insights from the signals', async () => {
-    vi.mocked(loadReceptionistAgent).mockResolvedValue(config)
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
     vi.mocked(buildConversationContext).mockResolvedValue(chat)
     vi.mocked(generateReply).mockResolvedValue({
       text: '{"dissatisfied": true, "opportunity": true, "cooling": false, "summary": "Reclamou do prazo.", "suggested_action": "Ligar hoje."}',
@@ -356,8 +357,26 @@ describe('runRadarScan: AI reading', () => {
     expect(String(quality.description)).toContain('Ligar hoje.')
   })
 
+  it('reads with the key alone and logs usage without an agent id', async () => {
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
+    vi.mocked(buildConversationContext).mockResolvedValue(chat)
+    const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 }
+    vi.mocked(generateReply).mockResolvedValue({
+      text: '{"dissatisfied": false, "opportunity": true, "cooling": false, "summary": "x", "suggested_action": "y"}',
+      usage,
+    } as never)
+
+    const res = await runRadarScan(fakeDb(aiTables()), ACCOUNT, { now: NOW })
+
+    expect(res).toMatchObject({ aiStatus: 'ok', provider: 'openai', model: 'm' })
+    expect(logAiUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mode: 'copilot', agentId: null, usage }),
+    )
+  })
+
   it('uses "lead esfriando" when only cooling is set', async () => {
-    vi.mocked(loadReceptionistAgent).mockResolvedValue(config)
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
     vi.mocked(buildConversationContext).mockResolvedValue(chat)
     vi.mocked(generateReply).mockResolvedValue({
       text: '{"dissatisfied": false, "opportunity": false, "cooling": true, "summary": "", "suggested_action": ""}',
@@ -370,7 +389,7 @@ describe('runRadarScan: AI reading', () => {
   })
 
   it('skips conversations that did not move since the last reading', async () => {
-    vi.mocked(loadReceptionistAgent).mockResolvedValue(config)
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
     vi.mocked(buildConversationContext).mockResolvedValue(chat)
     vi.mocked(generateReply).mockResolvedValue({
       text: '{"dissatisfied": false, "opportunity": false, "cooling": false}',
@@ -386,14 +405,14 @@ describe('runRadarScan: AI reading', () => {
   })
 
   it('does not call the AI for threads with too few messages', async () => {
-    vi.mocked(loadReceptionistAgent).mockResolvedValue(config)
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
     vi.mocked(buildConversationContext).mockResolvedValue([{ role: 'user', content: 'oi' }] as never)
     await runRadarScan(fakeDb(aiTables()), ACCOUNT, { now: NOW })
     expect(generateReply).not.toHaveBeenCalled()
   })
 
   it('reports a provider failure but keeps the bottlenecks', async () => {
-    vi.mocked(loadReceptionistAgent).mockResolvedValue(config)
+    vi.mocked(loadCopilotConfig).mockResolvedValue(config)
     vi.mocked(buildConversationContext).mockResolvedValue(chat)
     vi.mocked(generateReply).mockRejectedValue(new AiError('chave inválida', { code: 'auth', status: 401 }))
     const t = aiTables()

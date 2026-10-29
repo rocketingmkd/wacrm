@@ -131,3 +131,103 @@ describe('recordLeadAttribution', () => {
     expect(out).toBe('error')
   })
 })
+
+/** Fake with the phrase rules table; counts how often it is read. */
+function fakeDbWithRules(rules: Record<string, unknown>[]) {
+  const upserts: Record<string, unknown>[] = []
+  let ruleReads = 0
+  const db = {
+    from(table: string) {
+      if (table === 'attribution_phrase_rules') {
+        const chain = {
+          select: () => chain,
+          eq: (col: string) => {
+            if (col === 'active') {
+              ruleReads += 1
+              return Promise.resolve({ data: rules, error: null })
+            }
+            return chain
+          },
+        }
+        return chain
+      }
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        maybeSingle: async () => ({ data: null }),
+        upsert: async (row: Record<string, unknown>) => {
+          upserts.push(row)
+          return { error: null }
+        },
+      }
+      return chain
+    },
+  } as unknown as SupabaseClient
+  return { db, upserts, reads: () => ruleReads }
+}
+
+describe('recordLeadAttribution: phrase rules', () => {
+  const rules = [{ id: 'r1', phrase: 'vim pelo site', source: 'meta_site', label: 'Promo Site' }]
+
+  it('tags a new conversation whose message matches an active rule', async () => {
+    const { db, upserts } = fakeDbWithRules(rules)
+    const out = await recordLeadAttribution({
+      ...base,
+      db,
+      referral: undefined,
+      messageText: 'Olá! VIM pelo site e quero orçamento',
+      seenAt: '2026-03-01T12:00:00.000Z',
+      isNewConversation: true,
+    })
+    expect(out).toBe('recorded')
+    expect(upserts[0]).toMatchObject({
+      account_id: 'acc',
+      contact_id: 'ct',
+      source: 'meta_site',
+      utm_campaign: 'Promo Site',
+      session_code: null,
+      first_seen_at: '2026-03-01T12:00:00.000Z',
+    })
+  })
+
+  it('does not read the rules for an existing conversation', async () => {
+    const { db, upserts, reads } = fakeDbWithRules(rules)
+    const out = await recordLeadAttribution({
+      ...base,
+      db,
+      referral: undefined,
+      messageText: 'vim pelo site',
+      isNewConversation: false,
+    })
+    expect(out).toBe('none')
+    expect(reads()).toBe(0)
+    expect(upserts).toHaveLength(0)
+  })
+
+  it('leaves a CTWA referral alone: the rules are not consulted', async () => {
+    const { db, upserts, reads } = fakeDbWithRules(rules)
+    const out = await recordLeadAttribution({
+      ...base,
+      db,
+      referral: { source_id: 'AD1' },
+      messageText: 'vim pelo site',
+      isNewConversation: true,
+    })
+    expect(out).toBe('recorded')
+    expect(reads()).toBe(0)
+    expect(upserts[0]).toMatchObject({ source: 'meta_ctwa' })
+  })
+
+  it('keeps today\'s behaviour when there is no rule', async () => {
+    const { db, upserts } = fakeDbWithRules([])
+    const out = await recordLeadAttribution({
+      ...base,
+      db,
+      referral: undefined,
+      messageText: 'vim pelo site',
+      isNewConversation: true,
+    })
+    expect(out).toBe('none')
+    expect(upserts).toHaveLength(0)
+  })
+})

@@ -13,13 +13,14 @@
 //
 // Cost control: the AI step reads at most `analyzeLimit` recent
 // conversations per scan and skips any whose text-message count has not
-// moved since the last reading (copilot_radar_state). It reuses the
-// account's own BYO provider key, same as the Gerente IA copilot.
+// moved since the last reading (copilot_radar_state). It uses only the
+// account's own BYO provider key (no agent needed) and the system
+// default model for that provider.
 // ============================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { loadReceptionistAgent } from './config'
+import { loadCopilotConfig } from './config'
 import { buildConversationContext } from './context'
 import { generateReply } from './generate'
 import { logAiUsage } from './usage'
@@ -347,7 +348,7 @@ export async function runRadarScan(
   }
 
   // ---- 2. AI reading of the most recent conversations ---------------
-  const config = await loadReceptionistAgent(db, accountId).catch(() => null)
+  const config = await loadCopilotConfig(db, accountId).catch(() => null)
   if (!config) {
     await recordRun(db, accountId, opts.triggeredBy ?? null, result)
     return result
@@ -410,7 +411,7 @@ export async function runRadarScan(
         mode: 'copilot',
         provider: config.provider,
         model: config.model,
-        agentId: config.id,
+        agentId: null,
         usage,
       })
 

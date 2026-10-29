@@ -57,6 +57,13 @@ export interface AiConfig {
   canSchedule: boolean
 }
 
+/**
+ * What a bare provider call needs: the account's key, its provider and a
+ * model. `AiConfig` (an agent) satisfies it, and so does the system-owned
+ * Copiloto config (`loadCopilotConfig`), which has no agent behind it.
+ */
+export type AiCallConfig = Pick<AiConfig, 'provider' | 'model' | 'apiKey' | 'embeddingsApiKey'>
+
 /** Lightweight agent info for the transfer-menu prompt block and
  *  simple listings — deliberately excludes the API key. */
 export interface AiAgentSummary {

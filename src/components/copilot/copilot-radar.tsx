@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Skeleton } from "@/components/dashboard/skeleton";
 import { ContactAvatar } from "@/components/inbox/contact-avatar";
+import { PhraseRulesCard } from "@/components/copilot/phrase-rules-card";
 
 type Kind = "bottleneck" | "quality" | "opportunity";
 type Severity = "info" | "warn" | "critical";
@@ -142,7 +143,7 @@ export function CopilotRadar() {
       if (r.aiStatus === "error") {
         toast.error(`A leitura por IA falhou: ${r.aiError ?? "erro do provedor"}`);
       } else if (r.aiStatus === "skipped") {
-        toast.info("Gargalos atualizados. A leitura por IA não está configurada.");
+        toast.info("Gargalos atualizados. Falta cadastrar a chave de API para a leitura por IA.");
       } else {
         toast.success(
           `Análise concluída: ${r.analyzed} conversa(s) lida(s) pela IA, ${r.created} alerta(s) novo(s).`,
@@ -241,16 +242,16 @@ export function CopilotRadar() {
 
       {run?.ai_status === "skipped" && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
-          A leitura por IA (qualidade e oportunidades) precisa do assistente de IA configurado e ativo.{" "}
+          A leitura por IA (qualidade e oportunidades) precisa só de uma chave de API cadastrada.{" "}
           <Link href="/agents" className="font-medium underline">
-            Abrir Agentes de IA
-          </Link>
-          . Os gargalos por tempo já funcionam sem IA.
+            Cadastrar chave de API
+          </Link>{" "}
+          (aba &quot;Chave de API&quot;). Os gargalos por tempo já funcionam sem IA.
         </div>
       )}
       {run?.ai_status === "error" && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          A última leitura por IA falhou{run.ai_error ? `: ${run.ai_error}` : "."} Confira a chave do provedor em{" "}
+          A última leitura por IA falhou{run.ai_error ? `: ${run.ai_error}` : "."} Confira a chave de API na aba &quot;Chave de API&quot; em{" "}
           <Link href="/agents" className="font-medium underline">
             Agentes de IA
           </Link>
@@ -309,6 +310,8 @@ export function CopilotRadar() {
           ))}
         </div>
       </div>
+
+      <PhraseRulesCard />
 
       {loading ? (
         <div className="space-y-3">

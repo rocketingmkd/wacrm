@@ -181,6 +181,11 @@ export const RATE_LIMITS = {
   /** Copiloto radar scan, per account: one scan fans out up to 10 LLM
    *  calls on the shared BYO key, so only a few scans a minute. */
   aiRadar: { limit: 4, windowMs: 60_000 },
+  /** Origem por frase: the dry run scans up to 5000 messages and the
+   *  apply writes attributions, so a few runs a minute per user. */
+  phraseScan: { limit: 10, windowMs: 60_000 },
+  /** Same scan, capped per account across the whole team. */
+  phraseScanAccount: { limit: 20, windowMs: 60_000 },
   /** Rocketing Pay billing webhook, per source IP. Applied BEFORE
    *  token verification — otherwise billing_webhook_logs itself
    *  becomes the flood target. 60/min per IP is comfortably above

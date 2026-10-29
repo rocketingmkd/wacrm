@@ -16,7 +16,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { loadReceptionistAgent } from './config'
+import { loadCopilotConfig, loadReceptionistAgent } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { latestUserMessage } from './query'
@@ -85,23 +85,24 @@ export async function refreshConversationInsight(
     return existing
   }
 
-  // Not configured / master switch off → leave whatever's cached. The
-  // copilot is a seller-facing feature independent of auto-reply
-  // routing (see multi-agent plan) — it always reads credentials off
-  // the account's receptionist agent, never a conversation's pinned
-  // active_ai_agent_id.
-  const config = await loadReceptionistAgent(db, accountId).catch(() => null)
+  // No provider key → leave whatever's cached. The copilot is a
+  // seller-facing system feature independent of agents: it needs only
+  // the account's API key (`loadCopilotConfig`). The receptionist, when
+  // one is active, is read only as optional context (business prompt and
+  // knowledge base), never for credentials or the model.
+  const config = await loadCopilotConfig(db, accountId).catch(() => null)
   if (!config) return existing
+  const contextAgent = await loadReceptionistAgent(db, accountId).catch(() => null)
 
   const messages = await buildConversationContext(db, conversationId).catch(() => [])
   if (messages.length === 0) return existing
 
   const context = await buildCopilotContext(db, {
     accountId,
-    agentId: config.id,
+    agentId: contextAgent?.id ?? null,
     conversationId,
     contactId,
-    businessPrompt: config.systemPrompt,
+    businessPrompt: contextAgent?.systemPrompt ?? null,
     latestQuestion: latestUserMessage(messages),
     embeddingsApiKey: config.embeddingsApiKey,
   })
@@ -144,7 +145,7 @@ export async function refreshConversationInsight(
       mode: 'copilot',
       provider: config.provider,
       model: config.model,
-      agentId: config.id,
+      agentId: null,
       usage,
     })
   } catch (logErr) {
@@ -164,7 +165,7 @@ async function buildCopilotContext(
   db: SupabaseClient,
   args: {
     accountId: string
-    agentId: string
+    agentId: string | null
     conversationId: string
     contactId: string | null
     businessPrompt: string | null
@@ -207,13 +208,15 @@ async function buildCopilotContext(
           .select('tags(name)')
           .eq('contact_id', contactId)
       : Promise.resolve({ data: [] as { tags: { name: string } | null }[] }),
-    retrieveKnowledge(
-      db,
-      accountId,
-      agentId,
-      { embeddingsApiKey: args.embeddingsApiKey },
-      latestQuestion,
-    ).catch(() => [] as string[]),
+    agentId
+      ? retrieveKnowledge(
+          db,
+          accountId,
+          agentId,
+          { embeddingsApiKey: args.embeddingsApiKey },
+          latestQuestion,
+        ).catch(() => [] as string[])
+      : Promise.resolve([] as string[]),
   ])
 
   const stageNames = (pipelineRes as { name: string }[]).map((s) => s.name)

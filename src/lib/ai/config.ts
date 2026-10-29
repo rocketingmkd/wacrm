@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import type { AiAgentSummary, AiConfig, AiProvider } from './types'
+import { AI_PROVIDER_DEFAULT_MODEL } from './defaults'
+import type { AiAgentSummary, AiCallConfig, AiConfig, AiProvider } from './types'
 
 interface AiAgentRow {
   id: string
@@ -97,6 +98,33 @@ function mergeAgent(row: AiAgentRow, credential: ProviderCredential): AiConfig {
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey: credential.embeddingsApiKey,
     canSchedule: row.can_schedule,
+  }
+}
+
+/**
+ * Config for the Copiloto IA (radar + per-conversation insight), which is
+ * a system feature with its own prompts and does NOT depend on any agent
+ * being created or active. It needs only the account's shared provider
+ * key (`ai_provider_config`) and uses the system default model for that
+ * provider (`AI_PROVIDER_DEFAULT_MODEL`, a small and cheap one, enough
+ * for classification). Returns `null` when no key is configured; throws
+ * only if the stored key can't be decrypted (same as `loadProviderConfig`).
+ *
+ * The result is an `AiCallConfig` (provider call data only), not an
+ * `AiConfig`: it has no agent identity, so it can't be mistaken for one.
+ */
+export async function loadCopilotConfig(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<AiCallConfig | null> {
+  const credential = await loadProviderConfig(db, accountId)
+  if (!credential) return null
+
+  return {
+    provider: credential.provider,
+    model: AI_PROVIDER_DEFAULT_MODEL[credential.provider],
+    apiKey: credential.apiKey,
+    embeddingsApiKey: credential.embeddingsApiKey,
   }
 }
 
