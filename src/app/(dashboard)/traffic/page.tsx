@@ -135,7 +135,7 @@ function InstallPanel() {
   }
 
   return (
-    <div className="space-y-5 text-sm">
+    <div className="min-w-0 space-y-5 text-sm break-words">
       <div>
         <h4 className="font-semibold">1. Anúncios que abrem o WhatsApp (Meta)</h4>
         <p className="mt-1 text-muted-foreground">
@@ -158,11 +158,11 @@ function InstallPanel() {
             <Loader2 className="size-4 animate-spin" /> Gerando o código...
           </div>
         ) : (
-          <div className="mt-2 flex items-start gap-2">
-            <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-border bg-muted/50 p-3 text-xs">
+          <div className="mt-2 flex min-w-0 flex-wrap items-start gap-2 sm:flex-nowrap">
+            <pre className="min-w-0 flex-1 basis-full whitespace-pre-wrap break-all rounded-xl border border-border bg-muted/50 p-3 text-xs sm:basis-0">
               {data.snippet}
             </pre>
-            <Button variant="outline" size="sm" onClick={copy}>
+            <Button variant="outline" size="sm" onClick={copy} className="shrink-0">
               {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
               {copied ? "Copiado" : "Copiar"}
             </Button>
@@ -176,7 +176,7 @@ function InstallPanel() {
           <li>
             <strong className="text-foreground">Google Ads:</strong> deixe a marcação automática
             ligada (gclid) e, no modelo de rastreamento da conta, use{" "}
-            <code className="rounded bg-muted px-1">
+            <code className="break-all rounded bg-muted px-1">
               {"{lpurl}?utm_source=google&utm_medium=cpc&utm_campaign={campaignid}"}
             </code>
             .
@@ -184,7 +184,7 @@ function InstallPanel() {
           <li>
             <strong className="text-foreground">Meta Ads:</strong> no campo Parâmetros de URL do
             anúncio, use{" "}
-            <code className="rounded bg-muted px-1">
+            <code className="break-all rounded bg-muted px-1">
               {"utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}"}
             </code>
             .
@@ -365,7 +365,7 @@ export default function TrafficPage() {
       </header>
 
       <Dialog open={showInstall} onOpenChange={setShowInstall}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-2xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden border-border bg-popover sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-[16px] font-bold">Como rastrear os anúncios</DialogTitle>
             <DialogDescription>Configure uma vez; vale para todas as campanhas.</DialogDescription>
@@ -375,7 +375,7 @@ export default function TrafficPage() {
       </Dialog>
 
       <Dialog open={showConversions} onOpenChange={setShowConversions}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto border-border bg-popover sm:max-w-2xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden border-border bg-popover sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-[16px] font-bold">Enviar conversões para os anúncios</DialogTitle>
             <DialogDescription>Devolve à Meta e ao Google as vendas que vieram dos anúncios.</DialogDescription>
