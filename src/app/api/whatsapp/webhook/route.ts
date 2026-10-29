@@ -530,7 +530,9 @@ async function resolveWhatsAppConfig(
   return configRows[0]
 }
 
-const ECHO_ALLOWED_CONTENT_TYPES = new Set(['text', 'image', 'document', 'audio', 'video'])
+const MEDIA_PLACEHOLDER_TEXT = '📎 Mídia antiga (não importada pela Meta)'
+
+const ECHO_ALLOWED_CONTENT_TYPES =new Set(['text', 'image', 'document', 'audio', 'video'])
 
 /**
  * Match an echo to a message we sent through the Evolution session in
@@ -844,7 +846,10 @@ async function handleHistorySync(value: HistoryValue) {
           // History carries entries like "[Unsupported message type: errors]";
           // they stay in the thread but must not become the list preview.
           const at = parseInt(msg.timestamp, 10) * 1000
-          const isReal = msg.type !== 'errors' && !(contentText ?? '').startsWith('[Unsupported message type')
+          const isReal =
+            msg.type !== 'errors' &&
+            msg.type !== 'media_placeholder' &&
+            !(contentText ?? '').startsWith('[Unsupported message type')
           if (isReal && Number.isFinite(at) && (!preview || at > preview.at)) {
             preview = { at, text: (contentText || `[${msg.type}]`).slice(0, 200) }
           }
@@ -1714,6 +1719,11 @@ async function parseMessageContent(
         }
       }
       return empty
+
+    case 'media_placeholder':
+      // History sync sends old media without a media id, so there is
+      // no file to download. Show a readable note instead of the raw type.
+      return { ...empty, contentText: MEDIA_PLACEHOLDER_TEXT }
 
     default:
       return {
