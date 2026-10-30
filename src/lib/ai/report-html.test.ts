@@ -40,16 +40,30 @@ describe('buildReportHtml', () => {
         nextAction: '',
       },
     ],
-    baseUrl: 'https://rocket-crm.autosolution.pro/',
   }
 
-  it('escapa texto de cliente e da IA e monta o link da conversa', () => {
+  it('escapa texto de cliente e da IA e não traz link de conversa', () => {
     const html = buildReportHtml(base)
     expect(html).not.toContain('<script>x</script>')
     expect(html).toContain('&lt;script&gt;x&lt;/script&gt;')
     expect(html).toContain('Ana &quot;A&quot; &lt;i&gt;')
     expect(html).toContain('Resposta lenta &lt;b&gt;')
-    expect(html).toContain('https://rocket-crm.autosolution.pro/inbox?c=abc')
+    expect(html).not.toContain('Abrir conversa')
+    expect(html).not.toContain('/inbox')
+  })
+
+  it('traz a logo inline e as seis abas com papéis de acessibilidade', () => {
+    const html = buildReportHtml(base)
+    expect(html).toContain('aria-label="Rocketing IA"')
+    expect((html.match(/role="tab"/g) ?? []).length).toBe(6)
+    expect((html.match(/role="tabpanel"/g) ?? []).length).toBe(6)
+    for (const id of ['tab-resumo', 'tab-resultado', 'tab-origem', 'tab-objecoes', 'tab-acao', 'tab-conversas']) {
+      expect(html).toContain(`id="${id}"`)
+    }
+    // Só a primeira aba começa visível; os ids de gradiente da logo não se repetem.
+    expect((html.match(/ hidden>/g) ?? []).length).toBe(5)
+    expect(html).toContain('id="goldGradTop"')
+    expect(html).toContain('id="goldGradFoot"')
   })
 
   it('usa a identidade da Rocketing', () => {

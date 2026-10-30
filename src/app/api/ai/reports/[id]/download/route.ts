@@ -93,7 +93,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const stamp = (report.finished_at ?? report.created_at).slice(0, 10)
     const name = `relatorio-atendimento-${report.mode === 'keyword' ? 'palavra-chave' : 'completo'}-${stamp}`
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
 
     if (format === 'json') {
       const body = {
@@ -109,7 +108,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         conversations: items.map((it, i) => ({
           conversationId: it.conversation_id,
           contact: { name: rows[i].name, phone: rows[i].phone },
-          link: `${baseUrl.replace(/\/$/, '')}/inbox?c=${it.conversation_id}`,
           status: it.status,
           metrics: it.metrics,
           analysis: it.status === 'done' ? it.analysis : null,
@@ -136,7 +134,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       aggregate: report.result.aggregate,
       narrative: report.result.narrative,
       rows,
-      baseUrl,
     })
     return new NextResponse(html, {
       headers: {
