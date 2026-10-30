@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server'
-import { requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
+import { requireWrite, toErrorResponse } from '@/lib/auth/account'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const notFound = () => NextResponse.json({ error: 'Regra não encontrada' }, { status: 404 })
 
 /**
- * PATCH /api/ai/phrase-rules/[id]: turns a rule on or off ({ active }).
- * Admin+. Scoped to the session's account (and by RLS), so an id from
+ * PATCH /api/tracking/phrase-rules/[id]: turns a rule on or off ({ active }).
+ * Admin. Scoped to the session's account (and by RLS), so an id from
  * another account reads as "not found".
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { supabase, accountId } = await requireWriteFeature('admin', 'aiCopilot')
+    const { supabase, accountId } = await requireWrite('admin')
     const { id } = await params
     if (!UUID_RE.test(id)) return notFound()
 
@@ -39,12 +39,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 /**
- * DELETE /api/ai/phrase-rules/[id]: removes the rule only. Attributions
- * already written stay (they belong to the contacts). Admin+.
+ * DELETE /api/tracking/phrase-rules/[id]: removes the rule only. Attributions
+ * already written stay (they belong to the contacts). Admin.
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { supabase, accountId } = await requireWriteFeature('admin', 'aiCopilot')
+    const { supabase, accountId } = await requireWrite('admin')
     const { id } = await params
     if (!UUID_RE.test(id)) return notFound()
 

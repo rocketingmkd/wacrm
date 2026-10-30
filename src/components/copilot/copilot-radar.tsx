@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { Skeleton } from "@/components/dashboard/skeleton";
 import { ContactAvatar } from "@/components/inbox/contact-avatar";
-import { PhraseRulesCard } from "@/components/copilot/phrase-rules-card";
 import { AttendanceReports } from "@/components/copilot/attendance-reports";
 
 type Kind = "bottleneck" | "quality" | "opportunity";
@@ -313,8 +312,6 @@ export function CopilotRadar() {
       </div>
 
       <AttendanceReports />
-
-      <PhraseRulesCard />
 
       {loading ? (
         <div className="space-y-3">

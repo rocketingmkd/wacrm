@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Download, ExternalLink, FileBarChart, Loader2, Play, Square } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, FileBarChart, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 
@@ -51,6 +51,8 @@ const STATUS_LABEL: Record<Status, string> = {
 const INPUT_CLASS =
   "h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+const COLLAPSED_KEY = "copilot-attendance-reports-collapsed";
+
 const tokens = (n: number) => new Intl.NumberFormat("pt-BR").format(Math.round(n / 1000) * 1000);
 
 export function AttendanceReports() {
@@ -65,6 +67,28 @@ export function AttendanceReports() {
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
   const stopRef = useRef(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    // Minimizado ou não fica salvo neste navegador. Lê depois de montar para não divergir do HTML do servidor.
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore saved preference on mount
+      setCollapsed(window.localStorage.getItem(COLLAPSED_KEY) === "1");
+    } catch {
+      /* sem acesso ao armazenamento: segue aberto */
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, c ? "0" : "1");
+      } catch {
+        /* ignora */
+      }
+      return !c;
+    });
+  };
 
   const loadList = useCallback(async () => {
     try {
@@ -184,22 +208,44 @@ export function AttendanceReports() {
     await loadList();
   };
 
+  const runningReport = runningId ? (reports?.find((r) => r.id === runningId) ?? null) : null;
+
   const title = (r: ReportSummary) => (r.mode === "keyword" ? `Palavra-chave: “${r.keyword}”` : "Histórico completo");
   const canCalculate = mode === "full" || keyword.trim().length >= 3;
 
   return (
     <section className="space-y-4 rounded-xl border border-border bg-card p-4">
-      <div>
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <FileBarChart className="h-4 w-4 text-primary" />
-          Relatórios de atendimento
-        </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          A IA lê os atendimentos e gera um relatório com tempos de resposta, resultado, objeções e falhas, comparando
-          por origem do lead. Gasta tokens da sua chave de API. Só lê, não envia nada ao cliente.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <FileBarChart className="h-4 w-4 text-primary" />
+            Relatórios de atendimento
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            A IA lê os atendimentos e gera um relatório com tempos de resposta, resultado, objeções e falhas, comparando
+            por origem do lead. Gasta tokens da sua chave de API. Só lê, não envia nada ao cliente.
+          </p>
+          {collapsed && runningReport && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Gerando relatório: {runningReport.processed} de {runningReport.total}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-controls="attendance-reports-body"
+          title={collapsed ? "Expandir" : "Minimizar"}
+          className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "-rotate-90")} />
+          <span className="sr-only">{collapsed ? "Expandir relatórios de atendimento" : "Minimizar relatórios de atendimento"}</span>
+        </button>
       </div>
 
+      <div id="attendance-reports-body" hidden={collapsed} className="space-y-4">
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
       )}
@@ -350,6 +396,7 @@ export function AttendanceReports() {
           })}
         </ul>
       )}
+      </div>
     </section>
   );
 }

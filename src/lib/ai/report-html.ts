@@ -92,8 +92,8 @@ body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 Inter,system-
 h1{font:600 34px/1.2 'Playfair Display',Georgia,serif;color:var(--strong);margin:28px 0 4px}
 h2.sub{font:400 16px Inter,sans-serif;color:var(--muted);margin:0 0 20px}
 h3{font:600 20px 'Playfair Display',Georgia,serif;color:var(--strong);margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
-.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid var(--line);margin:8px 0 24px;position:sticky;top:0;background:var(--bg);z-index:5}
-.tab-btn{flex:0 0 auto;white-space:nowrap;background:none;border:0;border-bottom:2px solid transparent;padding:12px 16px;margin-bottom:-1px;font:500 14px Inter,sans-serif;color:var(--muted);cursor:pointer}
+.tabs{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;box-shadow:inset 0 -1px 0 var(--line);margin:8px 0 24px;position:sticky;top:0;background:var(--bg);z-index:5}
+.tab-btn{flex:0 0 auto;white-space:nowrap;background:none;border:0;border-bottom:2px solid transparent;padding:12px 16px;font:500 14px Inter,sans-serif;color:var(--muted);cursor:pointer}
 .tab-btn:hover{color:var(--strong)}
 .tab-btn[aria-selected=true]{color:var(--strong);border-bottom-color:var(--gold)}
 .tab-btn:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireFeature, requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
+import { requireRole, requireWrite, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { parseRuleInput } from '@/lib/tracking/phrase-rules'
 
@@ -7,12 +7,12 @@ const RULE_COLUMNS = 'id, phrase, source, label, active, created_at'
 const MAX_RULES = 50
 
 /**
- * GET /api/ai/phrase-rules: the account's "Origem por frase" rules.
- * RLS scopes the read to the account. agent+, Pro plan (aiCopilot).
+ * GET /api/tracking/phrase-rules: as regras "Origem por frase" da conta
+ * (Google Ads pela frase do site). RLS escopa a conta. Admin.
  */
 export async function GET() {
   try {
-    const { supabase } = await requireFeature('agent', 'aiCopilot')
+    const { supabase } = await requireRole('admin')
     const { data, error } = await supabase
       .from('attribution_phrase_rules')
       .select(RULE_COLUMNS)
@@ -28,16 +28,19 @@ export async function GET() {
 }
 
 /**
- * POST /api/ai/phrase-rules: creates a rule. The account comes from the
- * session, never from the body. Admin+ (also enforced by RLS).
+ * POST /api/tracking/phrase-rules { phrase, label }: cria uma regra. O
+ * WhatsApp não repassa a UTM do Google Ads, então a regra é sempre
+ * Google, mesmo que o corpo diga outra origem. A conta vem da sessão,
+ * nunca do corpo. Admin (o RLS também exige).
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId } = await requireWriteFeature('admin', 'aiCopilot')
+    const { supabase, accountId, userId } = await requireWrite('admin')
     const limit = checkRateLimit(`admin:phraseRule:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
 
-    const parsed = parseRuleInput(await request.json().catch(() => null))
+    const raw = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    const parsed = parseRuleInput({ ...(raw ?? {}), source: 'google' })
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 })
 
     const { count } = await supabase

@@ -12,13 +12,12 @@ import {
   YAxis,
 } from "recharts";
 import {
-  Check,
   Code2,
-  Copy,
   DollarSign,
   Download,
   Loader2,
   Megaphone,
+  Search,
   Send,
   Trophy,
   UserPlus,
@@ -47,6 +46,9 @@ import {
 } from "@/components/ui/dialog";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { ConversionsPanel } from "@/components/tracking/conversions-panel";
+import { OriginSetup } from "@/components/tracking/origin-setup";
+// TEMPORÁRIO: remover junto com o botão "Buscar por frase" quando todos os clientes tiverem o CRM.
+import { ManualOriginPanel } from "@/components/tracking/manual-origin-dialog";
 
 const PERIODS: { value: ReportPeriod; label: string }[] = [
   { value: "today", label: "Hoje" },
@@ -101,106 +103,6 @@ function SourceChip({ source }: { source: keyof typeof SOURCE_LABELS }) {
   );
 }
 
-function InstallPanel() {
-  const [data, setData] = useState<{ snippet: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/tracking/settings", { cache: "no-store" })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!res.ok) setError(body?.error ?? "Não foi possível carregar o código.");
-        else setData(body);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Falha de conexão.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function copy() {
-    if (!data) return;
-    try {
-      await navigator.clipboard.writeText(data.snippet);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard blocked: the code stays selectable on screen */
-    }
-  }
-
-  return (
-    <div className="min-w-0 space-y-5 text-sm break-words">
-      <div>
-        <h4 className="font-semibold">1. Anúncios que abrem o WhatsApp (Meta)</h4>
-        <p className="mt-1 text-muted-foreground">
-          Não precisa instalar nada. Quando alguém clica no anúncio e manda a primeira mensagem, a
-          Meta informa o anúncio de origem e o CRM registra sozinho.
-        </p>
-      </div>
-
-      <div>
-        <h4 className="font-semibold">2. Anúncios que levam a uma página (Meta e Google)</h4>
-        <p className="mt-1 text-muted-foreground">
-          Cole este código no <code className="rounded bg-muted px-1">&lt;head&gt;</code> da sua
-          página. Ele guarda de onde o visitante veio e, ao clicar no botão do WhatsApp, inclui um
-          código curto no fim da mensagem.
-        </p>
-        {error ? (
-          <p className="mt-2 text-destructive">{error}</p>
-        ) : !data ? (
-          <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Gerando o código...
-          </div>
-        ) : (
-          <div className="mt-2 flex min-w-0 flex-wrap items-start gap-2 sm:flex-nowrap">
-            <pre className="min-w-0 flex-1 basis-full whitespace-pre-wrap break-all rounded-xl border border-border bg-muted/50 p-3 text-xs sm:basis-0">
-              {data.snippet}
-            </pre>
-            <Button variant="outline" size="sm" onClick={copy} className="shrink-0">
-              {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-              {copied ? "Copiado" : "Copiar"}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h4 className="font-semibold">3. Parâmetros nos links dos anúncios</h4>
-        <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
-          <li>
-            <strong className="text-foreground">Google Ads:</strong> deixe a marcação automática
-            ligada (gclid) e, no modelo de rastreamento da conta, use{" "}
-            <code className="break-all rounded bg-muted px-1">
-              {"{lpurl}?utm_source=google&utm_medium=cpc&utm_campaign={campaignid}"}
-            </code>
-            .
-          </li>
-          <li>
-            <strong className="text-foreground">Meta Ads:</strong> no campo Parâmetros de URL do
-            anúncio, use{" "}
-            <code className="break-all rounded bg-muted px-1">
-              {"utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}"}
-            </code>
-            .
-          </li>
-        </ul>
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        O script usa o armazenamento do navegador do visitante, só nos botões de WhatsApp, e só
-        age em quem chegou por um link com campanha. Se a sua página tem aviso de cookies, inclua
-        o script na categoria de marketing.
-      </p>
-    </div>
-  );
-}
-
 export default function TrafficPage() {
   const { accountRole, defaultCurrency } = useAuth();
   const isAdmin = accountRole ? hasMinRole(accountRole, "admin") : false;
@@ -210,6 +112,7 @@ export default function TrafficPage() {
   const [customTo, setCustomTo] = useState("");
   const [showInstall, setShowInstall] = useState(false);
   const [showConversions, setShowConversions] = useState(false);
+  const [showManual, setShowManual] = useState(false);
 
   // Coming back from the Google authorization: open the panel that says how it went.
   useEffect(() => {
@@ -351,7 +254,11 @@ export default function TrafficPage() {
           )}
           <Button variant="outline" size="sm" onClick={() => setShowInstall(true)}>
             <Code2 className="size-4" />
-            Como rastrear
+            Como o lead chega
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowManual(true)}>
+            <Search className="size-4" />
+            Buscar por frase (temporário)
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowConversions(true)}>
             <Send className="size-4" />
@@ -367,10 +274,23 @@ export default function TrafficPage() {
       <Dialog open={showInstall} onOpenChange={setShowInstall}>
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden border-border bg-popover sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-[16px] font-bold">Como rastrear os anúncios</DialogTitle>
-            <DialogDescription>Configure uma vez; vale para todas as campanhas.</DialogDescription>
+            <DialogTitle className="font-display text-[16px] font-bold">Como o lead chega</DialogTitle>
+            <DialogDescription>
+              Define de onde vem cada lead. Enviar a conversão para a Meta e o Google é outra etapa, no botão “Enviar
+              conversões”.
+            </DialogDescription>
           </DialogHeader>
-          {showInstall && <InstallPanel />}
+          {showInstall && <OriginSetup />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showManual} onOpenChange={setShowManual}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden border-border bg-popover sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[16px] font-bold">Buscar leads por frase</DialogTitle>
+            <DialogDescription>Marque manualmente a origem Google Ads de quem já escreveu a frase do site.</DialogDescription>
+          </DialogHeader>
+          {showManual && <ManualOriginPanel onApplied={() => setRetry((n) => n + 1)} />}
         </DialogContent>
       </Dialog>
 
@@ -378,7 +298,10 @@ export default function TrafficPage() {
         <DialogContent className="max-h-[85vh] overflow-y-auto overflow-x-hidden border-border bg-popover sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-display text-[16px] font-bold">Enviar conversões para os anúncios</DialogTitle>
-            <DialogDescription>Devolve à Meta e ao Google as vendas que vieram dos anúncios.</DialogDescription>
+            <DialogDescription>
+              Segunda etapa: devolve à Meta e ao Google as vendas que vieram dos anúncios. Só envia leads que já têm
+              origem registrada.
+            </DialogDescription>
           </DialogHeader>
           {showConversions && <ConversionsPanel />}
         </DialogContent>
@@ -436,7 +359,7 @@ export default function TrafficPage() {
             <Panel title="Ainda não há leads com origem neste período">
               <p className="text-sm text-muted-foreground">
                 Assim que alguém mandar mensagem vindo de um anúncio, ele aparece aqui. Clique em
-                “Como rastrear” para conferir se a sua página e os seus anúncios estão prontos.
+                “Como o lead chega” para conferir se a sua página e os seus anúncios estão prontos.
               </p>
             </Panel>
           ) : (
