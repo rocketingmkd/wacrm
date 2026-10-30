@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -17,6 +18,7 @@ import {
   Download,
   Loader2,
   Megaphone,
+  MessageSquare,
   Search,
   Send,
   Trophy,
@@ -36,7 +38,7 @@ import {
   type AttributionReport,
 } from "@/lib/tracking/report";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -472,6 +474,17 @@ export default function TrafficPage() {
                             minute: "2-digit",
                           })}
                         </span>
+                        {r.conversation_id ? (
+                          <Link
+                            href={`/inbox?c=${r.conversation_id}`}
+                            className={buttonVariants({ variant: "outline", size: "sm" })}
+                          >
+                            <MessageSquare className="size-4" />
+                            Abrir conversa
+                          </Link>
+                        ) : (
+                          <span className="w-[8.5rem] text-right text-xs text-muted-foreground">Sem conversa</span>
+                        )}
                       </div>
                     </li>
                   ))}

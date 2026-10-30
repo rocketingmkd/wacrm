@@ -28,7 +28,26 @@ export interface AttributionReport {
     contact_name: string
     won: number
     won_value: number
+    /** Conversa mais recente do contato; null se não houver. Anexada pela API. */
+    conversation_id?: string | null
   }[]
+}
+
+/**
+ * Anexa a cada lead recente o id da conversa mais recente do contato, para
+ * o botão "Abrir conversa". `conversations` pode vir em qualquer ordem.
+ */
+export function attachConversationIds<T extends { contact_id: string }>(
+  recent: readonly T[],
+  conversations: readonly { id: string; contact_id: string; last_message_at: string | null }[],
+): (T & { conversation_id: string | null })[] {
+  const latest = new Map<string, { id: string; at: string }>()
+  for (const c of conversations) {
+    const at = c.last_message_at ?? ''
+    const cur = latest.get(c.contact_id)
+    if (!cur || at > cur.at) latest.set(c.contact_id, { id: c.id, at })
+  }
+  return recent.map((r) => ({ ...r, conversation_id: latest.get(r.contact_id)?.id ?? null }))
 }
 
 export const SOURCE_ORDER: AttributionSource[] = ['meta_ctwa', 'meta_site', 'google', 'other']

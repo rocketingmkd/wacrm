@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { validateRange } from '@/lib/reports'
+import { attachConversationIds } from '@/lib/tracking/report'
 
 /**
  * GET /api/reports/attribution?from=<ISO>&to=<ISO>&tz=<IANA zone>
@@ -33,7 +34,25 @@ export async function GET(request: Request) {
       console.error('[reports/attribution] rpc failed:', error.message)
       return NextResponse.json({ error: 'Não foi possível gerar o relatório.' }, { status: 500 })
     }
-    return NextResponse.json(data)
+
+    // A função SQL devolve o contato, não a conversa. Anexa a conversa mais
+    // recente de cada lead recente para o botão "Abrir conversa". Se esta
+    // leitura falhar, o relatório continua valendo, só sem o botão.
+    const report = data as { recent?: { contact_id: string }[] } | null
+    if (report?.recent?.length) {
+      const contactIds = [...new Set(report.recent.map((r) => r.contact_id))]
+      const { data: convs, error: convError } = await supabase
+        .from('conversations')
+        .select('id, contact_id, last_message_at')
+        .eq('account_id', accountId)
+        .in('contact_id', contactIds)
+      if (convError) {
+        console.error('[reports/attribution] conversation lookup failed:', convError.message)
+      } else {
+        report.recent = attachConversationIds(report.recent, convs ?? [])
+      }
+    }
+    return NextResponse.json(report)
   } catch (err) {
     return toErrorResponse(err)
   }
