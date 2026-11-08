@@ -21,7 +21,7 @@
 //     // ctx.userId  — auth.uid()
 //     // ctx.accountId / ctx.role / ctx.account
 //   } catch (err) {
-//     return errorResponse(err); // see toErrorResponse() below
+//     return toErrorResponse(err);
 //   }
 // ============================================================
 

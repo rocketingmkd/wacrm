@@ -36,7 +36,7 @@
  *     INSERT raises 23505 and the runner catches & exits.
  */
 
-import { supabaseAdmin } from "./admin-client";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isAccountWriteLocked } from "@/lib/billing/write-lock";
 import { activateAgentAndReply } from "@/lib/ai/auto-reply";
 import {
@@ -220,31 +220,6 @@ export function selectEntryFlowForEvent<T extends TriggerCandidate>(
     if (matchesEventTrigger(flow, event)) return flow;
   }
   return null;
-}
-
-/** Nodes that advance to a next_node_key without waiting for input. */
-export function isAutoAdvancing(node_type: string): boolean {
-  return (
-    node_type === "start" ||
-    node_type === "send_message" ||
-    node_type === "send_media" ||
-    node_type === "condition" ||
-    node_type === "set_tag"
-  );
-}
-
-/** Nodes that send a prompt and suspend awaiting a customer reply. */
-export function isSuspending(node_type: string): boolean {
-  return (
-    node_type === "send_buttons" ||
-    node_type === "send_list" ||
-    node_type === "collect_input"
-  );
-}
-
-/** Nodes that end the run. */
-export function isTerminal(node_type: string): boolean {
-  return node_type === "handoff" || node_type === "activate_ai_agent" || node_type === "end";
 }
 
 /**

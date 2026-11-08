@@ -48,7 +48,7 @@ vi.mock('./kanban-sync', () => ({
   syncDealToAiStage: h.syncDealToAiStage,
   moveFunnelDealToHumanStage: h.moveFunnelDealToHumanStage,
 }))
-vi.mock('./admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
       if (table === 'automations') {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { listFreeSlots, loadAgendaConfig, type FreeSlot } from './availability'
 import { zonedWallTimeToUtc } from './timezone'
+import { aiTimezone } from '@/lib/ai/defaults'
 import type { BookingRequest } from '@/lib/ai/types'
 
 /**
@@ -21,7 +22,7 @@ import type { BookingRequest } from '@/lib/ai/types'
 const VALIDATION_WINDOW_DAYS = 14
 const VALIDATION_SLOT_LIMIT = 1000
 
-const TZ = 'America/Sao_Paulo'
+const TZ = aiTimezone()
 
 /** Every distinct "HH:MM" (or "HHh"/"HHhMM") time mentioned in a reply
  *  — used only to cross-check against the token the model is about to

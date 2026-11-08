@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { resolvePublicOrigin } from '@/lib/csat'
+import { resolvePublicOrigin } from '@/lib/http/public-origin'
 
 /**
  * GET /api/tracking/settings: the account's public tracking key and the

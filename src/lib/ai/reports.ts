@@ -15,6 +15,7 @@
 // própria conta.
 // ============================================================
 
+import { ATTRIBUTION_SOURCES, type AttributionSource } from '../tracking/attribution'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { loadCopilotConfig } from './config'
@@ -48,7 +49,8 @@ export const REPORT = {
 export const OUTCOMES = ['fechado', 'em_andamento', 'perdido', 'sem_resposta_da_equipe', 'sem_interesse', 'outro'] as const
 export type Outcome = (typeof OUTCOMES)[number]
 
-export type LeadSource = 'meta_ctwa' | 'meta_site' | 'google' | 'other' | 'sem_origem'
+/** A tracked source, or `sem_origem` for a lead with no attribution. */
+export type LeadSource = AttributionSource | 'sem_origem'
 
 // ------------------------------------------------------------
 // Métricas por conversa (código, sem IA)
@@ -799,7 +801,7 @@ async function finalizeReport(
 // Entrada das rotas
 // ------------------------------------------------------------
 
-const SOURCES: readonly LeadSource[] = ['meta_ctwa', 'meta_site', 'google', 'other', 'sem_origem']
+const SOURCES: readonly LeadSource[] = [...ATTRIBUTION_SOURCES, 'sem_origem']
 
 const asDate = (v: unknown): string | null => {
   if (typeof v !== 'string' || !v) return null

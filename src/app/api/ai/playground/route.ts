@@ -61,14 +61,7 @@ export async function POST(request: Request) {
     const loadOpts = { requireActive: false }
     const config = await (agentId
       ? loadAiAgent(supabase, accountId, agentId, loadOpts)
-      : loadReceptionistAgent(supabase, accountId, loadOpts)
-    ).catch((err) => {
-      console.error('[ai/playground] load error:', err)
-      throw new AiError('Stored API key could not be decrypted.', {
-        code: 'key_decrypt_failed',
-        status: 400,
-      })
-    })
+      : loadReceptionistAgent(supabase, accountId, loadOpts))
     if (!config) {
       return NextResponse.json(
         {

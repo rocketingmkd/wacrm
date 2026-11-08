@@ -1,7 +1,7 @@
 // ============================================================
 // Plan feature matrix — pure, no I/O.
 //
-// Starter (R$97/mês) vs Pro (R$197/mês): the price gap is justified
+// Starter vs Pro (list prices in PLAN_PRICE_BRL below): the price gap is justified
 // by Flows (chatbot builder), the "Gerente IA" copilot, and developer
 // access (API keys + outbound webhooks) — not by WhatsApp-number
 // count, since the CRM only supports one number per account today
@@ -40,6 +40,22 @@ export const PLAN_FEATURES: Record<Plan, PlanFeatures> = {
   starter: { flows: false, aiCopilot: false, apiAccess: false, aiAgents: false },
   pro: { flows: true, aiCopilot: true, apiAccess: true, aiAgents: true },
 };
+
+/**
+ * List price per plan, in BRL per month: the one place the landing page,
+ * the platform admin and the "MRR estimado" read it from. Real charges
+ * can differ (coupons, promos); the real amounts live in Rocketing Pay and
+ * in `account_billing.last_payment_*`.
+ */
+export const PLAN_PRICE_BRL: Record<Plan, number> = {
+  starter: 97,
+  pro: 197,
+};
+
+/** A plan's list price as shown to people, e.g. "R$ 97". */
+export function formatPlanPrice(plan: Plan): string {
+  return `R$ ${PLAN_PRICE_BRL[plan]}`;
+}
 
 /** The subset of `account_billing` feature-gating needs to read. */
 export interface PlanBillingSummary {

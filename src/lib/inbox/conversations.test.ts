@@ -44,7 +44,6 @@ describe("matchesContactFilters", () => {
     expect(matchesContactFilters(conv, { tagIds: [], company: null })).toBe(
       true,
     );
-    expect(makeConversation(null)).toBeDefined();
     expect(
       matchesContactFilters(makeConversation(null), {
         tagIds: [],

@@ -7,9 +7,9 @@
 // 2026-10-15) can be plugged in without touching the send core.
 //
 // Credentials are bound when the transport is created, so callers
-// only pass the message itself. Today there is a single
-// implementation, `createOfficialTransport`, a thin wrapper over
-// `meta-api.ts` with no behaviour change.
+// only pass the message itself. Implementations:
+// `createOfficialTransport` (Meta Cloud API) and
+// `createEvolutionTransport` (unofficial session).
 // ============================================================
 
 import {
@@ -68,7 +68,7 @@ export function createOfficialTransport(creds: {
  * Evolution (unofficial) transport. Only free-form text and media:
  * templates and interactive messages are Cloud-API-only concepts, so
  * they throw. Contacts known only by BSUID (no phone) can't be reached
- * either. Not wired into the send core yet (Phase 3).
+ * either.
  */
 export function createEvolutionTransport(creds: { instanceName: string }): WhatsAppTransport {
   const unsupported = (what: string) => async (): Promise<MetaSendResult> => {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireFeature, requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createReport, parseReportParams, previewReport, ReportError } from '@/lib/ai/reports'
 
 const COLUMNS =

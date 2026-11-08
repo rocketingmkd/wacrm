@@ -683,7 +683,7 @@ export function ConversationList({
                     x: e.clientX,
                     y: e.clientY,
                     contactId: conv.contact_id,
-                    name: conv.contact?.name || conv.contact?.phone || t("unknown"),
+                    name: conv.contact?.name || conv.contact?.phone || conv.contact?.wa_username || t("unknown"),
                     isGroup: Boolean(conv.contact?.is_group),
                     conversationId: conv.id,
                     seq: Date.now(),
@@ -731,7 +731,7 @@ function ConversationItem({
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || t("unknown");
+  const displayName = contact?.name || contact?.phone || contact?.wa_username || t("unknown");
   const contactTags = contact?.tags ?? [];
 
   const handleClick = useCallback(() => {

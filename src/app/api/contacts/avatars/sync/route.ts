@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isEvolutionConfigured } from '@/lib/whatsapp/evolution-api'
 import { syncContactAvatars } from '@/lib/contacts/sync-avatars'
 

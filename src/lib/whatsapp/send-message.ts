@@ -19,6 +19,11 @@
 // without duplicating ~250 lines of Meta plumbing.
 // ============================================================
 
+import { sendToFirstWorkingCandidate } from '@/lib/whatsapp/send-candidates';
+import {
+  ConversationError,
+  findOrCreateConversation as findOrCreateConversationRow,
+} from '@/lib/conversations/find-or-create';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { MediaKind } from '@/lib/whatsapp/meta-api';
@@ -35,7 +40,7 @@ import {
   type InteractiveMessagePayload,
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
-import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -201,31 +206,20 @@ export async function findOrCreateConversation(
   userId: string,
   contactId: string,
 ): Promise<string | null> {
-  const { data: existing } = await db
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle();
-
-  if (existing) return existing.id;
-
-  const { data: created, error } = await db
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: userId,
-      contact_id: contactId,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Error creating conversation for contact send:', error.message);
-    return null;
+  try {
+    const { conversation } = await findOrCreateConversationRow(db, {
+      accountId,
+      contactId,
+      ownerUserId: userId,
+    });
+    return conversation.id;
+  } catch (err) {
+    if (err instanceof ConversationError) {
+      console.error(`Error ${err.stage} conversation for contact send:`, err.detail);
+      return null;
+    }
+    throw err;
   }
-
-  return created.id;
 }
 
 export async function sendMessageToConversation(
@@ -524,31 +518,20 @@ export async function sendMessageToConversation(
       }
     }
 
-    let lastError: unknown = null;
-
-    for (const candidate of candidates) {
-      try {
-        waMessageId = await attempt(candidate);
-        if (candidate.kind === 'phone') workingPhone = candidate.value;
-        lastError = null;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // A BSUID can go stale (Meta regenerates it whenever the
-        // customer changes phone numbers) — any failure there, not
-        // just "recipient not allowed", should fall through to the
-        // phone variants rather than aborting the whole send.
-        if (candidate.kind === 'phone' && !isRecipientNotAllowedError(message)) {
-          throw err;
-        }
-        lastError = err;
+    const sent = await sendToFirstWorkingCandidate(candidates, attempt, {
+      // A BSUID can go stale (Meta regenerates it whenever the customer
+      // changes phone numbers), so any failure there, not just "recipient
+      // not allowed", falls through to the phone variants rather than
+      // aborting the whole send.
+      fallThrough: (candidate, message) =>
+        candidate.kind !== 'phone' || isRecipientNotAllowedError(message),
+      onSkipped: (candidate) =>
         console.warn(
           `[send-message] candidate ${candidate.kind}:"${candidate.value}" rejected by Meta, trying next…`
-        );
-      }
-    }
-
-    if (lastError) throw lastError;
+        ),
+    });
+    waMessageId = sent.result;
+    if (sent.candidate.kind === 'phone') workingPhone = sent.candidate.value;
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'Erro desconhecido da API da Meta';

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { AI_PROVIDER_DEFAULT_MODEL } from './defaults'
+import { AiError } from './types'
 import type { AiAgentSummary, AiCallConfig, AiConfig, AiProvider } from './types'
 
 interface AiAgentRow {
@@ -74,7 +75,17 @@ export async function loadProviderConfig(
     }
   }
 
-  return { provider: row.provider, apiKey: decrypt(row.api_key), embeddingsApiKey }
+  let apiKey: string
+  try {
+    apiKey = decrypt(row.api_key)
+  } catch {
+    throw new AiError('Stored API key could not be decrypted.', {
+      code: 'key_decrypt_failed',
+      status: 400,
+    })
+  }
+
+  return { provider: row.provider, apiKey, embeddingsApiKey }
 }
 
 /** Merge one `ai_agents` row with the account's shared credential into

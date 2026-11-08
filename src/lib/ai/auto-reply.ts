@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { loadAiAgent, loadReceptionistAgent } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
@@ -344,8 +344,8 @@ interface TurnState {
 
 /**
  * Run one agent's turn, following transfers (if any) up to
- * `hopsRemaining` before returning. Never throws — same contract as
- * `dispatchInboundToAiReply`. Also called directly by
+ * `hopsRemaining` before returning. May throw: `dispatchInboundToAiReply`
+ * catches and logs it, `activateAgentAndReply` lets it propagate. Also called directly by
  * `activateAgentAndReply` (Automations/Flows "activate AI agent"
  * step/node), which is why it's exported.
  */

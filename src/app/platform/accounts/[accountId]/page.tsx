@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BILLING_STATUSES, type BillingStatus } from '@/lib/billing/state';
-import { PLANS, isPlan, type Plan } from '@/lib/billing/plan';
+import { PLANS, formatPlanPrice, isPlan, type Plan } from '@/lib/billing/plan';
 import {
   WebhookPayloadDialog,
   type WebhookLogDetail,
@@ -67,8 +67,8 @@ const STATUS_LABEL: Record<BillingStatus, string> = {
 };
 
 const PLAN_LABEL: Record<Plan, string> = {
-  starter: 'Starter (R$97/mês)',
-  pro: 'Pro (R$197/mês)',
+  starter: `Starter (${formatPlanPrice('starter')}/mês)`,
+  pro: `Pro (${formatPlanPrice('pro')}/mês)`,
 };
 
 function fmtDateTime(iso: string | null): string {

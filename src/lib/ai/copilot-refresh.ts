@@ -198,7 +198,7 @@ async function buildCopilotContext(
       .from('deals')
       .select('value, currency, stage:pipeline_stages(name)')
       .eq('conversation_id', conversationId)
-      .eq('status', 'active')
+      .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

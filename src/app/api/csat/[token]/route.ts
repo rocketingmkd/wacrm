@@ -1,5 +1,6 @@
+import { getClientIp } from '@/lib/http/client-ip'
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { CSAT_MAX_COMMENT, isValidScore } from '@/lib/csat'
 
@@ -11,12 +12,6 @@ import { CSAT_MAX_COMMENT, isValidScore } from '@/lib/csat'
  *   GET   → { found, answered, company }
  *   POST  { score: 1..5, comment? } → records the answer once
  */
-
-function clientIp(request: Request): string {
-  const xff = request.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return request.headers.get('x-real-ip')?.trim() ?? 'unknown'
-}
 
 type Row = { id: string; account_id: string; answered_at: string | null }
 
@@ -34,7 +29,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  const limit = checkRateLimit(`csat-get:${clientIp(request)}`, RATE_LIMITS.invitationPeek)
+  const limit = checkRateLimit(`csat-get:${getClientIp(request)}`, RATE_LIMITS.invitationPeek)
   if (!limit.success) return rateLimitResponse(limit)
 
   const { token } = await params
@@ -58,7 +53,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  const limit = checkRateLimit(`csat-post:${clientIp(request)}`, RATE_LIMITS.invitationRedeem)
+  const limit = checkRateLimit(`csat-post:${getClientIp(request)}`, RATE_LIMITS.invitationRedeem)
   if (!limit.success) return rateLimitResponse(limit)
 
   const { token } = await params

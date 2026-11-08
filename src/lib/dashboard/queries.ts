@@ -22,7 +22,7 @@ import type {
 // signed-in user automatically, so we never pass user_id explicitly
 // here. Perf is acceptable for the current scale (low thousands of
 // messages) — if a tenant's dataset outgrows this, we'd migrate the
-// heavy aggregations to SQL RPCs. Noted in the PR.
+// heavy aggregations to SQL RPCs.
 // ------------------------------------------------------------
 
 type DB = SupabaseClient

@@ -1,4 +1,4 @@
-import type { AttributionSource } from './attribution'
+import { ATTRIBUTION_SOURCES, type AttributionSource } from './attribution'
 
 /** Shape returned by the SQL function attribution_report (migration 068). */
 export interface AttributionReport {
@@ -50,7 +50,7 @@ export function attachConversationIds<T extends { contact_id: string }>(
   return recent.map((r) => ({ ...r, conversation_id: latest.get(r.contact_id)?.id ?? null }))
 }
 
-export const SOURCE_ORDER: AttributionSource[] = ['meta_ctwa', 'meta_site', 'google', 'other']
+export const SOURCE_ORDER: readonly AttributionSource[] = ATTRIBUTION_SOURCES
 
 export const SOURCE_COLORS: Record<AttributionSource, string> = {
   meta_ctwa: '#1877f2',

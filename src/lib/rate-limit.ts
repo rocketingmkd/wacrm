@@ -89,26 +89,36 @@ export function checkRateLimit(
   };
 }
 
+/** Whole seconds until the window resets, never less than 1. */
+export function retryAfterSeconds(result: RateLimitResult): number {
+  return Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
+}
+
 /**
- * Standard 429 response with the headers clients expect (RFC 6585 +
- * draft-ietf-httpapi-ratelimit-headers). Callers just `return` this.
+ * The headers every 429 carries (RFC 6585 +
+ * draft-ietf-httpapi-ratelimit-headers), shared by the dashboard and
+ * public API error shapes.
+ */
+export function rateLimitHeaders(result: RateLimitResult): Record<string, string> {
+  return {
+    'Retry-After': String(retryAfterSeconds(result)),
+    'X-RateLimit-Limit': String(result.limit),
+    'X-RateLimit-Remaining': String(result.remaining),
+    'X-RateLimit-Reset': String(Math.ceil(result.reset / 1000)),
+  };
+}
+
+/**
+ * Standard 429 response with the headers clients expect.
+ * Callers just `return` this.
  */
 export function rateLimitResponse(result: RateLimitResult): NextResponse {
-  const retryAfterSec = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
   return NextResponse.json(
     {
       error: 'Rate limit exceeded',
-      retry_after_seconds: retryAfterSec,
+      retry_after_seconds: retryAfterSeconds(result),
     },
-    {
-      status: 429,
-      headers: {
-        'Retry-After': String(retryAfterSec),
-        'X-RateLimit-Limit': String(result.limit),
-        'X-RateLimit-Remaining': String(result.remaining),
-        'X-RateLimit-Reset': String(Math.ceil(result.reset / 1000)),
-      },
-    },
+    { status: 429, headers: rateLimitHeaders(result) },
   );
 }
 

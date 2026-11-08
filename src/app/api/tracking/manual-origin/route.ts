@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import {
   applyPhraseMatches,
   findPhraseMatches,

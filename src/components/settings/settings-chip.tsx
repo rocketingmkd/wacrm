@@ -42,23 +42,3 @@ export function SettingsChip({
     </span>
   );
 }
-
-/** A small live status dot (e.g. WhatsApp connected indicator). */
-export function StatusDot({
-  tone = 'ok',
-  className,
-}: {
-  tone?: 'ok' | 'muted';
-  className?: string;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'inline-block size-1.5 shrink-0 rounded-full',
-        tone === 'ok' ? 'bg-emerald-500' : 'bg-muted-foreground',
-        className,
-      )}
-    />
-  );
-}

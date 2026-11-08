@@ -19,8 +19,8 @@
 //     SECURITY DEFINER function is the only way to answer "is this
 //     caller staff?" using the caller's own session.
 //   - Cross-tenant reads/writes: the service-role client
-//     (supabaseAdmin(), reused from src/lib/flows/admin-client.ts —
-//     not a 5th duplicate). Every query through it MUST be filtered
+//     (supabaseAdmin() from src/lib/supabase/admin.ts). Every query
+//     through it MUST be filtered
 //     explicitly by account_id, the same discipline api-context.ts
 //     already documents for the public API's key auth path. Adding
 //     `OR is_platform_admin()` to every tenant RLS policy was
@@ -29,7 +29,7 @@
 // ============================================================
 
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { UnauthorizedError, ForbiddenError } from './account';
 
 export interface PlatformContext {

@@ -9,7 +9,7 @@
 // webhook-token/route.ts), same split as api-keys management.
 // ============================================================
 
-import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { hashWebhookToken, timingSafeHexEqual } from './webhook-token';
 
 /**

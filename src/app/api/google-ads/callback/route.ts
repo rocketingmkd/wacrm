@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { requireWrite } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { STATE_COOKIE, exchangeCode, redirectUri, verifyState } from '@/lib/google-ads/oauth'
 

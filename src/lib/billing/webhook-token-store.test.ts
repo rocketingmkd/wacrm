@@ -8,7 +8,7 @@ import { hashWebhookToken } from './webhook-token';
 // worth a real test despite api-keys/store.ts's convention of leaving
 // DB-glue untested.
 const from = vi.fn();
-vi.mock('@/lib/flows/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: () => ({ from }),
 }));
 

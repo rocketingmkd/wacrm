@@ -6,7 +6,7 @@ import {
 } from '@/lib/whatsapp/send-message'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils'
-import { findOrCreateContact, ContactError } from '@/lib/api/v1/contacts'
+import { findOrCreateContact, ContactError } from '@/lib/contacts/service'
 import {
   checkRateLimit,
   rateLimitResponse,

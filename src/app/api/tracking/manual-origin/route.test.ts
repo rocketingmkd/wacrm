@@ -9,7 +9,7 @@ vi.mock('@/lib/rate-limit', () => ({
   rateLimitResponse: () => new Response('limit', { status: 429 }),
   RATE_LIMITS: { phraseScan: {}, phraseScanAccount: {} },
 }))
-vi.mock('@/lib/ai/admin-client', () => ({ supabaseAdmin: () => ({}) }))
+vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({}) }))
 vi.mock('@/lib/tracking/phrase-rules', async (orig) => ({
   ...(await orig<typeof import('@/lib/tracking/phrase-rules')>()),
   findPhraseMatches: vi.fn(),

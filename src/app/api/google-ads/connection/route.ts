@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, requireWrite, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { redirectUri, revokeToken } from '@/lib/google-ads/oauth'
 import { parseCredentialsInput } from '@/lib/google-ads/credentials'

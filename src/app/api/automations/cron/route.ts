@@ -1,6 +1,6 @@
-import { timingSafeEqual } from 'node:crypto'
+import { requireCronSecret } from '@/lib/auth/cron'
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 
@@ -16,19 +16,8 @@ import type { AutomationContext } from '@/lib/automations/engine'
  * two-step UPDATE-by-id.
  */
 export async function GET(request: Request) {
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret') ?? ''
-  const suppliedBuf = Buffer.from(supplied)
-  const expectedBuf = Buffer.from(expected)
-  if (
-    suppliedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(suppliedBuf, expectedBuf)
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = requireCronSecret(request)
+  if (denied) return denied
 
   const admin = supabaseAdmin()
   const { data: due, error } = await admin

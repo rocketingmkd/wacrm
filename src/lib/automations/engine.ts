@@ -1,3 +1,5 @@
+import { pickNextAgent } from '@/lib/conversations/round-robin'
+import { findConversation } from '@/lib/conversations/find-or-create'
 import type {
   Automation,
   AutomationLogStepResult,
@@ -21,12 +23,12 @@ import type {
   AssignConversationStepConfig,
   ActivateAiAgentStepConfig,
 } from '@/types'
-import { supabaseAdmin } from './admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { activateAgentAndReply } from '@/lib/ai/auto-reply'
-import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
-import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
-import { dispatchEventToFlows } from '@/lib/flows/engine'
+import { ContactTagWriteError, removeContactTag } from '@/lib/contacts/tag-write'
+import { getTagChainDepth } from '@/lib/contacts/tag-chain'
+import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
@@ -489,60 +491,43 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'add_tag': {
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('add_tag needs contact + tag_id')
-      const added = await addContactTagIfAbsent(db, {
+      // The shared writer adds the tag once, then dispatches tag_added to
+      // automations and Flows, carrying this run's context so the chain-depth
+      // guard sees the automation that tagged the contact.
+      const result = await addContactTagAndDispatch({
+        db,
         accountId: args.automation.account_id,
         contactId: args.contactId,
         tagId: cfg.tag_id,
+        context: args.context,
       })
-      if (!added) return `tag ${cfg.tag_id} already present`
-
-      const depth = getTagChainDepth(args.context)
-      if (depth >= MAX_TAG_CHAIN_DEPTH) {
-        console.warn('[automations] tag_added chain depth limit reached', {
-          automationId: args.automation.id,
-          contactId: args.contactId,
-          tagId: cfg.tag_id,
-          depth,
-        })
-        return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${depth}`
+      if (result.reason === 'duplicate') return `tag ${cfg.tag_id} already present`
+      if (result.reason === 'max_depth') {
+        return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${getTagChainDepth(args.context)}`
       }
-
-      await runAutomationsForTrigger({
-        accountId: args.automation.account_id,
-        triggerType: 'tag_added',
-        contactId: args.contactId,
-        context: {
-          ...args.context,
-          tag_id: cfg.tag_id,
-          vars: {
-            ...(args.context.vars ?? {}),
-            _tag_chain_depth: depth + 1,
-          },
-        },
-      })
-      // This step bypasses src/lib/contacts/tag-events.ts (it needs
-      // its own inline depth guard against the automation's own
-      // context, not tag-events.ts's), so it also needs its own
-      // Flows dispatch — otherwise "an Automation tags the lead → a
-      // Flow starts the onboarding conversation" silently never fires.
-      await dispatchEventToFlows({
-        accountId: args.automation.account_id,
-        contactId: args.contactId,
-        event: { type: 'tag_added', tag_id: cfg.tag_id },
-      }).catch((err) => console.error('[flows] tag_added dispatch failed:', err))
       return `tag ${cfg.tag_id} added and tag_added dispatched`
     }
 
     case 'remove_tag': {
-      // See add_tag: tenant scoping relies on the runAutomationsForTrigger
-      // ownership guard, since contact_tags carries no account_id.
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('remove_tag needs contact + tag_id')
-      await db
-        .from('contact_tags')
-        .delete()
-        .eq('contact_id', args.contactId)
-        .eq('tag_id', cfg.tag_id)
+      // contact_tags carries no account_id, so the writer checks that both
+      // the contact and the tag belong to this account before deleting.
+      try {
+        await removeContactTag(db, {
+          accountId: args.automation.account_id,
+          contactId: args.contactId,
+          tagId: cfg.tag_id,
+        })
+      } catch (err) {
+        // A tag deleted after this step was authored (the id stays in the
+        // step's JSON, with no foreign key) has nothing left to remove.
+        // That must not abort the automation and skip the steps after it.
+        if (err instanceof ContactTagWriteError && err.status === 404) {
+          return `tag ${cfg.tag_id} not present`
+        }
+        throw err
+      }
       return `tag ${cfg.tag_id} removed`
     }
 
@@ -551,15 +536,13 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
       let agentId = cfg.agent_id
       if (cfg.mode === 'round_robin') {
-        // Pick any member of the account. The existing implementation
-        // only ever returned the automation's author; preserving that
-        // shape until a real round-robin algorithm replaces it.
-        const { data: profiles } = await db
-          .from('profiles')
-          .select('user_id')
-          .eq('account_id', args.automation.account_id)
-          .limit(1)
-        agentId = profiles?.[0]?.user_id
+        // Same rotation, and the same cursor, as new-conversation
+        // assignment. An account with no 'agent'-role member (only an
+        // owner or admins) rotates over its members instead.
+        agentId =
+          (await pickNextAgent(db, args.automation.account_id, {
+            fallbackToAnyMember: true,
+          })) ?? undefined
       }
       if (!agentId) return 'no agent resolved'
       await db
@@ -752,20 +735,18 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   const fromCtx = args.context.conversation_id
   if (fromCtx) return fromCtx
   if (!args.contactId) throw new Error('cannot resolve conversation: no contact')
-  const { data, error } = await supabaseAdmin()
-    .from('conversations')
-    .select('id')
-    .eq('account_id', args.automation.account_id)
-    .eq('contact_id', args.contactId)
-    .maybeSingle()
-  if (error) throw new Error(`conversation lookup failed: ${error.message}`)
-  if (!data?.id) {
+  const conversation = await findConversation(
+    supabaseAdmin(),
+    args.automation.account_id,
+    args.contactId,
+  )
+  if (!conversation) {
     const prefix = args.triggerEvent === 'tag_added'
       ? 'tag_added automation cannot send'
       : 'cannot send'
     throw new Error(`${prefix}: contact has no existing conversation`)
   }
-  return data.id as string
+  return conversation.id
 }
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-vi.mock('@/lib/api/v1/contacts', () => ({
+vi.mock('@/lib/contacts/service', () => ({
   resolveAuditUserId: vi.fn(async () => 'owner-1'),
 }));
 
@@ -210,7 +210,16 @@ function fakeDb() {
     return builder;
   };
 
-  return { db: { from } as unknown as SupabaseClient, tables };
+  // Mirrors the SQL function from migration 081.
+  const rpc = (fn: string, args: { p_conversation_id: string }) => {
+    if (fn === 'increment_conversation_unread') {
+      const row = tables.conversations.find((r) => r.id === args.p_conversation_id);
+      if (row) row.unread_count = ((row.unread_count as number | null) ?? 0) + 1;
+    }
+    return Promise.resolve({ error: null });
+  };
+
+  return { db: { from, rpc } as unknown as SupabaseClient, tables };
 }
 
 const base: ParsedGroupMessage = {
