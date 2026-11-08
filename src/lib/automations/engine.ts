@@ -26,7 +26,7 @@ import type {
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { activateAgentAndReply } from '@/lib/ai/auto-reply'
-import { removeContactTag } from '@/lib/contacts/tag-write'
+import { ContactTagWriteError, removeContactTag } from '@/lib/contacts/tag-write'
 import { getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
@@ -513,11 +513,21 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId || !cfg.tag_id) throw new Error('remove_tag needs contact + tag_id')
       // contact_tags carries no account_id, so the writer checks that both
       // the contact and the tag belong to this account before deleting.
-      await removeContactTag(db, {
-        accountId: args.automation.account_id,
-        contactId: args.contactId,
-        tagId: cfg.tag_id,
-      })
+      try {
+        await removeContactTag(db, {
+          accountId: args.automation.account_id,
+          contactId: args.contactId,
+          tagId: cfg.tag_id,
+        })
+      } catch (err) {
+        // A tag deleted after this step was authored (the id stays in the
+        // step's JSON, with no foreign key) has nothing left to remove.
+        // That must not abort the automation and skip the steps after it.
+        if (err instanceof ContactTagWriteError && err.status === 404) {
+          return `tag ${cfg.tag_id} not present`
+        }
+        throw err
+      }
       return `tag ${cfg.tag_id} removed`
     }
 
