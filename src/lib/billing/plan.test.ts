@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { accountHasFeature, isPlan, PLANS, type PlanBillingSummary } from './plan';
+import {
+  accountHasFeature,
+  formatPlanPrice,
+  isPlan,
+  PLAN_PRICE_BRL,
+  PLANS,
+  type PlanBillingSummary,
+} from './plan';
 
 function billing(overrides: Partial<PlanBillingSummary>): PlanBillingSummary {
   return { status: 'active', plan: null, ...overrides };
@@ -56,5 +63,17 @@ describe('accountHasFeature', () => {
     expect(accountHasFeature(billing({ status: 'active', plan: 'legacy_v1' }), 'apiAccess')).toBe(
       false,
     );
+  });
+});
+
+describe('plan prices', () => {
+  it('has a positive list price for every plan, and Pro costs more than Starter', () => {
+    for (const p of PLANS) expect(PLAN_PRICE_BRL[p]).toBeGreaterThan(0);
+    expect(PLAN_PRICE_BRL.pro).toBeGreaterThan(PLAN_PRICE_BRL.starter);
+  });
+
+  it('formats the price the way the pages show it', () => {
+    expect(formatPlanPrice('starter')).toBe('R$ 97');
+    expect(formatPlanPrice('pro')).toBe('R$ 197');
   });
 });

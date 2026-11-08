@@ -4,6 +4,7 @@
 // (plan, status, next charge, last payment) with the headline numbers.
 // Read-only; changes to an account's billing are made on its detail page.
 
+import { formatPlanPrice } from '@/lib/billing/plan';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Activity, AlertTriangle, Banknote, Loader2, Search, Sparkles } from 'lucide-react';
@@ -214,7 +215,8 @@ export default function PlatformSubscriptionsPage() {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        O MRR é estimado pelo preço de tabela do plano (Starter R$ 97, Pro R$ 197). Valores com
+        O MRR é estimado pelo preço de tabela do plano (Starter {formatPlanPrice('starter')}, Pro{' '}
+        {formatPlanPrice('pro')}). Valores com
         desconto aparecem em &quot;Último pagamento&quot;.
       </p>
     </div>

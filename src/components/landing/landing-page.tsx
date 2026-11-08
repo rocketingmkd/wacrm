@@ -1,5 +1,6 @@
 "use client";
 
+import { formatPlanPrice } from "@/lib/billing/plan";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Montserrat } from "next/font/google";
@@ -447,7 +448,7 @@ function Pricing() {
   const plans = [
     {
       n: "Starter",
-      p: "R$ 97",
+      p: formatPlanPrice("starter"),
       d: "Para começar a organizar o atendimento.",
       f: [
         "1 número de WhatsApp",
@@ -462,7 +463,7 @@ function Pricing() {
     },
     {
       n: "Pro",
-      p: "R$ 197",
+      p: formatPlanPrice("pro"),
       d: "Para automatizar e escalar. O mais completo.",
       f: [
         "Tudo do Starter",

@@ -3,17 +3,7 @@
 // Assinaturas pages (no I/O, so they are unit-tested on their own).
 // ============================================================
 
-import { isPlan, type Plan } from '@/lib/billing/plan'
-
-/**
- * List price per plan, in BRL per month. Only used for the
- * "MRR estimado": real charges can differ (coupons, promos), the real
- * amounts live in Rocketing Pay and in `account_billing.last_payment_*`.
- */
-export const PLAN_PRICE_BRL: Record<Plan, number> = {
-  starter: 97,
-  pro: 197,
-}
+import { PLAN_PRICE_BRL, isPlan } from '@/lib/billing/plan'
 
 /** Monthly list price of a plan slug, 0 for no / unknown plan. */
 export function planPrice(plan: string | null | undefined): number {
