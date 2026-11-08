@@ -1,3 +1,4 @@
+import { getClientIp } from '@/lib/http/client-ip'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
@@ -19,18 +20,12 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-function clientIp(request: Request): string {
-  const xff = request.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return request.headers.get('x-real-ip')?.trim() ?? 'unknown'
-}
-
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS })
 }
 
 export async function POST(request: Request) {
-  const limit = checkRateLimit(`tracking-session:${clientIp(request)}`, RATE_LIMITS.trackingSession)
+  const limit = checkRateLimit(`tracking-session:${getClientIp(request)}`, RATE_LIMITS.trackingSession)
   if (!limit.success) return new NextResponse(null, { status: 429, headers: CORS })
 
   let raw: Record<string, unknown>

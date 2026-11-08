@@ -1,3 +1,4 @@
+import { getClientIp } from '@/lib/http/client-ip'
 import { NextResponse, after } from 'next/server'
 import { verifyStoredWebhookToken } from '@/lib/billing/webhook-token-store'
 import { processBillingWebhook } from '@/lib/billing/process-webhook'
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   // becomes the thing an attacker floods. Rate-limited requests are
   // dropped without a log insert (same as an auth failure would be
   // logged, this is a layer below that).
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const ip = getClientIp(request)
   const limit = checkRateLimit(`billing-webhook:${ip}`, RATE_LIMITS.billingWebhook)
   if (!limit.success) {
     return rateLimitResponse(limit)
