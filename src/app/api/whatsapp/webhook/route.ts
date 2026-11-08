@@ -1,3 +1,9 @@
+import {
+  MESSAGE_STATUS_LADDER,
+  RECIPIENT_STATUS_LADDER,
+  isValidStatusTransition,
+  statusesBefore,
+} from '@/lib/whatsapp/status-ladder'
 import { ContactError, findOrCreateContactRecord } from '@/lib/contacts/service'
 import type { Conversation } from '@/types'
 import {
@@ -962,48 +968,6 @@ async function handleAutomaticEvents(value: AutomaticEventsValue) {
   }
 }
 
-// The happy-path status ladder — pending → sent → delivered → read →
-// replied. Webhook replays must never regress a recipient back down
-// this ladder.
-//
-// `failed` is NOT on this ladder. It's a terminal side branch that is
-// only valid from the early states (pending / sent) — once Meta has
-// delivered or the user has read or replied, a later "failed" status
-// event is a bug in Meta's pipeline or a spoof attempt and must be
-// ignored.
-const RECIPIENT_STATUS_LADDER = [
-  'pending',
-  'sent',
-  'delivered',
-  'read',
-  'replied',
-] as const
-
-function ladderLevel(s: string): number {
-  const idx = (RECIPIENT_STATUS_LADDER as readonly string[]).indexOf(s)
-  return idx < 0 ? -1 : idx
-}
-
-/**
- * Can a recipient transition from `current` to `incoming`?
- *   - Along the ladder, only forward moves are allowed.
- *   - `failed` is accepted only from `pending` or `sent`; it's refused
- *     once the recipient has reached any of the success states.
- */
-function isValidStatusTransition(current: string, incoming: string): boolean {
-  if (incoming === 'failed') {
-    return current === 'pending' || current === 'sent'
-  }
-  if (current === 'failed') {
-    return false // failed is terminal
-  }
-  const ci = ladderLevel(current)
-  const ii = ladderLevel(incoming)
-  if (ii < 0) return false // unknown incoming status
-  if (ci < 0) return true // unknown current — accept anything on the ladder
-  return ii > ci
-}
-
 async function handleStatusUpdate(status: {
   id: string
   status: string
@@ -1027,18 +991,24 @@ async function handleStatusUpdate(status: {
     )
   }
 
-  // 1) Mirror onto messages (legacy behavior) — Meta's status values
-  //    already match the CHECK constraint on messages.status. No
-  //    `.select()`: message_id is NOT unique (migration 009 — Meta ids
-  //    repeat across numbers), so this updates 0..N rows and must not
-  //    assume a single row.
-  const { error: msgErr } = await supabaseAdmin()
-    .from('messages')
-    .update({ status: status.status })
-    .eq('message_id', status.id)
+  // 1) Mirror onto messages. Meta's status values already match the
+  //    CHECK constraint on messages.status. Forward-only: webhooks arrive
+  //    out of order and get replayed, and a late `sent` must not undo a
+  //    `read`. The rule is the UPDATE's own `.in('status', ...)` filter,
+  //    so it holds against a concurrent webhook too. No `.select()`:
+  //    message_id is NOT unique (migration 009 — Meta ids repeat across
+  //    numbers), so this updates 0..N rows and must not assume one.
+  const messageStatusesBefore = statusesBefore(MESSAGE_STATUS_LADDER, status.status)
+  if (messageStatusesBefore.length > 0) {
+    const { error: msgErr } = await supabaseAdmin()
+      .from('messages')
+      .update({ status: status.status })
+      .eq('message_id', status.id)
+      .in('status', messageStatusesBefore)
 
-  if (msgErr) {
-    console.error('Error updating message status:', msgErr)
+    if (msgErr) {
+      console.error('Error updating message status:', msgErr)
+    }
   }
 
   // Webhook fan-out for this status change happens at the END of this
@@ -1063,7 +1033,7 @@ async function handleStatusUpdate(status: {
     recipient &&
     // Guard transitions — forward-only on the success ladder, and
     // `failed` only from pre-delivered states.
-    isValidStatusTransition(recipient.status, status.status)
+    isValidStatusTransition(RECIPIENT_STATUS_LADDER, recipient.status, status.status)
   ) {
     const update: Record<string, unknown> = { status: status.status }
     if (status.status === 'sent' && !('sent_at' in update)) update.sent_at = tsIso
