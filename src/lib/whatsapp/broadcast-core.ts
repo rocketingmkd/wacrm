@@ -9,7 +9,9 @@
 //                        rows (status 'pending'), return a plan.
 //   deliverBroadcast() — send each recipient's template via Meta
 //                        (phone-variant retry), stamp each recipient
-//                        row + the aggregate counts, finalize status.
+//                        row + the aggregate counts, record each sent
+//                        template in the contact's inbox conversation,
+//                        finalize status.
 //
 // Recipient rows carry `whatsapp_message_id`, so the inbound webhook's
 // status handler (which matches on that column) updates delivered/read
@@ -29,6 +31,7 @@ import {
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/contacts/service';
+import { findOrCreateConversation } from '@/lib/conversations/find-or-create';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -58,11 +61,15 @@ export interface CreateBroadcastParams {
 
 interface PlannedRecipient {
   recipientRowId: string;
+  contactId: string;
   phone: string;
   params: string[];
 }
 
 export interface BroadcastPlan {
+  accountId: string;
+  /** Audit `user_id` for rows created while delivering (conversations). */
+  ownerUserId: string;
   broadcastId: string;
   templateName: string;
   templateLanguage: string;
@@ -231,10 +238,17 @@ export async function createBroadcast(
   const byContact = new Map(deduped.map((r) => [r.contactId, r]));
   const planned: PlannedRecipient[] = recipientRows.map((row) => {
     const r = byContact.get(row.contact_id as string)!;
-    return { recipientRowId: row.id as string, phone: r.phone, params: r.params };
+    return {
+      recipientRowId: row.id as string,
+      contactId: r.contactId,
+      phone: r.phone,
+      params: r.params,
+    };
   });
 
   return {
+    accountId,
+    ownerUserId: auditUserId,
     broadcastId: broadcast.id,
     templateName,
     templateLanguage,
@@ -244,6 +258,55 @@ export async function createBroadcast(
     planned,
     rejected,
   };
+}
+
+/**
+ * Show a sent template in the contact's inbox conversation, so API
+ * broadcasts appear in the inbox like dashboard ones and the Meta
+ * delivered/read webhooks have a message row to update (they match on
+ * `message_id`).
+ *
+ * Recorded as `bot`, not `agent`: nobody typed this, and an agent send
+ * would pause the contact's active Flow runs. Best-effort. The message
+ * already left through Meta and the recipient row is stamped, so a
+ * failure here is logged and never changes the broadcast's outcome.
+ */
+async function recordSentTemplate(
+  db: SupabaseClient,
+  plan: BroadcastPlan,
+  recipient: PlannedRecipient,
+  whatsappMessageId: string
+): Promise<void> {
+  try {
+    const { conversation } = await findOrCreateConversation(db, {
+      accountId: plan.accountId,
+      contactId: recipient.contactId,
+      ownerUserId: plan.ownerUserId,
+    });
+
+    const { error: messageError } = await db.from('messages').insert({
+      conversation_id: conversation.id,
+      sender_type: 'bot',
+      content_type: 'template',
+      template_name: plan.templateName,
+      message_id: whatsappMessageId,
+      transport: 'official',
+      status: 'sent',
+    });
+    if (messageError) throw messageError;
+
+    const now = new Date().toISOString();
+    await db
+      .from('conversations')
+      .update({
+        last_message_text: `[template:${plan.templateName}]`,
+        last_message_at: now,
+        updated_at: now,
+      })
+      .eq('id', conversation.id);
+  } catch (error) {
+    console.error('[broadcast-core] could not record the sent template in the inbox:', error);
+  }
 }
 
 /**
@@ -303,6 +366,7 @@ export async function deliverBroadcast(
           error_message: null,
         })
         .eq('id', recipient.recipientRowId);
+      await recordSentTemplate(db, plan, recipient, sentMessageId);
     } else {
       await db
         .from('broadcast_recipients')
