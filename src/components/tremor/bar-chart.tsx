@@ -181,12 +181,11 @@ const ScrollButton = ({ icon, onClick, disabled }: ScrollButtonProps) => {
     return () => clearInterval(intervalRef.current as NodeJS.Timeout)
   }, [isPressed, onClick])
 
-  React.useEffect(() => {
-    if (disabled) {
-      clearInterval(intervalRef.current as NodeJS.Timeout)
-      setIsPressed(false)
-    }
-  }, [disabled])
+  // A disabled button can't stay pressed. Done while rendering; the effect
+  // above clears the interval once `isPressed` turns false.
+  if (disabled && isPressed) {
+    setIsPressed(false)
+  }
 
   return (
     <button

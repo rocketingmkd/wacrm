@@ -60,7 +60,8 @@ export function QuickRepliesManager() {
   }, []);
 
   useEffect(() => {
-    void load();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void load());
   }, [load]);
 
   const openCreate = () => setDraft(emptyDraft());

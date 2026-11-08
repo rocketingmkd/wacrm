@@ -485,7 +485,7 @@ export function MessageComposer({
   // upload size limit.
   useEffect(() => {
     if (recording && recordSeconds >= MAX_RECORDING_SECONDS) {
-      stopRecording();
+      queueMicrotask(() => stopRecording());
     }
   }, [recording, recordSeconds, stopRecording]);
 

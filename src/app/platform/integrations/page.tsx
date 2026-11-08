@@ -94,7 +94,8 @@ export default function PlatformIntegrationsPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void load());
   }, [load]);
 
   async function copy(value: string, label: string) {

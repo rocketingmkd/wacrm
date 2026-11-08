@@ -201,7 +201,7 @@ export function WhatsAppConfig() {
     if (authLoading || profileLoading) return;
     if (!user || !accountId) {
       loadedAccountIdRef.current = null;
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     if (loadedAccountIdRef.current === accountId) return;

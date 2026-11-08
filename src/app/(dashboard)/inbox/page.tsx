@@ -91,8 +91,10 @@ function InboxPageInner() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(RIGHT_PANEL_STORAGE_KEY);
-      if (stored === "contact") setRightPanel(stored);
-      else if (stored === "closed") setRightPanel(null);
+      if (stored === "contact" || stored === "closed") {
+        const panel: RightPanel = stored === "contact" ? "contact" : null;
+        queueMicrotask(() => setRightPanel(panel));
+      }
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.
     }

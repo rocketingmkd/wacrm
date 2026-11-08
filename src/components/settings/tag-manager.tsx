@@ -59,7 +59,7 @@ export function TagManager() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     fetchTags(user.id);

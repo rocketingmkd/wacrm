@@ -218,7 +218,8 @@ export function Step2SelectAudience({
   ]);
 
   useEffect(() => {
-    fetchEstimatedCount();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void fetchEstimatedCount());
   }, [fetchEstimatedCount]);
 
   async function handleCsvFile(file: File | undefined) {

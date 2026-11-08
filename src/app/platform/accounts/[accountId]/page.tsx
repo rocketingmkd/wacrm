@@ -131,7 +131,8 @@ export default function PlatformAccountDetailPage({
   }, [accountId]);
 
   useEffect(() => {
-    load();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void load());
   }, [load]);
 
   async function runAction(action: string, payload: Record<string, unknown>) {
