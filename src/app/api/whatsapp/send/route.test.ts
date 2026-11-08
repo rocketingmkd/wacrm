@@ -106,8 +106,16 @@ function makeSupabaseMock() {
     })
     b.single = vi.fn(terminal)
     b.maybeSingle = vi.fn(terminal)
+    // Awaiting the builder without `.single()` / `.maybeSingle()` is a list
+    // query, which real Supabase answers with an array. Conversations are
+    // looked up that way (`limit(1)`), so wrap the canned row.
+    const listResult = () => {
+      const res = selectResult()
+      if (table !== 'conversations') return res
+      return { data: res.data ? [res.data] : [], error: null }
+    }
     b.then = (resolve: (v: unknown) => unknown) =>
-      resolve(didInsert ? insertResult() : selectResult())
+      resolve(didInsert ? insertResult() : listResult())
     return b
   }
 

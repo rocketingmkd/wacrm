@@ -1,3 +1,4 @@
+import { findConversation } from '@/lib/conversations/find-or-create'
 import type {
   Automation,
   AutomationLogStepResult,
@@ -752,20 +753,18 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   const fromCtx = args.context.conversation_id
   if (fromCtx) return fromCtx
   if (!args.contactId) throw new Error('cannot resolve conversation: no contact')
-  const { data, error } = await supabaseAdmin()
-    .from('conversations')
-    .select('id')
-    .eq('account_id', args.automation.account_id)
-    .eq('contact_id', args.contactId)
-    .maybeSingle()
-  if (error) throw new Error(`conversation lookup failed: ${error.message}`)
-  if (!data?.id) {
+  const conversation = await findConversation(
+    supabaseAdmin(),
+    args.automation.account_id,
+    args.contactId,
+  )
+  if (!conversation) {
     const prefix = args.triggerEvent === 'tag_added'
       ? 'tag_added automation cannot send'
       : 'cannot send'
     throw new Error(`${prefix}: contact has no existing conversation`)
   }
-  return data.id as string
+  return conversation.id
 }
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {

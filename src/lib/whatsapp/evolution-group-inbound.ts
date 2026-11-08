@@ -14,6 +14,7 @@
 // can be unit-tested without Supabase.
 // ============================================================
 
+import { findOrCreateConversation } from '@/lib/conversations/find-or-create';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -274,37 +275,22 @@ async function findOrCreateGroupContact(
   throw new Error(`group contact create failed: ${JSON.stringify(error)}`);
 }
 
+
+type GroupConversation = { id: string; unread_count: number | null };
+
 async function findOrCreateGroupConversation(
   db: SupabaseClient,
   accountId: string,
   ownerUserId: string,
   contactId: string,
-): Promise<{ id: string; unread_count: number | null }> {
-  const find = async () => {
-    const { data } = await db
-      .from('conversations')
-      .select('id, unread_count')
-      .eq('account_id', accountId)
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: true })
-      .limit(1);
-    return data?.[0] as { id: string; unread_count: number | null } | undefined;
-  };
-
-  const existing = await find();
-  if (existing) return existing;
-
-  const { data: created, error } = await db
-    .from('conversations')
-    .insert({ account_id: accountId, user_id: ownerUserId, contact_id: contactId })
-    .select('id, unread_count')
-    .single<{ id: string; unread_count: number | null }>();
-  if (created) return created;
-  if (isUniqueViolation(error)) {
-    const raced = await find();
-    if (raced) return raced;
-  }
-  throw new Error(`group conversation create failed: ${JSON.stringify(error)}`);
+): Promise<GroupConversation> {
+  const { conversation } = await findOrCreateConversation<GroupConversation>(db, {
+    accountId,
+    contactId,
+    ownerUserId,
+    select: 'id, unread_count',
+  });
+  return conversation;
 }
 
 /**

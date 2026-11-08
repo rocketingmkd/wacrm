@@ -19,6 +19,10 @@
 // without duplicating ~250 lines of Meta plumbing.
 // ============================================================
 
+import {
+  ConversationError,
+  findOrCreateConversation as findOrCreateConversationRow,
+} from '@/lib/conversations/find-or-create';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { MediaKind } from '@/lib/whatsapp/meta-api';
@@ -201,31 +205,20 @@ export async function findOrCreateConversation(
   userId: string,
   contactId: string,
 ): Promise<string | null> {
-  const { data: existing } = await db
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle();
-
-  if (existing) return existing.id;
-
-  const { data: created, error } = await db
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: userId,
-      contact_id: contactId,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Error creating conversation for contact send:', error.message);
-    return null;
+  try {
+    const { conversation } = await findOrCreateConversationRow(db, {
+      accountId,
+      contactId,
+      ownerUserId: userId,
+    });
+    return conversation.id;
+  } catch (err) {
+    if (err instanceof ConversationError) {
+      console.error(`Error ${err.stage} conversation for contact send:`, err.detail);
+      return null;
+    }
+    throw err;
   }
-
-  return created.id;
 }
 
 export async function sendMessageToConversation(
