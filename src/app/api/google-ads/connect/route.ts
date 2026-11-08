@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { STATE_COOKIE, buildAuthUrl, createState, redirectUri } from '@/lib/google-ads/oauth'
 
 /**

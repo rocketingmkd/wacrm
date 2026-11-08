@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import {
   registerPhoneNumber,
   subscribeWabaToApp,
@@ -61,21 +61,6 @@ export interface SaveVerifiedWhatsAppConfigResult {
   registration_skipped?: boolean
   registration_error?: string
   phone_info: MetaPhoneInfo
-}
-
-// Lazy-initialised service-role client, only used to detect a
-// phone_number_id already claimed by a *different* account — under
-// RLS, the caller's own session can't see other accounts' rows.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _adminClient: any = null
-function supabaseAdmin() {
-  if (!_adminClient) {
-    _adminClient = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-  }
-  return _adminClient
 }
 
 export async function saveVerifiedWhatsAppConfig(

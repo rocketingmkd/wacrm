@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { analyzeConversation } from '@/lib/ai/conversation-analysis'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

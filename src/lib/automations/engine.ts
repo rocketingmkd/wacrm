@@ -21,7 +21,7 @@ import type {
   AssignConversationStepConfig,
   ActivateAiAgentStepConfig,
 } from '@/types'
-import { supabaseAdmin } from './admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { activateAgentAndReply } from '@/lib/ai/auto-reply'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'

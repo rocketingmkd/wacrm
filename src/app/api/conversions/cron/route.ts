@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { processConversionQueue } from '@/lib/tracking/conversions'
 import { processGoogleQueue } from '@/lib/google-ads/conversions'
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { loadConnection } from '@/lib/google-ads/conversions'
 import { GoogleApiError, ingestEvents, onlyDigits } from '@/lib/google-ads/data-manager'
 import { refreshAccessToken } from '@/lib/google-ads/oauth'

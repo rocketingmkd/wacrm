@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { fetchGroupSubject } from '@/lib/whatsapp/evolution-api'
 import {
   isValidWebhookSecret,

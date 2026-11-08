@@ -36,7 +36,7 @@
  *     INSERT raises 23505 and the runner catches & exits.
  */
 
-import { supabaseAdmin } from "./admin-client";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isAccountWriteLocked } from "@/lib/billing/write-lock";
 import { activateAgentAndReply } from "@/lib/ai/auto-reply";
 import {

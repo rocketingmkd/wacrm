@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireFeature, requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { getFlowTemplate } from '@/lib/flows/templates'
 import type { FlowTriggerType } from '@/lib/flows/types'
 

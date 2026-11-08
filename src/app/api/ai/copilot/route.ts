@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireFeature, requireWriteFeature, toErrorResponse, type AccountContext } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { refreshConversationInsight } from '@/lib/ai/copilot-refresh'
 import type { CopilotInsight } from '@/lib/ai/copilot'
 

@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { verifyStoredWebhookToken } from '@/lib/billing/webhook-token-store'
 import { processBillingWebhook } from '@/lib/billing/process-webhook'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 // POST /api/billing/webhook

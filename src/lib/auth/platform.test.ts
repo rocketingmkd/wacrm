@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // would always see nothing). Mirrors the mocking pattern in
 // ./account.test.ts.
 
-vi.mock("@/lib/flows/admin-client", () => ({
+vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: () => ({ __isMockAdminClient: true }),
 }));
 

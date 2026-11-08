@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireFeature, requireWriteFeature, toErrorResponse } from '@/lib/auth/account'
-import { supabaseAdmin } from '@/lib/ai/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type Ctx = { params: Promise<{ id: string }> }

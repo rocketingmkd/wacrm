@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import { resolvePublicOrigin } from '@/lib/csat'
 import { buildTrackingScript } from '@/lib/tracking/script'
 

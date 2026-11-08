@@ -8,7 +8,7 @@ const evo = vi.hoisted(() => ({
   sendMedia: vi.fn(),
 }));
 vi.mock('@/lib/whatsapp/evolution-api', () => evo);
-vi.mock('@/lib/flows/admin-client', () => ({
+vi.mock('@/lib/supabase/admin', () => ({
   supabaseAdmin: () => ({
     from: () => ({
       update: () => ({ eq: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }) }),
