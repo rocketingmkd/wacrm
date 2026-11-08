@@ -43,10 +43,13 @@ export function DealsSettings() {
   const t = useTranslations("Settings.deals");
 
   // Keep the select in sync once the profile (and its account default)
-  // resolves, and after a save round-trips through refreshProfile.
-  useEffect(() => {
+  // resolves, and after a save round-trips through refreshProfile. Done
+  // while rendering, by comparing with the default it last followed.
+  const [followedDefault, setFollowedDefault] = useState(defaultCurrency);
+  if (defaultCurrency !== followedDefault) {
+    setFollowedDefault(defaultCurrency);
     setSelected(defaultCurrency);
-  }, [defaultCurrency]);
+  }
 
   const dirty = selected !== defaultCurrency;
 

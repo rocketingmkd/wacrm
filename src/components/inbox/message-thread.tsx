@@ -398,7 +398,7 @@ export function MessageThread({
   // realtime channel.
   useEffect(() => {
     if (!conversationId) {
-      setReactions([]);
+      queueMicrotask(() => setReactions([]));
       return;
     }
     const supabase = createClient();
@@ -497,9 +497,12 @@ export function MessageThread({
 
   // Clear any in-progress reply draft when the active conversation changes —
   // a quote pulled from conversation A shouldn't bleed into conversation B.
-  useEffect(() => {
+  // Done while rendering, by comparing with the conversation it belongs to.
+  const [replyConversationId, setReplyConversationId] = useState(conversationId);
+  if (conversationId !== replyConversationId) {
+    setReplyConversationId(conversationId);
     setReplyTo(null);
-  }, [conversationId]);
+  }
 
   // Reset the server-side unread_count to 0 whenever an unread count
   // surfaces on the active conversation — covers both (a) opening a

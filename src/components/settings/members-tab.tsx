@@ -190,7 +190,8 @@ export function MembersTab() {
   }, [canManageMembers]);
 
   useEffect(() => {
-    void loadEverything();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void loadEverything());
   }, [loadEverything]);
 
   async function handleRoleChange(member: Member, nextRole: AccountRole) {

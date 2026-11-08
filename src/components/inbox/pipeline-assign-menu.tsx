@@ -107,7 +107,8 @@ export function PipelineAssignMenu({
   }, [contact.id]);
 
   useEffect(() => {
-    loadDeals();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void loadDeals());
   }, [loadDeals]);
 
   const dealFor = useCallback(

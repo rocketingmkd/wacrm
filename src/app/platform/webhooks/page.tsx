@@ -93,7 +93,8 @@ export default function PlatformWebhooksPage() {
   }, [page, outcome, search]);
 
   useEffect(() => {
-    load();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void load());
   }, [load]);
 
   // Debounce search — reset to page 0 on any filter change.

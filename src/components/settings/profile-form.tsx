@@ -45,12 +45,14 @@ export function ProfileForm() {
   const [saving, setSaving] = useState(false);
   const [emailChangePending, setEmailChangePending] = useState(false);
 
-  // Seed form state once the profile loads.
-  useEffect(() => {
-    if (!profile) return;
+  // Seed form state once the profile loads (and again if it changes). Done
+  // while rendering, by comparing with the profile it was last seeded from.
+  const [seededFrom, setSeededFrom] = useState<typeof profile>(null);
+  if (profile && profile !== seededFrom) {
+    setSeededFrom(profile);
     setFullName(profile.full_name ?? '');
     setEmail(profile.email ?? '');
-  }, [profile]);
+  }
 
   // Cleanup object URLs to avoid leaks.
   useEffect(() => {

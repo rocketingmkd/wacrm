@@ -190,21 +190,21 @@ export function TemplateManager() {
     [form.header_format, form.header_content],
   );
 
-  // Resize body_samples so it always has exactly bodyVarCount entries.
-  // (We mutate via setForm in an effect so React owns the state.)
-  useEffect(() => {
+  // Resize body_samples so it always has exactly bodyVarCount entries. Done
+  // while rendering: React re-renders once and the length then matches.
+  if (form.body_samples.length !== bodyVarCount) {
     setForm((prev) => {
       if (prev.body_samples.length === bodyVarCount) return prev;
       const next = prev.body_samples.slice(0, bodyVarCount);
       while (next.length < bodyVarCount) next.push('');
       return { ...prev, body_samples: next };
     });
-  }, [bodyVarCount]);
+  }
 
   useEffect(() => {
     if (authLoading || profileLoading) return;
     if (!accountId) {
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     fetchTemplates(accountId);

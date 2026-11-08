@@ -183,11 +183,13 @@ export function ContactDetailView({
 
   useEffect(() => {
     if (open && contactId) {
-      fetchContact();
-      fetchTags();
-      fetchNotes();
-      fetchCustomFields();
-      fetchDeals();
+      queueMicrotask(() => {
+        fetchContact();
+        fetchTags();
+        fetchNotes();
+        fetchCustomFields();
+        fetchDeals();
+      });
     }
   }, [open, contactId, fetchContact, fetchTags, fetchNotes, fetchCustomFields, fetchDeals]);
 

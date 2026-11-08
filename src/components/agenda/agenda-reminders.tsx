@@ -149,7 +149,8 @@ export function AgendaReminders({ stages }: { stages: PipelineStage[] }) {
   }, [accountId, supabase]);
 
   useEffect(() => {
-    void load();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void load());
   }, [load]);
 
   const eligibleTemplates = useMemo(

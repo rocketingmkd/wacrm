@@ -128,7 +128,7 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }, [url]);
 
   useEffect(() => {
-    loadImage();
+    queueMicrotask(() => void loadImage());
     return () => {
       if (src?.startsWith("blob:")) {
         URL.revokeObjectURL(src);

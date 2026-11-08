@@ -84,7 +84,7 @@ export default function AutomationsPage() {
   }
 
   useEffect(() => {
-    load()
+    queueMicrotask(() => void load())
   }, [])
 
   async function toggleActive(a: Automation, next: boolean) {

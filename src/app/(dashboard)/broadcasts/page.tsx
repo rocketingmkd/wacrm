@@ -83,7 +83,8 @@ export default function BroadcastsPage() {
   }
 
   useEffect(() => {
-    fetchBroadcasts();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void fetchBroadcasts());
   }, []);
 
   const anySending = useMemo(

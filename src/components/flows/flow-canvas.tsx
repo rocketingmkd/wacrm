@@ -364,9 +364,14 @@ function FlowCanvasInner() {
 
   const [rfNodes, setRfNodes] = useState<RfNode<NodeData>[]>(derivedRfNodes);
 
-  useEffect(() => {
+  // React Flow owns the nodes while they are dragged; whenever the derived
+  // set changes, take it back. Done while rendering, by comparing with the
+  // set last taken.
+  const [takenNodes, setTakenNodes] = useState(derivedRfNodes);
+  if (derivedRfNodes !== takenNodes) {
+    setTakenNodes(derivedRfNodes);
     setRfNodes(derivedRfNodes);
-  }, [derivedRfNodes]);
+  }
 
   const rfEdges = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);

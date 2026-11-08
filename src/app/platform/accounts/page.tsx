@@ -123,7 +123,8 @@ export default function PlatformAccountsPage() {
   }, [page, search, status]);
 
   useEffect(() => {
-    fetchAccounts();
+    // Deferred so the loader's state updates aren't made synchronously in the effect.
+    queueMicrotask(() => void fetchAccounts());
   }, [fetchAccounts]);
 
   // Debounce search input — reset to page 0 on any filter change.

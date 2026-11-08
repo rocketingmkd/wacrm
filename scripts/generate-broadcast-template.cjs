@@ -10,6 +10,7 @@
 // template in Excel never gets silently auto-converted to scientific
 // notation (the exact corruption that broke a real broadcast — see
 // project memory on the CSV-to-XLSX migration).
+/* eslint-disable @typescript-eslint/no-require-imports -- a CommonJS (.cjs) script: require() is its module system. */
 const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');

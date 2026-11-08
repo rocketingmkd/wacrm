@@ -70,17 +70,21 @@ export function ContactForm({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setName(contact?.name ?? '');
-      setPhone(contact?.phone ?? '');
-      setEmail(contact?.email ?? '');
-      setCompany(contact?.company ?? '');
-      setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
-      setDupMatch(null);
-      fetchTags();
-    }
-  }, [open, contact]);
+  // Seed the form each time it opens, or is pointed at another contact.
+  // Done while rendering, by comparing with what it was last seeded for;
+  // closing clears the marker so reopening always seeds again.
+  const [seededFor, setSeededFor] = useState<{ contact: typeof contact } | null>(null);
+  if (!open && seededFor !== null) {
+    setSeededFor(null);
+  } else if (open && (seededFor === null || seededFor.contact !== contact)) {
+    setSeededFor({ contact });
+    setName(contact?.name ?? '');
+    setPhone(contact?.phone ?? '');
+    setEmail(contact?.email ?? '');
+    setCompany(contact?.company ?? '');
+    setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
+    setDupMatch(null);
+  }
 
   // Look up an existing contact with this number (new contacts only).
   // Runs on blur so we don't query on every keystroke.
@@ -121,6 +125,10 @@ export function ContactForm({
         : [...prev, tagId]
     );
   }
+
+  useEffect(() => {
+    if (open) queueMicrotask(() => void fetchTags());
+  }, [open, contact]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

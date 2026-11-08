@@ -33,10 +33,17 @@ export function QuickReplyPicker({
   const [items, setItems] = useState<QuickReply[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Show the spinner from the moment the dialog opens, not a render later.
+  // Done while rendering, on the closed-to-open transition.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setLoading(true);
+  }
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
     void (async () => {
       try {
         const res = await fetch("/api/quick-replies", { cache: "no-store" });
