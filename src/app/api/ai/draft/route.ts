@@ -67,14 +67,7 @@ export async function POST(request: Request) {
       supabase,
       accountId,
       conversation.active_ai_agent_id,
-    ).catch((err) => {
-      // Decrypt failure — surface distinctly from "not configured".
-      console.error('[ai/draft] agent load error:', err)
-      throw new AiError('Stored API key could not be decrypted.', {
-        code: 'key_decrypt_failed',
-        status: 400,
-      })
-    })
+    )
     if (!config) {
       return NextResponse.json(
         {

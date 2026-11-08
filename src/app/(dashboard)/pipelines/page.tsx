@@ -77,6 +77,7 @@ export default function PipelinesPage() {
     const { data, error } = await supabase
       .from("pipelines")
       .select("*")
+      .eq("is_scheduling", false)
       .order("created_at");
     if (error) {
       console.error("Failed to load pipelines:", error.message);
