@@ -1,3 +1,4 @@
+import { resolvePublicOrigin } from '@/lib/http/public-origin'
 import { NextResponse } from 'next/server'
 import { requirePlatformAdmin } from '@/lib/auth/platform'
 import { toErrorResponse } from '@/lib/auth/account'
@@ -86,9 +87,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const input = validateCreateAccountInput(body)
 
-    // Public base URL for the link: the trusted env value first (the
-    // request origin behind Traefik is the container's bind address).
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
+    const siteUrl = resolvePublicOrigin(request)
 
     const result = await createAccountWithOwner(ctx.admin, input, {
       siteUrl,

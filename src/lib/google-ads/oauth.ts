@@ -1,3 +1,4 @@
+import { resolvePublicOrigin } from '@/lib/http/public-origin'
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/datamanager'
@@ -17,16 +18,7 @@ export const CALLBACK_PATH = '/api/google-ads/callback'
 export function redirectUri(request: Request): string {
   const explicit = process.env.GOOGLE_ADS_REDIRECT_URI?.trim()
   if (explicit) return explicit
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim()
-  if (site) return `${site.replace(/\/+$/, '')}${CALLBACK_PATH}`
-  const host =
-    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
-    request.headers.get('host')?.trim() ||
-    new URL(request.url).host
-  const proto =
-    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
-    new URL(request.url).protocol.replace(':', '')
-  return `${proto}://${host}${CALLBACK_PATH}`
+  return `${resolvePublicOrigin(request)}${CALLBACK_PATH}`
 }
 
 function stateKey(): Buffer {

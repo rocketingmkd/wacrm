@@ -11,17 +11,6 @@ export const CSAT_RESEND_AFTER_MS = 60 * 60 * 1000;
 
 export const CSAT_SCORE_LABELS = ['', 'Muito ruim', 'Ruim', 'Regular', 'Bom', 'Excelente'] as const;
 
-/** Public origin used to build the rating link. Prefers the configured
- *  site URL (set in production), then the proxy headers of the request. */
-export function resolvePublicOrigin(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '');
-  if (configured) return configured;
-  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto') ?? 'https';
-  if (host) return `${proto}://${host}`;
-  return new URL(request.url).origin;
-}
-
 export function csatLink(origin: string, token: string): string {
   return `${origin}/csat/${token}`;
 }

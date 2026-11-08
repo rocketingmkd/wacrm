@@ -6,8 +6,8 @@ import {
   CSAT_RESEND_AFTER_MS,
   csatLink,
   csatMessageText,
-  resolvePublicOrigin,
 } from '@/lib/csat'
+import { resolvePublicOrigin } from '@/lib/http/public-origin'
 
 const WINDOW_MS = 24 * 60 * 60 * 1000
 
