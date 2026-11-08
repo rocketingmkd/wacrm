@@ -3,12 +3,15 @@ import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { sendCapiEvents } from '@/lib/whatsapp/meta-api'
+import {
+  processQueue,
+  type QueuedEvent,
+  type QueueResult,
+  type QueueRow,
+} from '@/lib/conversions/queue'
 
 /** Meta rejects events older than 7 days. Stay a bit inside the limit. */
 export const MAX_EVENT_AGE_SECS = 7 * 24 * 3600 - 3600
-export const MAX_ATTEMPTS = 5
-const BATCH = 50
-
 export const EVENT_LABELS: Record<string, string> = {
   Lead: 'Lead',
   Contact: 'Contato',
@@ -16,14 +19,6 @@ export const EVENT_LABELS: Record<string, string> = {
   CompleteRegistration: 'Cadastro completo',
   InitiateCheckout: 'Início de compra',
   Purchase: 'Compra',
-}
-
-export interface QueuedEvent {
-  id: string
-  event_name: string
-  value: number | null
-  currency: string | null
-  occurred_at: string
 }
 
 export interface LeadOrigin {
@@ -107,54 +102,26 @@ export function buildMetaEvent(
   return { skip: 'Origem fora da Meta' }
 }
 
-/** Minutes to wait before retry number `attempts` (2, 4, 8, 16...). */
-export function backoffMinutes(attempts: number): number {
-  return Math.min(2 ** Math.max(attempts, 1), 240)
-}
-
-interface Row extends QueuedEvent {
-  account_id: string
-  contact_id: string | null
-  attempts: number
-}
-
-export interface QueueResult {
-  processed: number
-  sent: number
-  skipped: number
-  failed: number
+interface MetaAccountSettings {
+  dataset: string | null
+  enabled: boolean
+  test: string | null
+  token: string | null
 }
 
 /**
- * Sends the due events to Meta, oldest first. Safe to run concurrently with
- * itself only through the cron lock; each row is claimed by moving its
- * next_attempt_at forward before sending. Never throws.
+ * Sends the due events to Meta, oldest first. Each row is claimed before
+ * sending (see `processQueue`), so overlapping runs don't send it twice.
+ * Never throws.
  */
 export async function processConversionQueue(
   db: SupabaseClient,
   now: Date = new Date(),
 ): Promise<QueueResult> {
-  const result: QueueResult = { processed: 0, sent: 0, skipped: 0, failed: 0 }
-  const nowIso = now.toISOString()
   const nowSecs = Math.floor(now.getTime() / 1000)
+  const settingsCache = new Map<string, MetaAccountSettings>()
 
-  const { data: rows, error } = await db
-    .from('conversion_events')
-    .select('id, account_id, contact_id, event_name, value, currency, occurred_at, attempts')
-    .eq('destination', 'meta')
-    .in('status', ['pending', 'failed'])
-    .lt('attempts', MAX_ATTEMPTS)
-    .lte('next_attempt_at', nowIso)
-    .order('next_attempt_at', { ascending: true })
-    .limit(BATCH)
-  if (error || !rows) {
-    if (error) console.error('[conversions] queue read failed:', error.message)
-    return result
-  }
-
-  const settingsCache = new Map<string, { dataset: string | null; enabled: boolean; test: string | null; token: string | null }>()
-
-  async function accountSettings(accountId: string) {
+  async function accountSettings(accountId: string): Promise<MetaAccountSettings> {
     const cached = settingsCache.get(accountId)
     if (cached) return cached
     const { data: s } = await db
@@ -174,7 +141,7 @@ export async function processConversionQueue(
     } catch {
       token = null
     }
-    const value = {
+    const value: MetaAccountSettings = {
       dataset: (s?.meta_dataset_id as string | null) ?? null,
       enabled: Boolean(s?.meta_enabled),
       test: (s?.meta_test_code as string | null) ?? null,
@@ -184,25 +151,17 @@ export async function processConversionQueue(
     return value
   }
 
-  for (const row of rows as Row[]) {
-    result.processed += 1
-    const finish = (patch: Record<string, unknown>) =>
-      db.from('conversion_events').update(patch).eq('id', row.id)
-
-    try {
-      // Claim the row so an overlapping run does not send it twice.
-      await finish({ next_attempt_at: new Date(now.getTime() + 10 * 60_000).toISOString() })
-
+  return processQueue<QueueRow>(db, now, {
+    destination: 'meta',
+    columns: 'id, account_id, contact_id, event_name, value, currency, occurred_at, attempts',
+    logTag: '[conversions]',
+    async process(row) {
       const cfg = await accountSettings(row.account_id)
       if (!cfg.enabled || !cfg.dataset) {
-        await finish({ status: 'skipped', detail: 'Envio à Meta desativado' })
-        result.skipped += 1
-        continue
+        return { kind: 'skipped', detail: 'Envio à Meta desativado' }
       }
       if (!cfg.token) {
-        await finish({ status: 'skipped', detail: 'WhatsApp sem token para a Meta' })
-        result.skipped += 1
-        continue
+        return { kind: 'skipped', detail: 'WhatsApp sem token para a Meta' }
       }
 
       let origin: LeadOrigin | null = null
@@ -215,16 +174,12 @@ export async function processConversionQueue(
           .eq('contact_id', row.contact_id)
           .maybeSingle()
         origin = (a as LeadOrigin | null) ?? null
-        const { data: c } = await db.from('contacts').select('phone').eq('id', row.contact_id).maybeSingle()
-        phone = (c?.phone as string | null) ?? null
+        const { data: ct } = await db.from('contacts').select('phone').eq('id', row.contact_id).maybeSingle()
+        phone = (ct?.phone as string | null) ?? null
       }
 
       const built = buildMetaEvent(row, origin, phone, nowSecs)
-      if ('skip' in built) {
-        await finish({ status: 'skipped', detail: built.skip })
-        result.skipped += 1
-        continue
-      }
+      if ('skip' in built) return { kind: 'skipped', detail: built.skip }
 
       await sendCapiEvents({
         datasetId: cfg.dataset,
@@ -232,25 +187,7 @@ export async function processConversionQueue(
         events: [built.payload],
         testEventCode: cfg.test,
       })
-      await finish({
-        status: 'sent',
-        sent_at: new Date().toISOString(),
-        attempts: row.attempts + 1,
-        detail: cfg.test ? 'Enviado como teste' : null,
-      })
-      result.sent += 1
-    } catch (err) {
-      const attempts = row.attempts + 1
-      const message = err instanceof Error ? err.message : String(err)
-      await finish({
-        status: 'failed',
-        attempts,
-        next_attempt_at: new Date(now.getTime() + backoffMinutes(attempts) * 60_000).toISOString(),
-        detail: message.slice(0, 300),
-      })
-      result.failed += 1
-      console.error('[conversions] send failed:', message)
-    }
-  }
-  return result
+      return { kind: 'sent', detail: cfg.test ? 'Enviado como teste' : null }
+    },
+  })
 }

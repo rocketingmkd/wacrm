@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { backoffMinutes, buildMetaEvent, hashPhone, MAX_EVENT_AGE_SECS } from './conversions'
+import { backoffMinutes } from '@/lib/conversions/queue'
+import { buildMetaEvent, hashPhone, MAX_EVENT_AGE_SECS } from './conversions'
 
 const NOW = Math.floor(new Date('2026-10-21T12:00:00Z').getTime() / 1000)
 const event = (over: Record<string, unknown> = {}) => ({

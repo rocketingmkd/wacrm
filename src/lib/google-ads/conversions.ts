@@ -1,15 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import {
-  MAX_ATTEMPTS,
-  backoffMinutes,
-  type QueueResult,
-  type QueuedEvent,
-} from '@/lib/tracking/conversions'
+import { processQueue, type QueueResult, type QueueRow } from '@/lib/conversions/queue'
 import { refreshAccessToken } from './oauth'
 import { buildGoogleRequest, ingestEvents, onlyDigits, type GoogleOrigin } from './data-manager'
-
-const BATCH = 50
 
 export interface GoogleConnection {
   clientId: string
@@ -40,11 +33,8 @@ export async function loadConnection(db: SupabaseClient, accountId: string): Pro
   }
 }
 
-interface Row extends QueuedEvent {
-  account_id: string
-  contact_id: string | null
+interface GoogleRow extends QueueRow {
   rule_id: string
-  attempts: number
 }
 
 interface AccountCfg {
@@ -55,10 +45,9 @@ interface AccountCfg {
 }
 
 /**
- * Sends the due Google rows to the Data Manager API, oldest first. Mirrors
- * processConversionQueue (Meta): each row is claimed by moving its
- * next_attempt_at forward, failures retry with backoff, and the function
- * never throws.
+ * Sends the due Google rows to the Data Manager API, oldest first. Each row
+ * is claimed before sending and failures retry with backoff (see
+ * `processQueue`). Never throws.
  *
  * While google_validate_only is on, Google validates the request and nothing
  * is imported; the row is closed as "skipped" with a note.
@@ -67,22 +56,7 @@ export async function processGoogleQueue(
   db: SupabaseClient,
   now: Date = new Date(),
 ): Promise<QueueResult> {
-  const result: QueueResult = { processed: 0, sent: 0, skipped: 0, failed: 0 }
   const nowSecs = Math.floor(now.getTime() / 1000)
-
-  const { data: rows, error } = await db
-    .from('conversion_events')
-    .select('id, account_id, contact_id, rule_id, event_name, value, currency, occurred_at, attempts')
-    .eq('destination', 'google')
-    .in('status', ['pending', 'failed'])
-    .lt('attempts', MAX_ATTEMPTS)
-    .lte('next_attempt_at', now.toISOString())
-    .order('next_attempt_at', { ascending: true })
-    .limit(BATCH)
-  if (error || !rows) {
-    if (error) console.error('[google-conversions] queue read failed:', error.message)
-    return result
-  }
 
   const cache = new Map<string, AccountCfg>()
   async function accountCfg(accountId: string): Promise<AccountCfg> {
@@ -103,25 +77,16 @@ export async function processGoogleQueue(
     return value
   }
 
-  for (const row of rows as Row[]) {
-    result.processed += 1
-    const finish = (patch: Record<string, unknown>) =>
-      db.from('conversion_events').update(patch).eq('id', row.id)
-
-    try {
-      await finish({ next_attempt_at: new Date(now.getTime() + 10 * 60_000).toISOString() })
-
+  return processQueue<GoogleRow>(db, now, {
+    destination: 'google',
+    columns: 'id, account_id, contact_id, rule_id, event_name, value, currency, occurred_at, attempts',
+    logTag: '[google-conversions]',
+    async process(row) {
       const cfg = await accountCfg(row.account_id)
-      if (!cfg.enabled) {
-        await finish({ status: 'skipped', detail: 'Envio ao Google desativado' })
-        result.skipped += 1
-        continue
-      }
+      if (!cfg.enabled) return { kind: 'skipped', detail: 'Envio ao Google desativado' }
       const customerId = onlyDigits(cfg.connection?.customerId)
       if (!cfg.connection || !customerId) {
-        await finish({ status: 'skipped', detail: 'Google Ads não conectado ou sem conta escolhida' })
-        result.skipped += 1
-        continue
+        return { kind: 'skipped', detail: 'Google Ads não conectado ou sem conta escolhida' }
       }
 
       const { data: rule } = await db
@@ -131,9 +96,7 @@ export async function processGoogleQueue(
         .maybeSingle()
       const actionId = onlyDigits(rule?.google_action_id as string | null)
       if (!actionId) {
-        await finish({ status: 'skipped', detail: 'Regra sem ação de conversão do Google' })
-        result.skipped += 1
-        continue
+        return { kind: 'skipped', detail: 'Regra sem ação de conversão do Google' }
       }
 
       let origin: GoogleOrigin | null = null
@@ -158,11 +121,7 @@ export async function processGoogleQueue(
         nowSecs,
         cfg.validateOnly,
       )
-      if ('skip' in built) {
-        await finish({ status: 'skipped', detail: built.skip })
-        result.skipped += 1
-        continue
-      }
+      if ('skip' in built) return { kind: 'skipped', detail: built.skip }
 
       if (!cfg.accessToken) {
         cfg.accessToken = await refreshAccessToken({
@@ -175,33 +134,13 @@ export async function processGoogleQueue(
       const warning = sent.warnings.length > 0 ? ` Avisos: ${sent.warnings.join('; ')}` : ''
 
       if (cfg.validateOnly) {
-        await finish({
-          status: 'skipped',
-          attempts: row.attempts + 1,
+        return {
+          kind: 'skipped',
+          countAttempt: true,
           detail: `Teste: o Google validou, nada foi importado.${warning}`.slice(0, 300),
-        })
-        result.skipped += 1
-      } else {
-        await finish({
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          attempts: row.attempts + 1,
-          detail: warning ? warning.trim().slice(0, 300) : null,
-        })
-        result.sent += 1
+        }
       }
-    } catch (err) {
-      const attempts = row.attempts + 1
-      const message = err instanceof Error ? err.message : String(err)
-      await finish({
-        status: 'failed',
-        attempts,
-        next_attempt_at: new Date(now.getTime() + backoffMinutes(attempts) * 60_000).toISOString(),
-        detail: message.slice(0, 300),
-      })
-      result.failed += 1
-      console.error('[google-conversions] send failed:', message)
-    }
-  }
-  return result
+      return { kind: 'sent', detail: warning ? warning.trim().slice(0, 300) : null }
+    },
+  })
 }

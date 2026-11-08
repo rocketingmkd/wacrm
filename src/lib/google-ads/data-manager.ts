@@ -1,4 +1,4 @@
-import type { QueuedEvent } from '@/lib/tracking/conversions'
+import type { QueuedEvent } from '@/lib/conversions/queue'
 
 const INGEST_URL = 'https://datamanager.googleapis.com/v1/events:ingest'
 
