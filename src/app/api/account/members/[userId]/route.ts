@@ -14,8 +14,8 @@
 // and maps Postgres SQLSTATEs back to HTTP statuses.
 // ============================================================
 
+import { pgErrorToResponse, type PgErrorMapping } from "@/lib/http/pg-error";
 import { NextResponse } from "next/server";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 import { requireWrite, toErrorResponse } from "@/lib/auth/account";
 import { isAccountRole } from "@/lib/auth/roles";
@@ -28,19 +28,11 @@ import {
 // Map known SQLSTATEs from the RPCs (see migration 018) onto HTTP
 // statuses. The `error.code` field is the SQLSTATE; the `message`
 // is the human-readable RAISE message we put in the migration.
-function rpcErrorToResponse(err: PostgrestError): NextResponse {
-  if (err.code === "42501") {
-    return NextResponse.json({ error: err.message }, { status: 403 });
-  }
-  if (err.code === "22023") {
-    return NextResponse.json({ error: err.message }, { status: 400 });
-  }
-  console.error("[members route] unexpected RPC error:", err);
-  return NextResponse.json(
-    { error: "Não foi possível atualizar o membro" },
-    { status: 500 },
-  );
-}
+const MEMBER_RPC_ERRORS: PgErrorMapping = {
+  label: "members route",
+  fallbackMessage: "Não foi possível atualizar o membro",
+  statuses: { "42501": 403, "22023": 400 },
+};
 
 export async function PATCH(
   request: Request,
@@ -86,7 +78,7 @@ export async function PATCH(
       p_new_role: role,
     });
 
-    if (error) return rpcErrorToResponse(error);
+    if (error) return pgErrorToResponse(error, MEMBER_RPC_ERRORS);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -113,7 +105,7 @@ export async function DELETE(
       p_user_id: userId,
     });
 
-    if (error) return rpcErrorToResponse(error);
+    if (error) return pgErrorToResponse(error, MEMBER_RPC_ERRORS);
 
     return NextResponse.json({ ok: true, newPersonalAccountId: data });
   } catch (err) {

@@ -18,8 +18,8 @@
 //   silently hand their account away.
 // ============================================================
 
+import { pgErrorToResponse, type PgErrorMapping } from "@/lib/http/pg-error";
 import { NextResponse } from "next/server";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 import { requireWrite, toErrorResponse } from "@/lib/auth/account";
 import {
@@ -28,19 +28,11 @@ import {
   RATE_LIMITS,
 } from "@/lib/rate-limit";
 
-function rpcErrorToResponse(err: PostgrestError): NextResponse {
-  if (err.code === "42501") {
-    return NextResponse.json({ error: err.message }, { status: 403 });
-  }
-  if (err.code === "22023") {
-    return NextResponse.json({ error: err.message }, { status: 400 });
-  }
-  console.error("[transfer-ownership] unexpected RPC error:", err);
-  return NextResponse.json(
-    { error: "Não foi possível transferir a propriedade" },
-    { status: 500 },
-  );
-}
+const TRANSFER_RPC_ERRORS: PgErrorMapping = {
+  label: "transfer-ownership",
+  fallbackMessage: "Não foi possível transferir a propriedade",
+  statuses: { "42501": 403, "22023": 400 },
+};
 
 // Crude shape check — full UUID validation happens DB-side when
 // the FK / lookup runs. This guards against obviously-wrong input
@@ -85,7 +77,7 @@ export async function POST(request: Request) {
       p_new_owner_user_id: newOwnerUserId,
     });
 
-    if (error) return rpcErrorToResponse(error);
+    if (error) return pgErrorToResponse(error, TRANSFER_RPC_ERRORS);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -15,7 +15,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
-import type { RateLimitResult } from '@/lib/rate-limit';
+import { rateLimitHeaders, type RateLimitResult } from '@/lib/rate-limit';
 
 export type ApiErrorCode =
   | 'unauthorized' // missing / malformed / unknown / revoked / expired key
@@ -89,17 +89,11 @@ export function planUpgradeRequired(
 
 /** 429 — built from a `checkRateLimit` miss, with the standard headers. */
 export function rateLimited(result: RateLimitResult): ApiError {
-  const retryAfter = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
   return new ApiError(
     'rate_limited',
     'Rate limit exceeded for this API key',
     429,
-    {
-      'Retry-After': String(retryAfter),
-      'X-RateLimit-Limit': String(result.limit),
-      'X-RateLimit-Remaining': String(result.remaining),
-      'X-RateLimit-Reset': String(Math.ceil(result.reset / 1000)),
-    }
+    rateLimitHeaders(result)
   );
 }
 

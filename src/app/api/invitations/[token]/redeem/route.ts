@@ -17,9 +17,9 @@
 // guard makes brute-force retries pointless past a few attempts.
 // ============================================================
 
+import { pgErrorToResponse, type PgErrorMapping } from "@/lib/http/pg-error";
 import { getClientIp } from "@/lib/http/client-ip";
 import { NextResponse } from "next/server";
-import type { PostgrestError } from "@supabase/supabase-js";
 
 import { hashInviteToken } from "@/lib/auth/invitations";
 import {
@@ -29,22 +29,11 @@ import {
 } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
-function rpcErrorToResponse(err: PostgrestError): NextResponse {
-  if (err.code === "42501") {
-    return NextResponse.json({ error: err.message }, { status: 401 });
-  }
-  if (err.code === "22023") {
-    return NextResponse.json({ error: err.message }, { status: 400 });
-  }
-  if (err.code === "23505") {
-    return NextResponse.json({ error: err.message }, { status: 409 });
-  }
-  console.error("[redeem] unexpected RPC error:", err);
-  return NextResponse.json(
-    { error: "Não foi possível aceitar o convite" },
-    { status: 500 },
-  );
-}
+const REDEEM_RPC_ERRORS: PgErrorMapping = {
+  label: "redeem",
+  fallbackMessage: "Não foi possível aceitar o convite",
+  statuses: { "42501": 401, "22023": 400, "23505": 409 },
+};
 
 export async function POST(
   request: Request,
@@ -78,7 +67,7 @@ export async function POST(
     p_token_hash: hashInviteToken(token),
   });
 
-  if (error) return rpcErrorToResponse(error);
+  if (error) return pgErrorToResponse(error, REDEEM_RPC_ERRORS);
 
   return NextResponse.json({ ok: true, accountId });
 }
