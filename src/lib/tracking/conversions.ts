@@ -1,3 +1,4 @@
+import type { AttributionSource } from './attribution'
 import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
@@ -26,7 +27,7 @@ export interface QueuedEvent {
 }
 
 export interface LeadOrigin {
-  source: 'meta_ctwa' | 'meta_site' | 'google' | 'other'
+  source: AttributionSource
   ctwa_clid: string | null
   fbc: string | null
   fbp: string | null

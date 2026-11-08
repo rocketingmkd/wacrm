@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { AttributionSource } from './attribution'
+import { ATTRIBUTION_SOURCES, type AttributionSource } from './attribution'
 
 /**
  * Origin by phrase: a rule maps a phrase typed in the customer's first
@@ -8,7 +8,6 @@ import type { AttributionSource } from './attribution'
  * Rules only ever fill contacts WITHOUT attribution: first touch wins.
  */
 
-export const SOURCES: readonly AttributionSource[] = ['meta_ctwa', 'meta_site', 'google', 'other']
 export const PHRASE_MIN = 3
 export const PHRASE_MAX = 200
 export const LABEL_MAX = 255
@@ -262,7 +261,7 @@ export function parseRuleInput(
   if (phrase.length < PHRASE_MIN || phrase.length > PHRASE_MAX) {
     return { ok: false, error: `A frase precisa ter entre ${PHRASE_MIN} e ${PHRASE_MAX} caracteres.` }
   }
-  if (!SOURCES.includes(source)) return { ok: false, error: 'Origem inválida.' }
+  if (!ATTRIBUTION_SOURCES.includes(source)) return { ok: false, error: 'Origem inválida.' }
   if (label.length < 1 || label.length > LABEL_MAX) {
     return { ok: false, error: `O nome da campanha precisa ter entre 1 e ${LABEL_MAX} caracteres.` }
   }

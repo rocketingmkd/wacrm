@@ -8,7 +8,14 @@
  *    a short code and appends "[#CODE]" to the pre-filled WhatsApp text.
  */
 
-export type AttributionSource = 'meta_ctwa' | 'meta_site' | 'google' | 'other'
+/**
+ * Every source a lead can be attributed to. The one list: the labels,
+ * report order and colors, phrase rules and the AI report all derive
+ * from it, and the `lead_attribution.source` CHECK in the database
+ * (migration 068) must allow the same values.
+ */
+export const ATTRIBUTION_SOURCES = ['meta_ctwa', 'meta_site', 'google', 'other'] as const
+export type AttributionSource = (typeof ATTRIBUTION_SOURCES)[number]
 
 export const SOURCE_LABELS: Record<AttributionSource, string> = {
   meta_ctwa: 'Meta (clique no WhatsApp)',
