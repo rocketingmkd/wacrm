@@ -14,6 +14,7 @@
 // can be unit-tested without Supabase.
 // ============================================================
 
+import { incrementUnread } from '@/lib/conversations/unread';
 import { findOrCreateConversation } from '@/lib/conversations/find-or-create';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -341,10 +342,10 @@ export async function storeGroupMessage(
       last_message_text: preview,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      ...(msg.fromMe ? {} : { unread_count: (conversation.unread_count ?? 0) + 1 }),
     })
     .eq('id', conversation.id);
   if (convError) console.error('[evolution-groups] conversation update failed:', convError);
+  if (!msg.fromMe) await incrementUnread(db, conversation.id, conversation.unread_count);
 
   return 'stored';
 }

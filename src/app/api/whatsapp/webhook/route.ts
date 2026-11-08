@@ -1,3 +1,4 @@
+import { incrementUnread } from '@/lib/conversations/unread'
 import {
   MESSAGE_STATUS_LADDER,
   RECIPIENT_STATUS_LADDER,
@@ -1375,7 +1376,6 @@ async function processMessage(
     .update({
       last_message_text: contentText || `[${message.type}]`,
       last_message_at: new Date().toISOString(),
-      unread_count: (conversation.unread_count || 0) + 1,
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversation.id)
@@ -1383,6 +1383,8 @@ async function processMessage(
   if (convError) {
     console.error('Error updating conversation:', convError)
   }
+
+  await incrementUnread(supabaseAdmin(), conversation.id, conversation.unread_count)
 
   // If this contact was a recent broadcast recipient, flag the reply
   // so the broadcast's `replied_count` advances (via the aggregate
