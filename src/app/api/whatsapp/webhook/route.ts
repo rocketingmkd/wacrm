@@ -1,3 +1,4 @@
+import { ContactError, findOrCreateContactRecord } from '@/lib/contacts/service'
 import type { Conversation } from '@/types'
 import {
   ConversationError,
@@ -8,7 +9,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia, reportAutomaticEventToCapi } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
-import { findExistingContact, findExistingContactByWaUserId, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
@@ -1745,70 +1745,23 @@ async function findOrCreateContact(
 ): Promise<ContactOutcome | null> {
   if (!phone && !waUserId) return null
 
-  // Find an existing contact for this account. Phone is the primary
-  // key when present — the shared helper pre-filters in SQL by the
-  // last-8-digit suffix (so we don't pull every contact on every
-  // inbound message) then applies the strict `phonesMatch` in JS on
-  // the small candidate set. The same helper backs the manual contact
-  // form and CSV import, so all three paths agree on what "same
-  // number" means (issue #212). When there's no phone at all (a
-  // username-only sender, migration 039), fall back to the BSUID.
-  const existingContact = phone
-    ? await findExistingContact(supabaseAdmin(), accountId, phone)
-    : await findExistingContactByWaUserId(supabaseAdmin(), accountId, waUserId!)
-
-  if (existingContact) {
-    // Update name if it changed, and backfill whichever identity this
-    // inbound message revealed that the stored row didn't have yet —
-    // e.g. a contact first seen as username-only later shares their
-    // phone number, or vice-versa a phone contact's BSUID surfaces on
-    // a later message. Never overwrite a non-null value with null.
-    const patch: Record<string, unknown> = {}
-    if (name && name !== existingContact.name) patch.name = name
-    if (phone && !existingContact.phone) patch.phone = phone
-    if (waUserId && !existingContact.wa_user_id) patch.wa_user_id = waUserId
-    if (waUsername && existingContact.wa_username !== waUsername) patch.wa_username = waUsername
-    if (Object.keys(patch).length > 0) {
-      patch.updated_at = new Date().toISOString()
-      await supabaseAdmin().from('contacts').update(patch).eq('id', existingContact.id)
-    }
-    return { contact: existingContact, wasCreated: false }
-  }
-
-  // Create new contact. account_id is the tenancy column;
-  // user_id is the NOT NULL FK audit column (no inbound message
-  // has a single "user who created" it — we attribute to the
-  // WhatsApp config owner as a stable default).
-  const { data: newContact, error: createError } = await supabaseAdmin()
-    .from('contacts')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      phone,
-      wa_user_id: waUserId,
-      wa_username: waUsername,
-      name: name || phone || waUsername || waUserId,
+  // No inbound message has a single "user who created" it, so the NOT
+  // NULL audit column is attributed to the WhatsApp config owner. The
+  // backfill keeps a known contact current: a changed name, and an
+  // identity this message revealed (a username-only sender later shares
+  // a phone, or a phone contact's BSUID surfaces).
+  try {
+    const { contact, created } = await findOrCreateContactRecord(supabaseAdmin(), {
+      accountId,
+      ownerUserId: configOwnerUserId,
+      contact: { phone, waUserId, waUsername, name },
+      backfill: true,
     })
-    .select()
-    .single()
-
-  if (createError) {
-    // Lost a race: a concurrent inbound delivery (or another path)
-    // created this contact between our lookup and insert, and the
-    // unique index (migration 022 for phone / 039 for wa_user_id)
-    // rejected the duplicate. Re-resolve the existing row instead of
-    // dropping the message.
-    if (isUniqueViolation(createError)) {
-      const raced = phone
-        ? await findExistingContact(supabaseAdmin(), accountId, phone)
-        : await findExistingContactByWaUserId(supabaseAdmin(), accountId, waUserId!)
-      if (raced) return { contact: raced, wasCreated: false }
-    }
-    console.error('Error creating contact:', createError)
-    return null
+    return { contact: contact as unknown as ContactRow, wasCreated: created }
+  } catch (err) {
+    if (err instanceof ContactError) return null
+    throw err
   }
-
-  return { contact: newContact, wasCreated: true }
 }
 
 async function findOrCreateConversation(

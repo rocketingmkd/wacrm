@@ -21,10 +21,9 @@
 import { ConversationError, findOrCreateConversation } from '@/lib/conversations/find-or-create';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
-import { resolveAuditUserId, ContactError } from '@/lib/contacts/service';
+import { resolveAuditUserId, ContactError, findOrCreateContactRecord } from '@/lib/contacts/service';
 
 export interface ResolvedConversation {
   conversationId: string;
@@ -87,54 +86,21 @@ export async function resolveConversationByPhone(
 
   // ---- contact -------------------------------------------------
   let contactId: string;
-  let contactCreated = false;
-
-  const existing = await findExistingContact(db, accountId, sanitized);
-  if (existing) {
-    contactId = existing.id;
-    if (name && name !== existing.name) {
-      await db
-        .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
+  let contactCreated: boolean;
+  try {
+    const { contact, created } = await findOrCreateContactRecord(db, {
+      accountId,
+      ownerUserId,
+      contact: { phone: sanitized, name },
+      backfill: true,
+    });
+    contactId = contact.id;
+    contactCreated = created;
+  } catch (err) {
+    if (err instanceof ContactError) {
+      throw new SendMessageError('db_error', 'Não foi possível criar o contato', 500);
     }
-  } else {
-    const { data: created, error: createErr } = await db
-      .from('contacts')
-      .insert({
-        account_id: accountId,
-        user_id: ownerUserId,
-        phone: sanitized,
-        name: name || sanitized,
-      })
-      .select('id')
-      .single();
-
-    if (createErr || !created) {
-      // Lost a race against a concurrent inbound/API create — the
-      // unique index (migration 022) rejected the duplicate. Re-resolve.
-      if (isUniqueViolation(createErr)) {
-        const raced = await findExistingContact(db, accountId, sanitized);
-        if (raced) {
-          contactId = raced.id;
-        } else {
-          throw new SendMessageError(
-            'db_error',
-            'Não foi possível criar o contato',
-            500
-          );
-        }
-      } else {
-        console.error(
-          '[resolve-conversation] contact create error:',
-          createErr
-        );
-        throw new SendMessageError('db_error', 'Não foi possível criar o contato', 500);
-      }
-    } else {
-      contactId = created.id;
-      contactCreated = true;
-    }
+    throw err;
   }
 
   // ---- conversation -------------------------------------------

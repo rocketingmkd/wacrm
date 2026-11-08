@@ -1,6 +1,6 @@
+import { ContactError, findOrCreateContactRecord } from '@/lib/contacts/service'
 import { NextResponse } from 'next/server'
 import { requireWrite, toErrorResponse } from '@/lib/auth/account'
-import { findExistingContact } from '@/lib/contacts/dedupe'
 import { normalizeTypedPhone } from '@/lib/whatsapp/phone-utils'
 import { findOrCreateConversation } from '@/lib/whatsapp/send-message'
 import { CONVERSATION_SELECT, normalizeConversation } from '@/lib/inbox/conversations'
@@ -31,27 +31,28 @@ export async function POST(request: Request) {
       )
     }
 
-    let contact = await findExistingContact(supabase, accountId, phone)
-    const createdContact = !contact
-    if (!contact) {
-      const name = body?.name?.trim() || null
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert({ account_id: accountId, user_id: userId, phone, name })
-        .select('*')
-        .single()
-      if (error || !data) {
-        console.error('[conversations/start] contact insert failed:', error?.message)
+    let resolved: Awaited<ReturnType<typeof findOrCreateContactRecord>>
+    try {
+      resolved = await findOrCreateContactRecord(supabase, {
+        accountId,
+        ownerUserId: userId,
+        contact: { phone, name: body?.name?.trim() || null },
+        backfill: false,
+      })
+    } catch (err) {
+      if (err instanceof ContactError) {
+        console.error('[conversations/start] contact create failed:', err.message)
         return NextResponse.json({ error: 'Não foi possível criar o contato.' }, { status: 500 })
       }
-      contact = data
+      throw err
     }
+    const { contact, created: createdContact } = resolved
 
     const conversationId = await findOrCreateConversation(
       supabase,
       accountId,
       userId,
-      contact!.id,
+      contact.id,
     )
     if (!conversationId) {
       return NextResponse.json({ error: 'Não foi possível abrir a conversa.' }, { status: 500 })

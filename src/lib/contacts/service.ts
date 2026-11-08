@@ -8,7 +8,12 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import {
+  findExistingContact,
+  findExistingContactByWaUserId,
+  isUniqueViolation,
+  type ExistingContact,
+} from '@/lib/contacts/dedupe';
 import { resolveImportTagIds } from '@/lib/contacts/resolve-import-tags';
 import { addContactTagAndDispatch } from '@/lib/contacts/tag-events';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -64,11 +69,119 @@ export interface ContactInput {
   company?: string | null;
 }
 
+/** Who a contact is, as far as the caller knows. At least one of `phone`
+ *  and `waUserId` is required. */
+export interface ContactIdentity {
+  phone: string | null;
+  /** Business-scoped user id, for senders that message via a username.
+   *  Used to find the contact when there is no phone. */
+  waUserId?: string | null;
+  waUsername?: string | null;
+  /** Left empty when unknown. A contact without a name is stored with
+   *  `name = null`; the UI falls back to the phone or username. */
+  name?: string | null;
+  email?: string | null;
+  company?: string | null;
+}
+
+export interface FindOrCreateContactArgs {
+  accountId: string;
+  /** Audit `user_id` stamped on a newly created contact. */
+  ownerUserId: string;
+  contact: ContactIdentity;
+  /**
+   * When the contact already exists, fill in what this call learned: a
+   * changed name, and whichever identity (phone, BSUID, username) the
+   * stored row lacks. Never overwrites a stored value with null. Off for
+   * callers that only want to resolve the contact.
+   */
+  backfill: boolean;
+}
+
 /**
- * Find (by fuzzy phone match) or create a contact in `accountId`.
- * Returns the contact id and whether it was created. Reuses the shared
- * `findExistingContact` dedupe + unique-violation race backstop so an
- * API-created contact is indistinguishable from a webhook-created one.
+ * The single place a contact is found or created from a phone and/or a
+ * BSUID: the inbound webhook, API and dashboard sends, broadcasts and
+ * "start a conversation" all go through here.
+ *
+ * Lookup uses the shared dedupe helpers (phone first, with the
+ * last-8-digit tolerance, then BSUID), so every path agrees on what "the
+ * same number" means (issue #212). Two concurrent creators are
+ * reconciled by the unique indexes (migrations 022 and 039): the loser
+ * gets a 23505 and re-resolves the winning row.
+ *
+ * Returns the full contact row. Throws `ContactError` when the contact
+ * can't be created.
+ */
+export async function findOrCreateContactRecord(
+  db: SupabaseClient,
+  args: FindOrCreateContactArgs
+): Promise<{ contact: ExistingContact; created: boolean }> {
+  const { accountId, ownerUserId, backfill } = args;
+  const { phone, email, company } = args.contact;
+  const waUserId = args.contact.waUserId ?? null;
+  const waUsername = args.contact.waUsername ?? null;
+  const name = args.contact.name || null;
+
+  if (!phone && !waUserId) {
+    throw new ContactError('A contact needs a phone number or a WhatsApp user id', 400);
+  }
+
+  const find = () =>
+    phone
+      ? findExistingContact(db, accountId, phone)
+      : findExistingContactByWaUserId(db, accountId, waUserId as string);
+
+  const existing = await find();
+  if (existing) {
+    if (backfill) {
+      const patch: Record<string, unknown> = {};
+      if (name && name !== existing.name) patch.name = name;
+      if (phone && !existing.phone) patch.phone = phone;
+      if (waUserId && !existing.wa_user_id) patch.wa_user_id = waUserId;
+      if (waUsername && existing.wa_username !== waUsername) patch.wa_username = waUsername;
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = new Date().toISOString();
+        await db.from('contacts').update(patch).eq('id', existing.id);
+      }
+    }
+    return { contact: existing, created: false };
+  }
+
+  const { data: created, error } = await db
+    .from('contacts')
+    .insert({
+      account_id: accountId,
+      user_id: ownerUserId,
+      phone,
+      wa_user_id: waUserId,
+      wa_username: waUsername,
+      name,
+      email: email ?? null,
+      company: company ?? null,
+    })
+    .select('*')
+    .single();
+
+  if (!error && created) {
+    return { contact: created as ExistingContact, created: true };
+  }
+
+  // Lost a race against a concurrent create: the unique index rejected
+  // the duplicate. Re-resolve to the winner instead of failing.
+  if (isUniqueViolation(error)) {
+    const raced = await find();
+    if (raced) return { contact: raced, created: false };
+  }
+
+  console.error('[contacts] create error:', error);
+  throw new ContactError('Failed to create contact', 500);
+}
+
+/**
+ * Find (by fuzzy phone match) or create a contact in `accountId` from a
+ * phone number the caller typed or an API client sent. Returns the
+ * contact id and whether it was created. An existing contact is left
+ * as it is.
  */
 export async function findOrCreateContact(
   db: SupabaseClient,
@@ -84,34 +197,18 @@ export async function findOrCreateContact(
     );
   }
 
-  const existing = await findExistingContact(db, accountId, sanitized);
-  if (existing) return { id: existing.id, created: false };
-
-  const { data: created, error } = await db
-    .from('contacts')
-    .insert({
-      account_id: accountId,
-      user_id: auditUserId,
+  const { contact, created } = await findOrCreateContactRecord(db, {
+    accountId,
+    ownerUserId: auditUserId,
+    contact: {
       phone: sanitized,
-      name: input.name ?? sanitized,
-      email: input.email ?? null,
-      company: input.company ?? null,
-    })
-    .select('id')
-    .single();
-
-  if (error || !created) {
-    // Lost a race against a concurrent create — the unique index
-    // rejected the duplicate. Re-resolve to the winner.
-    if (isUniqueViolation(error)) {
-      const raced = await findExistingContact(db, accountId, sanitized);
-      if (raced) return { id: raced.id, created: false };
-    }
-    console.error('[api/v1/contacts] create error:', error);
-    throw new ContactError('Failed to create contact', 500);
-  }
-
-  return { id: created.id, created: true };
+      name: input.name,
+      email: input.email,
+      company: input.company,
+    },
+    backfill: false,
+  });
+  return { id: contact.id, created };
 }
 
 /**
