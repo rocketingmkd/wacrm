@@ -1,4 +1,4 @@
-import { EVENT_LABELS } from './conversions'
+import { EVENT_LABELS } from './events'
 
 export const EVENT_NAMES = Object.keys(EVENT_LABELS)
 

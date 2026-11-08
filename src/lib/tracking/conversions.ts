@@ -12,15 +12,6 @@ import {
 
 /** Meta rejects events older than 7 days. Stay a bit inside the limit. */
 export const MAX_EVENT_AGE_SECS = 7 * 24 * 3600 - 3600
-export const EVENT_LABELS: Record<string, string> = {
-  Lead: 'Lead',
-  Contact: 'Contato',
-  Schedule: 'Agendamento',
-  CompleteRegistration: 'Cadastro completo',
-  InitiateCheckout: 'Início de compra',
-  Purchase: 'Compra',
-}
-
 export interface LeadOrigin {
   source: AttributionSource
   ctwa_clid: string | null

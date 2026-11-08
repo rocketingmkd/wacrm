@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
-import { EVENT_LABELS } from "@/lib/tracking/conversions";
+import { EVENT_LABELS } from "@/lib/tracking/events";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
