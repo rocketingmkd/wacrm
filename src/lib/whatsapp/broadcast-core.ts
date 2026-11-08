@@ -22,16 +22,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
-} from '@/lib/whatsapp/phone-utils';
+import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/contacts/service';
 import { findOrCreateConversation } from '@/lib/conversations/find-or-create';
+import { sendToFirstWorkingPhone } from '@/lib/whatsapp/send-candidates';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -329,13 +325,12 @@ export async function deliverBroadcast(
   let sentCount = 0;
 
   for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    for (const variant of variants) {
-      try {
-        const result = await sendTemplateMessage({
+    try {
+      const { result } = await sendToFirstWorkingPhone(recipient.phone, (variant) =>
+        sendTemplateMessage({
           phoneNumberId: plan.phoneNumberId,
           accessToken: plan.accessToken,
           to: variant,
@@ -343,16 +338,11 @@ export async function deliverBroadcast(
           language: plan.templateLanguage,
           template: plan.templateRow ?? undefined,
           params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Erro desconhecido';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
-      }
+        })
+      );
+      sentMessageId = result.messageId;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Erro desconhecido';
     }
 
     if (sentMessageId) {

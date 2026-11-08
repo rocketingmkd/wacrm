@@ -19,6 +19,7 @@
 // without duplicating ~250 lines of Meta plumbing.
 // ============================================================
 
+import { sendToFirstWorkingCandidate } from '@/lib/whatsapp/send-candidates';
 import {
   ConversationError,
   findOrCreateConversation as findOrCreateConversationRow,
@@ -517,31 +518,20 @@ export async function sendMessageToConversation(
       }
     }
 
-    let lastError: unknown = null;
-
-    for (const candidate of candidates) {
-      try {
-        waMessageId = await attempt(candidate);
-        if (candidate.kind === 'phone') workingPhone = candidate.value;
-        lastError = null;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        // A BSUID can go stale (Meta regenerates it whenever the
-        // customer changes phone numbers) — any failure there, not
-        // just "recipient not allowed", should fall through to the
-        // phone variants rather than aborting the whole send.
-        if (candidate.kind === 'phone' && !isRecipientNotAllowedError(message)) {
-          throw err;
-        }
-        lastError = err;
+    const sent = await sendToFirstWorkingCandidate(candidates, attempt, {
+      // A BSUID can go stale (Meta regenerates it whenever the customer
+      // changes phone numbers), so any failure there, not just "recipient
+      // not allowed", falls through to the phone variants rather than
+      // aborting the whole send.
+      fallThrough: (candidate, message) =>
+        candidate.kind !== 'phone' || isRecipientNotAllowedError(message),
+      onSkipped: (candidate) =>
         console.warn(
           `[send-message] candidate ${candidate.kind}:"${candidate.value}" rejected by Meta, trying next…`
-        );
-      }
-    }
-
-    if (lastError) throw lastError;
+        ),
+    });
+    waMessageId = sent.result;
+    if (sent.candidate.kind === 'phone') workingPhone = sent.candidate.value;
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'Erro desconhecido da API da Meta';
