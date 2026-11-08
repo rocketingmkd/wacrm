@@ -87,11 +87,6 @@ export function planUpgradeRequired(
   return new ApiError('plan_upgrade_required', message, 403);
 }
 
-/** 400 — bad input. */
-export function badRequest(message: string): ApiError {
-  return new ApiError('bad_request', message, 400);
-}
-
 /** 429 — built from a `checkRateLimit` miss, with the standard headers. */
 export function rateLimited(result: RateLimitResult): ApiError {
   const retryAfter = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
