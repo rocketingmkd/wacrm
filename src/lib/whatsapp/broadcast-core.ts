@@ -28,7 +28,7 @@ import {
 } from '@/lib/whatsapp/phone-utils';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
-import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import { findOrCreateContact } from '@/lib/contacts/service';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {

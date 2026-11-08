@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-vi.mock('@/lib/api/v1/contacts', () => ({
+vi.mock('@/lib/contacts/service', () => ({
   resolveAuditUserId: vi.fn(async () => 'owner-1'),
 }));
 

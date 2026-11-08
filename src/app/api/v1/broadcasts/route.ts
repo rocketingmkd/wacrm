@@ -36,7 +36,7 @@ import { requireApiKey } from '@/lib/auth/api-context';
 // requests. A durable queue/cron drain is the complete fix (follow-up).
 export const maxDuration = 60;
 import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
-import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
+import { resolveAuditUserId, ContactError } from '@/lib/contacts/service';
 import {
   createBroadcast,
   deliverBroadcast,

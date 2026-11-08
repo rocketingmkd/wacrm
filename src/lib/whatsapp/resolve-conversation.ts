@@ -23,7 +23,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
 import { SendMessageError } from '@/lib/whatsapp/send-message';
-import { resolveAuditUserId, ContactError } from '@/lib/api/v1/contacts';
+import { resolveAuditUserId, ContactError } from '@/lib/contacts/service';
 
 export interface ResolvedConversation {
   conversationId: string;

@@ -18,7 +18,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isUniqueViolation } from '@/lib/contacts/dedupe';
-import { resolveAuditUserId } from '@/lib/api/v1/contacts';
+import { resolveAuditUserId } from '@/lib/contacts/service';
 
 // ---- webhook secret -------------------------------------------------
 

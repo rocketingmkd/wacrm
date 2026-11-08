@@ -18,12 +18,14 @@ import {
 import {
   CONTACT_SELECT,
   serializeContact,
+  getContactById,
+} from '@/lib/api/v1/contacts';
+import {
   findOrCreateContact,
   setContactTags,
-  getContactById,
   resolveAuditUserId,
   ContactError,
-} from '@/lib/api/v1/contacts';
+} from '@/lib/contacts/service';
 
 // PostgREST filter values are comma/paren-delimited; strip anything
 // that could break the `.or()` grammar before interpolating a search

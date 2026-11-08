@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  serializeContact,
-  findOrCreateContact,
-  ContactError,
-} from './contacts';
+import { serializeContact } from './contacts';
 
 describe('serializeContact', () => {
   it('flattens contact_tags(tags(*)) onto a tags array and nulls missing fields', () => {
@@ -48,18 +43,5 @@ describe('serializeContact', () => {
       updated_at: 'b',
     };
     expect(serializeContact(row).tags).toEqual([]);
-  });
-});
-
-describe('findOrCreateContact', () => {
-  const noopDb = {} as SupabaseClient;
-
-  it('rejects a non-E.164 phone with a 400 ContactError', async () => {
-    await expect(
-      findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      findOrCreateContact(noopDb, 'acc', 'user', { phone: 'not-a-number' })
-    ).rejects.toBeInstanceOf(ContactError);
   });
 });

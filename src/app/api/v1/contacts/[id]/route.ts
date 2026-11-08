@@ -10,12 +10,12 @@
 
 import { requireApiKey } from '@/lib/auth/api-context';
 import { ok, fail, toApiErrorResponse } from '@/lib/api/v1/respond';
+import { getContactById } from '@/lib/api/v1/contacts';
 import {
-  getContactById,
   setContactTags,
   resolveAuditUserId,
   ContactError,
-} from '@/lib/api/v1/contacts';
+} from '@/lib/contacts/service';
 
 export async function GET(
   request: Request,
