@@ -26,9 +26,9 @@ import type {
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { isAccountWriteLocked } from '@/lib/billing/write-lock'
 import { activateAgentAndReply } from '@/lib/ai/auto-reply'
-import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
-import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
-import { dispatchEventToFlows } from '@/lib/flows/engine'
+import { removeContactTag } from '@/lib/contacts/tag-write'
+import { getTagChainDepth } from '@/lib/contacts/tag-chain'
+import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
@@ -491,60 +491,33 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'add_tag': {
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('add_tag needs contact + tag_id')
-      const added = await addContactTagIfAbsent(db, {
+      // The shared writer adds the tag once, then dispatches tag_added to
+      // automations and Flows, carrying this run's context so the chain-depth
+      // guard sees the automation that tagged the contact.
+      const result = await addContactTagAndDispatch({
+        db,
         accountId: args.automation.account_id,
         contactId: args.contactId,
         tagId: cfg.tag_id,
+        context: args.context,
       })
-      if (!added) return `tag ${cfg.tag_id} already present`
-
-      const depth = getTagChainDepth(args.context)
-      if (depth >= MAX_TAG_CHAIN_DEPTH) {
-        console.warn('[automations] tag_added chain depth limit reached', {
-          automationId: args.automation.id,
-          contactId: args.contactId,
-          tagId: cfg.tag_id,
-          depth,
-        })
-        return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${depth}`
+      if (result.reason === 'duplicate') return `tag ${cfg.tag_id} already present`
+      if (result.reason === 'max_depth') {
+        return `tag ${cfg.tag_id} added; tag_added dispatch skipped at depth ${getTagChainDepth(args.context)}`
       }
-
-      await runAutomationsForTrigger({
-        accountId: args.automation.account_id,
-        triggerType: 'tag_added',
-        contactId: args.contactId,
-        context: {
-          ...args.context,
-          tag_id: cfg.tag_id,
-          vars: {
-            ...(args.context.vars ?? {}),
-            _tag_chain_depth: depth + 1,
-          },
-        },
-      })
-      // This step bypasses src/lib/contacts/tag-events.ts (it needs
-      // its own inline depth guard against the automation's own
-      // context, not tag-events.ts's), so it also needs its own
-      // Flows dispatch — otherwise "an Automation tags the lead → a
-      // Flow starts the onboarding conversation" silently never fires.
-      await dispatchEventToFlows({
-        accountId: args.automation.account_id,
-        contactId: args.contactId,
-        event: { type: 'tag_added', tag_id: cfg.tag_id },
-      }).catch((err) => console.error('[flows] tag_added dispatch failed:', err))
       return `tag ${cfg.tag_id} added and tag_added dispatched`
     }
 
     case 'remove_tag': {
-      // See add_tag: tenant scoping relies on the runAutomationsForTrigger
-      // ownership guard, since contact_tags carries no account_id.
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('remove_tag needs contact + tag_id')
-      await db
-        .from('contact_tags')
-        .delete()
-        .eq('contact_id', args.contactId)
-        .eq('tag_id', cfg.tag_id)
+      // contact_tags carries no account_id, so the writer checks that both
+      // the contact and the tag belong to this account before deleting.
+      await removeContactTag(db, {
+        accountId: args.automation.account_id,
+        contactId: args.contactId,
+        tagId: cfg.tag_id,
+      })
       return `tag ${cfg.tag_id} removed`
     }
 
