@@ -26,10 +26,6 @@ import { supabaseAdmin } from './admin-client'
 // fight over each other's shape — once both stabilize, the
 // phone-variant retry + DB persistence are obvious extraction
 // candidates into a shared base.
-//
-// PR #1 ships this in isolation: callers don't exist yet. PR #2
-// brings the flow runner online and wires it up. Shipping it now
-// keeps the foundation PR self-contained and unit-testable.
 // ------------------------------------------------------------
 
 interface SendTextEngineArgs {

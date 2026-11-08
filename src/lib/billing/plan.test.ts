@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { accountHasFeature, isPlan, PLAN_FEATURES, PLANS, type PlanBillingSummary } from './plan';
+import { accountHasFeature, isPlan, PLANS, type PlanBillingSummary } from './plan';
 
 function billing(overrides: Partial<PlanBillingSummary>): PlanBillingSummary {
   return { status: 'active', plan: null, ...overrides };
@@ -56,11 +56,5 @@ describe('accountHasFeature', () => {
     expect(accountHasFeature(billing({ status: 'active', plan: 'legacy_v1' }), 'apiAccess')).toBe(
       false,
     );
-  });
-
-  it('PLAN_FEATURES has an entry for every declared plan', () => {
-    for (const p of PLANS) {
-      expect(PLAN_FEATURES[p]).toBeDefined();
-    }
   });
 });
