@@ -2,6 +2,45 @@ import { NextResponse } from 'next/server'
 import { requirePlatformAdmin } from '@/lib/auth/platform'
 import { toErrorResponse } from '@/lib/auth/account'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
+import { AccountAdminError, deleteAccountAndUsers } from '@/lib/platform/account-admin'
+
+// DELETE /api/platform/accounts/[accountId]   { confirmEmail }
+//
+// Permanently deletes the account (contacts, conversations, flows,
+// integrations... all cascade) and then the owner's and members' logins.
+// Requires the owner's e-mail typed as confirmation. Cannot delete the
+// caller's own account. Logged as account.deleted.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ accountId: string }> },
+) {
+  try {
+    const ctx = await requirePlatformAdmin()
+
+    const limit = checkRateLimit(`platform:del:${ctx.userId}`, RATE_LIMITS.adminAction)
+    if (!limit.success) return rateLimitResponse(limit)
+
+    const { accountId } = await params
+    const body = (await request.json().catch(() => null)) as { confirmEmail?: unknown } | null
+
+    const result = await deleteAccountAndUsers(ctx.admin, accountId, body?.confirmEmail, {
+      actorUserId: ctx.userId,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      account_name: result.accountName,
+      owner_email: result.ownerEmail,
+      deleted_logins: result.deletedLogins,
+      failed_logins: result.failedLogins.length,
+    })
+  } catch (err) {
+    if (err instanceof AccountAdminError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
+    return toErrorResponse(err)
+  }
+}
 
 // GET /api/platform/accounts/[accountId]
 //

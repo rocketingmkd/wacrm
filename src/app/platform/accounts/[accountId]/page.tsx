@@ -8,8 +8,9 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Code2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Code2, Copy, KeyRound, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -94,6 +95,11 @@ export default function PlatformAccountDetailPage({
   params: Promise<{ accountId: string }>;
 }) {
   const { accountId } = use(params);
+  const router = useRouter();
+
+  // Senha do dono / apagar conta
+  const [pwdResult, setPwdResult] = useState<{ password: string | null; link: string | null } | null>(null);
+  const [confirmEmail, setConfirmEmail] = useState('');
 
   const [account, setAccount] = useState<AccountDetail | null>(null);
   const [webhookLogs, setWebhookLogs] = useState<WebhookLogRow[]>([]);
@@ -150,6 +156,56 @@ export default function PlatformAccountDetailPage({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao aplicar a ação');
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resetPassword(mode: 'password' | 'link') {
+    setBusy(`pwd_${mode}`);
+    try {
+      const res = await fetch(`/api/platform/accounts/${accountId}/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao redefinir a senha');
+      setPwdResult({ password: body.password ?? null, link: body.setup_link ?? null });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao redefinir a senha');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Copiado.');
+    } catch {
+      toast.error('Não foi possível copiar. Selecione e copie manualmente.');
+    }
+  }
+
+  async function deleteAccount() {
+    setBusy('delete');
+    try {
+      const res = await fetch(`/api/platform/accounts/${accountId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEmail }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao apagar a conta');
+      toast.success(
+        body.failed_logins
+          ? `Conta apagada, mas ${body.failed_logins} login(s) não saíram. Veja os logs.`
+          : 'Conta apagada.',
+      );
+      router.push('/platform/accounts');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao apagar a conta');
       setBusy(null);
     }
   }
@@ -334,6 +390,108 @@ export default function PlatformAccountDetailPage({
               }
             >
               {busy === 'set_status' ? <Loader2 className="size-3.5 animate-spin" /> : 'Aplicar'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Acesso do dono</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Esqueceu a senha? Gere uma temporária para repassar ao cliente, ou um link para ele
+              escolher a própria senha. O login é {account.owner_email ?? '—'}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy !== null}
+                onClick={() => resetPassword('password')}
+              >
+                {busy === 'pwd_password' ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <KeyRound className="size-3.5" />
+                )}
+                Gerar senha temporária
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy !== null}
+                onClick={() => resetPassword('link')}
+              >
+                {busy === 'pwd_link' ? <Loader2 className="size-3.5 animate-spin" /> : 'Gerar link de redefinição'}
+              </Button>
+            </div>
+            {pwdResult && (
+              <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <p className="text-xs text-muted-foreground">
+                  Aparece só agora. Copie e envie ao cliente; não fica salvo em lugar nenhum.
+                </p>
+                {pwdResult.password && (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded bg-background px-2 py-1 font-mono">
+                      {pwdResult.password}
+                    </code>
+                    <Button size="sm" variant="outline" onClick={() => copyText(pwdResult.password!)}>
+                      <Copy className="size-3.5" /> Copiar
+                    </Button>
+                  </div>
+                )}
+                {pwdResult.link && (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded bg-background px-2 py-1 font-mono text-xs">
+                      {pwdResult.link}
+                    </code>
+                    <Button size="sm" variant="outline" onClick={() => copyText(pwdResult.link!)}>
+                      <Copy className="size-3.5" /> Copiar
+                    </Button>
+                  </div>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setPwdResult(null)}>
+                  Ocultar
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-red-500/40">
+          <CardHeader>
+            <CardTitle className="text-red-600 dark:text-red-400">Zona de perigo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Apaga a conta, todos os dados dela (contatos, conversas, funis, automações,
+              integrações) e os logins do dono e da equipe. Não tem como desfazer.
+            </p>
+            <Label className="text-xs text-muted-foreground">
+              Para confirmar, digite o e-mail do dono: {account.owner_email ?? '—'}
+            </Label>
+            <Input
+              type="email"
+              autoComplete="off"
+              value={confirmEmail}
+              onChange={(e) => setConfirmEmail(e.target.value)}
+              placeholder={account.owner_email ?? ''}
+            />
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={
+                busy !== null ||
+                !account.owner_email ||
+                confirmEmail.trim().toLowerCase() !== account.owner_email.toLowerCase()
+              }
+              onClick={deleteAccount}
+            >
+              {busy === 'delete' ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+              Apagar conta definitivamente
             </Button>
           </CardContent>
         </Card>
